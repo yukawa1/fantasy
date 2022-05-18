@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Example &mdash; Fantasy 0.1.0 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+        <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Documentation" href="modules.html" />
+    <link rel="prev" title="FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html">
+            <img src="_static/fantasy.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Documentation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Fantasy</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>Example</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Example.ipynb.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  
+<style>
+/* CSS for nbsphinx extension */
+
+/* remove conflicting styling from Sphinx themes */
+div.nbinput.container div.prompt *,
+div.nboutput.container div.prompt *,
+div.nbinput.container div.input_area pre,
+div.nboutput.container div.output_area pre,
+div.nbinput.container div.input_area .highlight,
+div.nboutput.container div.output_area .highlight {
+    border: none;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+}
+
+div.nbinput.container > div[class*=highlight],
+div.nboutput.container > div[class*=highlight] {
+    margin: 0;
+}
+
+div.nbinput.container div.prompt *,
+div.nboutput.container div.prompt * {
+    background: none;
+}
+
+div.nboutput.container div.output_area .highlight,
+div.nboutput.container div.output_area pre {
+    background: unset;
+}
+
+div.nboutput.container div.output_area div.highlight {
+    color: unset;  /* override Pygments text color */
+}
+
+/* avoid gaps between output lines */
+div.nboutput.container div[class*=highlight] pre {
+    line-height: normal;
+}
+
+/* input/output containers */
+div.nbinput.container,
+div.nboutput.container {
+    display: -webkit-flex;
+    display: flex;
+    align-items: flex-start;
+    margin: 0;
+    width: 100%;
+}
+@media (max-width: 540px) {
+    div.nbinput.container,
+    div.nboutput.container {
+        flex-direction: column;
+    }
+}
+
+/* input container */
+div.nbinput.container {
+    padding-top: 5px;
+}
+
+/* last container */
+div.nblast.container {
+    padding-bottom: 5px;
+}
+
+/* input prompt */
+div.nbinput.container div.prompt pre {
+    color: #307FC1;
+}
+
+/* output prompt */
+div.nboutput.container div.prompt pre {
+    color: #BF5B3D;
+}
+
+/* all prompts */
+div.nbinput.container div.prompt,
+div.nboutput.container div.prompt {
+    width: 4.5ex;
+    padding-top: 5px;
+    position: relative;
+    user-select: none;
+}
+
+div.nbinput.container div.prompt > div,
+div.nboutput.container div.prompt > div {
+    position: absolute;
+    right: 0;
+    margin-right: 0.3ex;
+}
+
+@media (max-width: 540px) {
+    div.nbinput.container div.prompt,
+    div.nboutput.container div.prompt {
+        width: unset;
+        text-align: left;
+        padding: 0.4em;
+    }
+    div.nboutput.container div.prompt.empty {
+        padding: 0;
+    }
+
+    div.nbinput.container div.prompt > div,
+    div.nboutput.container div.prompt > div {
+        position: unset;
+    }
+}
+
+/* disable scrollbars on prompts */
+div.nbinput.container div.prompt pre,
+div.nboutput.container div.prompt pre {
+    overflow: hidden;
+}
+
+/* input/output area */
+div.nbinput.container div.input_area,
+div.nboutput.container div.output_area {
+    -webkit-flex: 1;
+    flex: 1;
+    overflow: auto;
+}
+@media (max-width: 540px) {
+    div.nbinput.container div.input_area,
+    div.nboutput.container div.output_area {
+        width: 100%;
+    }
+}
+
+/* input area */
+div.nbinput.container div.input_area {
+    border: 1px solid #e0e0e0;
+    border-radius: 2px;
+    /*background: #f5f5f5;*/
+}
+
+/* override MathJax center alignment in output cells */
+div.nboutput.container div[class*=MathJax] {
+    text-align: left !important;
+}
+
+/* override sphinx.ext.imgmath center alignment in output cells */
+div.nboutput.container div.math p {
+    text-align: left;
+}
+
+/* standard error */
+div.nboutput.container div.output_area.stderr {
+    background: #fdd;
+}
+
+/* ANSI colors */
+.ansi-black-fg { color: #3E424D; }
+.ansi-black-bg { background-color: #3E424D; }
+.ansi-black-intense-fg { color: #282C36; }
+.ansi-black-intense-bg { background-color: #282C36; }
+.ansi-red-fg { color: #E75C58; }
+.ansi-red-bg { background-color: #E75C58; }
+.ansi-red-intense-fg { color: #B22B31; }
+.ansi-red-intense-bg { background-color: #B22B31; }
+.ansi-green-fg { color: #00A250; }
+.ansi-green-bg { background-color: #00A250; }
+.ansi-green-intense-fg { color: #007427; }
+.ansi-green-intense-bg { background-color: #007427; }
+.ansi-yellow-fg { color: #DDB62B; }
+.ansi-yellow-bg { background-color: #DDB62B; }
+.ansi-yellow-intense-fg { color: #B27D12; }
+.ansi-yellow-intense-bg { background-color: #B27D12; }
+.ansi-blue-fg { color: #208FFB; }
+.ansi-blue-bg { background-color: #208FFB; }
+.ansi-blue-intense-fg { color: #0065CA; }
+.ansi-blue-intense-bg { background-color: #0065CA; }
+.ansi-magenta-fg { color: #D160C4; }
+.ansi-magenta-bg { background-color: #D160C4; }
+.ansi-magenta-intense-fg { color: #A03196; }
+.ansi-magenta-intense-bg { background-color: #A03196; }
+.ansi-cyan-fg { color: #60C6C8; }
+.ansi-cyan-bg { background-color: #60C6C8; }
+.ansi-cyan-intense-fg { color: #258F8F; }
+.ansi-cyan-intense-bg { background-color: #258F8F; }
+.ansi-white-fg { color: #C5C1B4; }
+.ansi-white-bg { background-color: #C5C1B4; }
+.ansi-white-intense-fg { color: #A1A6B2; }
+.ansi-white-intense-bg { background-color: #A1A6B2; }
+
+.ansi-default-inverse-fg { color: #FFFFFF; }
+.ansi-default-inverse-bg { background-color: #000000; }
+
+.ansi-bold { font-weight: bold; }
+.ansi-underline { text-decoration: underline; }
+
+
+div.nbinput.container div.input_area div[class*=highlight] > pre,
+div.nboutput.container div.output_area div[class*=highlight] > pre,
+div.nboutput.container div.output_area div[class*=highlight].math,
+div.nboutput.container div.output_area.rendered_html,
+div.nboutput.container div.output_area > div.output_javascript,
+div.nboutput.container div.output_area:not(.rendered_html) > img{
+    padding: 5px;
+    margin: 0;
+}
+
+/* fix copybtn overflow problem in chromium (needed for 'sphinx_copybutton') */
+div.nbinput.container div.input_area > div[class^='highlight'],
+div.nboutput.container div.output_area > div[class^='highlight']{
+    overflow-y: hidden;
+}
+
+/* hide copybtn icon on prompts (needed for 'sphinx_copybutton') */
+.prompt .copybtn {
+    display: none;
+}
+
+/* Some additional styling taken form the Jupyter notebook CSS */
+div.rendered_html table {
+  border: none;
+  border-collapse: collapse;
+  border-spacing: 0;
+  color: black;
+  font-size: 12px;
+  table-layout: fixed;
+}
+div.rendered_html thead {
+  border-bottom: 1px solid black;
+  vertical-align: bottom;
+}
+div.rendered_html tr,
+div.rendered_html th,
+div.rendered_html td {
+  text-align: right;
+  vertical-align: middle;
+  padding: 0.5em 0.5em;
+  line-height: normal;
+  white-space: normal;
+  max-width: none;
+  border: none;
+}
+div.rendered_html th {
+  font-weight: bold;
+}
+div.rendered_html tbody tr:nth-child(odd) {
+  background: #f5f5f5;
+}
+div.rendered_html tbody tr:hover {
+  background: rgba(66, 165, 245, 0.2);
+}
+
+/* CSS overrides for sphinx_rtd_theme */
+
+/* 24px margin */
+.nbinput.nblast.container,
+.nboutput.nblast.container {
+    margin-bottom: 19px;  /* padding has already 5px */
+}
+
+/* ... except between code cells! */
+.nblast.container + .nbinput.container {
+    margin-top: -19px;
+}
+
+.admonition > p:before {
+    margin-right: 4px;  /* make room for the exclamation icon */
+}
+
+/* Fix math alignment, see https://github.com/rtfd/sphinx_rtd_theme/pull/686 */
+.math {
+    text-align: unset;
+}
+</style>
+<section id="Example">
+<h1>Example<a class="headerlink" href="#Example" title="Permalink to this headline"></a></h1>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[39]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">fantasy.tools</span> <span class="kn">import</span> <span class="n">read_sdss</span><span class="p">,</span> <span class="n">read_text</span>
+<br/></pre></div>
+</div>
+</div>
+<p>Firstly, let us read spectrum. <code class="docutils literal notranslate"><span class="pre">Spectra</span></code> class has three methods: <code class="docutils literal notranslate"><span class="pre">read_sdss</span></code> , <code class="docutils literal notranslate"><span class="pre">read_gama_fits</span></code> and <code class="docutils literal notranslate"><span class="pre">read_txt</span></code>. <code class="docutils literal notranslate"><span class="pre">read_sdss</span></code> is designed to read SDSS spectra, while <code class="docutils literal notranslate"><span class="pre">read_text</span></code> ASCII files.</p>
+<p>It is possible to read any format of spectra using any prefered method, and convert it to spectral class used in the FANTASY using <code class="docutils literal notranslate"><span class="pre">make_spec</span></code>…</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[40]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">fantasy.models</span> <span class="kn">import</span> <span class="n">automatic_path</span><span class="p">,</span> <span class="n">FeII</span><span class="p">,</span> <span class="n">create_model</span><span class="p">,</span> <span class="n">create_tied_model</span><span class="p">,</span> <span class="n">continuum</span><span class="p">,</span> <span class="n">create_line</span><span class="p">,</span> <span class="n">create_fixed_model</span><span class="p">,</span> <span class="n">create_input_folder</span><span class="p">,</span> <span class="n">create_feii_model</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[41]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">=</span><span class="n">read_text</span><span class="p">(</span><span class="s1">&#39;/home/yukawa/Downloads/2016ezh_2016-08-26_02-20-39_Ekar_AFOSC_None.txt&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[42]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">ra</span><span class="o">=</span><span class="mf">29.519807539582</span>
+<span class="n">s</span><span class="o">.</span><span class="n">dec</span><span class="o">=-</span><span class="mf">0.872742349310271</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[43]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">DeRedden</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[44]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">z</span><span class="o">=</span><span class="mf">0.0804</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[45]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">CorRed</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[46]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">flux</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">flux</span><span class="o">*</span><span class="mi">10</span><span class="o">**</span><span class="mi">16</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[47]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">crop</span><span class="p">(</span><span class="mi">4130</span><span class="p">,</span> <span class="mi">7000</span><span class="p">)</span>
+<br/></pre></div>
+</div>
+</div>
+<p>For bulk spectra fitting, for automatic path of input files <code class="docutils literal notranslate"><span class="pre">use</span> <span class="pre">automatic_path(s)</span></code></p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[48]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">create_input_folder</span><span class="p">(</span><span class="n">xmin</span><span class="o">=</span><span class="mi">4130</span><span class="p">,</span><span class="n">xmax</span><span class="o">=</span><span class="mi">7000</span><span class="p">,</span> <span class="n">path_to_folder</span><span class="o">=</span><span class="s1">&#39;/home/yukawa/Downloads/fitting/tde/&#39;</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Directory  /home/yukawa/Downloads/fitting/tde/  already exists
+</pre></div></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">continuum()</span></code> calls <code class="docutils literal notranslate"><span class="pre">BrokenPowerlaw()</span></code> model with defining amplitude of the continuum from given spectra</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[49]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">cont</span><span class="o">=</span><span class="n">continuum</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">min_refer</span><span class="o">=</span><span class="mi">5790</span><span class="p">,</span> <span class="n">refer</span><span class="o">=</span><span class="mi">5800</span><span class="p">,</span> <span class="n">max_refer</span><span class="o">=</span><span class="mi">5810</span><span class="p">)</span>
+
+<span class="n">broad</span><span class="o">=</span><span class="n">create_fixed_model</span><span class="p">([</span><span class="s1">&#39;hydrogen.csv&#39;</span><span class="p">,</span> <span class="s1">&#39;helium.csv&#39;</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;br&#39;</span><span class="p">)</span>
+<span class="n">br_other</span><span class="o">=</span><span class="n">create_model</span><span class="p">([</span><span class="s1">&#39;broad.csv&#39;</span><span class="p">],</span> <span class="n">prefix</span><span class="o">=</span><span class="s1">&#39;br&#39;</span><span class="p">)</span>
+<span class="n">fe_fixed</span><span class="o">=</span><span class="n">create_fixed_model</span><span class="p">([</span><span class="s1">&#39;feII_forbidden.csv&#39;</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;fe_forr&#39;</span><span class="p">,</span> <span class="n">fwhm</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span><span class="n">max_fwhm</span><span class="o">=</span><span class="mi">1600</span><span class="p">)</span>
+
+<span class="n">narrow</span><span class="o">=</span><span class="n">create_tied_model</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;OIII5007&#39;</span><span class="p">,</span><span class="n">files</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;narrow_basic.csv&#39;</span><span class="p">,</span><span class="s1">&#39;narrow_plus.csv&#39;</span><span class="p">,</span><span class="s1">&#39;hydrogen.csv&#39;</span><span class="p">,</span> <span class="s1">&#39;helium.csv&#39;</span>
+                                               <span class="p">],</span><span class="n">prefix</span><span class="o">=</span><span class="s1">&#39;nr&#39;</span><span class="p">,</span><span class="n">min_amplitude</span><span class="o">=</span><span class="mf">.1</span><span class="p">,</span> <span class="n">fwhm</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span><span class="n">min_offset</span><span class="o">=-</span><span class="mi">300</span><span class="p">,</span> <span class="n">max_offset</span><span class="o">=</span><span class="mi">3000</span><span class="p">,</span> <span class="n">min_fwhm</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">max_fwhm</span><span class="o">=</span><span class="mi">1200</span><span class="p">)</span>
+<span class="n">fe</span><span class="o">=</span><span class="n">create_feii_model</span><span class="p">()</span>
+<span class="n">fe_nar</span><span class="o">=</span><span class="n">create_feii_model</span><span class="p">(</span><span class="s1">&#39;naffFe&#39;</span><span class="p">,</span><span class="n">min_fwhm</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">max_fwhm</span><span class="o">=</span><span class="mi">1500</span><span class="p">)</span>
+<br/></pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+WARNING: parameter naffFe.fwhm greater than new maximum; naffFe.fwhm reset to 1500
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[50]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span><span class="n">cont</span><span class="o">+</span><span class="n">narrow</span><span class="o">+</span><span class="n">broad</span><span class="o">+</span><span class="n">fe</span><span class="o">+</span><span class="n">fe_fixed</span><span class="o">+</span><span class="n">fe_nar</span><span class="o">+</span><span class="n">br_other</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[54]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">ntrial</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+stati 0.2943598970242447
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[52]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">matplotlib</span> <span class="k">as</span> <span class="nn">mpl</span>
+<span class="kn">from</span> <span class="nn">matplotlib.ticker</span> <span class="kn">import</span> <span class="p">(</span><span class="n">MultipleLocator</span><span class="p">,</span> <span class="n">FormatStrFormatter</span><span class="p">,</span> <span class="n">AutoMinorLocator</span><span class="p">)</span>
+<br/><br/><br/></pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[55]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">context</span><span class="p">([</span><span class="s1">&#39;nature&#39;</span><span class="p">,</span> <span class="s1">&#39;notebook&#39;</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">18</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">s</span><span class="o">.</span><span class="n">flux</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">model</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">model</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">)</span><span class="o">-</span><span class="n">s</span><span class="o">.</span><span class="n">flux</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">cont</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">narrow</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">broad</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">fe</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">fe_fixed</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">fe_nar</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">))</span>
+
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Rest Wavelength&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;Flux&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">tick_params</span><span class="p">(</span><span class="n">which</span><span class="o">=</span><span class="s1">&#39;both&#39;</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s2">&quot;in&quot;</span><span class="p">)</span>
+<span class="c1">#plt.plot(s.)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s1">&#39;/home/yukawa/slika.pdf&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="_images/Example_19_0.png" src="_images/Example_19_0.png" />
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[56]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[56]:
+</pre></div>
+</div>
+<div class="output_area rendered_html docutils container">
+<style>/*
+Copyright (C) 2020  Smithsonian Astrophysical Observatory
+
+
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc.,
+ 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+*/
+
+:root {
+  --sherpa-border-color: var(--jp-border-color2, #e0e0e0);
+  --sherpa-background-color: var(--jp-layout-color0, white);
+  --sherpa-background-color-row-even: var(--jp-layout-color1, white);
+  --sherpa-background-color-row-odd: var(--jp-layout-color2, #eeeeee);
+
+  /* https://medium.com/ge-design/iot-cool-gray-is-a-great-background-color-for-data-visualization-ebf18c318418 */
+  --sherpa-background-color-dark1: #EBEFF2;
+  --sherpa-background-color-dark2: #D8E0E5;
+}
+
+div.sherpa-text-fallback {
+    display: none;
+}
+
+div.sherpa {
+    display: block;
+}
+
+div.sherpa details summary {
+    display: list-item;  /* needed for notebook, not lab */
+    font-size: larger;
+}
+
+div.sherpa details div.datavals {
+    display: grid;
+    grid-template-columns: 1fr 3fr;
+    column-gap: 0.5em;
+}
+
+div.sherpa div.dataname {
+    font-weight: bold;
+    border-right: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa div.dataval { }
+
+div.sherpa div.datavals div:nth-child(4n + 1) ,
+div.sherpa div.datavals div:nth-child(4n + 2) {
+    background: var(--sherpa-background-color-row-odd);
+}
+
+div.sherpa table.model tbody {
+    border-bottom: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model tr.block {
+    border-top: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model th.model-odd ,
+div.sherpa table.model th.model-even {
+    border-right: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model th.model-odd {
+    background: var(--sherpa-background-color-dark1);
+}
+
+div.sherpa table.model th.model-even {
+    background: var(--sherpa-background-color-dark2);
+}
+
+div.sherpa .failed {
+    background: orange;
+    font-size: large;
+    padding: 1em;
+}
+</style><div class="sherpa-text-fallback">&lt;BinaryOpModel model instance &#x27;((((((brokenpowerlaw + ((((((((((((((((((((((((((((((((((((((((((((((((((nr_OIII5007 + nr_OIII4958) + nr_NII6584) + nr_NIII6548) + nr_[O III]_4363) + nr_[O I]_6300) + nr_[O I]_6363) + nr_[S II]_6716) + nr_[S II]_6730) + nr_Cr II 194_4003) + nr_Ni II 12_4015) + nr_Ti II 87_4053) + nr_Cr II 19_4063) + nr_[S II] 1F_4068) + nr_[S II] 1F_4076) + nr_N III_4097) + nr_NIII_4103) + nr_Ti II 105_4163) + nr_Ti II 19_4395) + nr_O II_4414) + nr_Ti II 93_4421) + nr_Ti II 19_4443) + nr_Ti II 19_4450) + nr_NIII1_4510) + nr_Cr II 44_4616) + nr_N III_4640) + nr_N II 5_4643) + nr_C III_4647) + nr_C III_4650) + nr_C III_4651) + nr_Cr II_4697) + nr_Cr II 30_4824) + nr_Cr II 30_4876) + nr_Ti II 114_4911) + nr_Ti II 113_5072) + nr_[N I]_5200) + nr_C III_5695) + nr_Si II_5957) + nr_OIb_6046) + nr_S II_6288) + nr_[S III]_6312) + nr_Si II_6347) + nr_Si II_6371) + nr_Hd_4101) + nr_Hg_4340) + nr_Hb_4861) + nr_Ha_6562) + nr_HeI_4143) + nr_HeI_4471) + nr_HeII_4685) + nr_HeI_5877)) + br) + feii) + fe_forr) + naffFe) + (((0.0 + br_NaI_5890) + br_NaI1_5896) + br_OI_6046))&#x27;&gt;</div><div hidden class="sherpa"><details open><summary>Model</summary><table class="model"><caption>Expression: (((((brokenpowerlaw + ((((((((((((((((((((((((((((((((((((((((((((((((((nr_OIII5007 + nr_OIII4958) + nr_NII6584) + nr_NIII6548) + nr_[O III]_4363) + nr_[O I]_6300) + nr_[O I]_6363) + nr_[S II]_6716) + nr_[S II]_6730) + nr_Cr II 194_4003) + nr_Ni II 12_4015) + nr_Ti II 87_4053) + nr_Cr II 19_4063) + nr_[S II] 1F_4068) + nr_[S II] 1F_4076) + nr_N III_4097) + nr_NIII_4103) + nr_Ti II 105_4163) + nr_Ti II 19_4395) + nr_O II_4414) + nr_Ti II 93_4421) + nr_Ti II 19_4443) + nr_Ti II 19_4450) + nr_NIII1_4510) + nr_Cr II 44_4616) + nr_N III_4640) + nr_N II 5_4643) + nr_C III_4647) + nr_C III_4650) + nr_C III_4651) + nr_Cr II_4697) + nr_Cr II 30_4824) + nr_Cr II 30_4876) + nr_Ti II 114_4911) + nr_Ti II 113_5072) + nr_[N I]_5200) + nr_C III_5695) + nr_Si II_5957) + nr_OIb_6046) + nr_S II_6288) + nr_[S III]_6312) + nr_Si II_6347) + nr_Si II_6371) + nr_Hd_4101) + nr_Hg_4340) + nr_Hb_4861) + nr_Ha_6562) + nr_HeI_4143) + nr_HeI_4471) + nr_HeII_4685) + nr_HeI_5877)) + br) + feii) + fe_forr) + naffFe) + (((0.0 + br_NaI_5890) + br_NaI1_5896) + br_OI_6046)</caption><thead><tr><th>Component</th><th>Parameter</th><th>Thawed</th><th>Value</th><th>Min</th><th>Max</th><th>Units</th></tr></thead><tbody><tr><th class="model-odd" scope="rowgroup" rowspan=4>brokenpowerlaw</th><td>refer</td><td><input disabled type="checkbox" checked></input></td><td>5802.437593626436</td><td>5790.0</td><td>5810.0</td><td>angstroms</td></tr><tr><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.9463500841650389</td><td>0.9220846973915763</td><td>1.0191462444854265</td><td>angstroms</td></tr><tr><td>index1</td><td><input disabled type="checkbox" checked></input></td><td>-2.2365441096289524</td><td>-3.0</td><td>0.0</td><td></td></tr><tr><td>index2</td><td><input disabled type="checkbox" checked></input></td><td>0.1737789728689339</td><td>-1.0</td><td>1.0</td><td></td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_OIII5007</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.2533383326811202</td><td>0.1</td><td>1000.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5006.803341</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>-69.12704826966821</td><td>-300.0</td><td>3000.0</td><td>km/s</td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>470.84249923099424</td><td>100.0</td><td>1200.0</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_OIII4958</th><td>ampl</td><td>linked</td><td>0.08444611089370674</td><td colspan=2>&#8656; nr_OIII5007.ampl / 3.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4958.896072</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_NII6584</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6583.46</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_NIII6548</th><td>ampl</td><td>linked</td><td>0.0</td><td colspan=2>&#8656; nr_NII6584.ampl / 3.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6548.05</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_[O III]_4363</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.12307656067381574</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4363.213686</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_[O I]_6300</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6300.304</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_[O I]_6363</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6363.8</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_[S II]_6716</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.012039890707140646</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6716.44</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_[S II]_6730</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6730.81</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Cr II 194_4003</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4003.328107</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Ni II 12_4015</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4015.504925</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Ti II 87_4053</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4053.814908</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Cr II 19_4063</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4063.942258</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_[S II] 1F_4068</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4068.621034</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_[S II] 1F_4076</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4076.219045</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_N III_4097</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4097.33</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_NIII_4103</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4103.43</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Ti II 105_4163</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0021000389445938873</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4163.63614</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Ti II 19_4395</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0901998022178582</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4395.025307</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_O II_4414</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0009510450944075641</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4414.899</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Ti II 93_4421</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.07756049935336083</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4421.948211</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Ti II 19_4443</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.061137004348083494</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4443.802449</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Ti II 19_4450</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>4.8243704166302855e-05</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4450.490685</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_NIII1_4510</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.16187991941212942</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4510.91</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Cr II 44_4616</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4616.636803</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_N III_4640</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4640.64</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_N II 5_4643</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4643.089806</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_C III_4647</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4647.42</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_C III_4650</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4650.25</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_C III_4651</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.03201349175688664</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4651.47</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Cr II_4697</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.04344587230810492</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4697.595379</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Cr II 30_4824</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.001595889711126336</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4824.131846</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Cr II 30_4876</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4876.477958</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Ti II 114_4911</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4911.19874</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Ti II 113_5072</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5072.275931</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_[N I]_5200</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.11003814100179679</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5200.261862</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_C III_5695</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5695.92</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Si II_5957</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.03300464841249209</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5957.56</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_OIb_6046</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.007190199443469391</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6046.44</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_S II_6288</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6288.0859</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_[S III]_6312</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6312.06</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Si II_6347</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6347.1</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Si II_6371</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6371.36</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Hd_4101</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4101.742</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Hg_4340</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.1208585501984374</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4340.471</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Hb_4861</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.14684306529358734</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4861.333</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Ha_6562</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.5705955181859028</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6562.82</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_HeI_4143</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4143.761</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_HeI_4471</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4471.479</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_HeII_4685</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4685.71</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_HeI_5877</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5877.2539</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>-69.12704826966821</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>470.84249923099424</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=10>br</th><td>amp_Hd_4102</td><td><input disabled type="checkbox" checked></input></td><td>0.09412823821790374</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_Hg_4340</td><td><input disabled type="checkbox" checked></input></td><td>0.17531429581231253</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_Hb_4861</td><td><input disabled type="checkbox" checked></input></td><td>0.5161764497333139</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_Ha_6563</td><td><input disabled type="checkbox" checked></input></td><td>1.015100033713322</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_4144</td><td><input disabled type="checkbox" checked></input></td><td>0.0298596191329254</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_4471</td><td><input disabled type="checkbox" checked></input></td><td>0.2171043945335966</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeII_4686</td><td><input disabled type="checkbox" checked></input></td><td>0.22805674041761292</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_5877</td><td><input disabled type="checkbox" checked></input></td><td>0.04550139322135187</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>-4.764183724639506</td><td>-3000.0</td><td>3000.0</td><td>km/s</td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>1999.7518301245207</td><td>100.0</td><td>7000.0</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=12>feii</th><td>amp_z4F</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_z4D</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a4G</td><td><input disabled type="checkbox" checked></input></td><td>0.22239320889822442</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a4H</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b2H</td><td><input disabled type="checkbox" checked></input></td><td>0.008863300013750049</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4D</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4F</td><td><input disabled type="checkbox" checked></input></td><td>0.04039074275815225</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4P</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a6S</td><td><input disabled type="checkbox" checked></input></td><td>0.31734380787120176</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a2D2</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>-143.4129670259831</td><td>-3000.0</td><td>3000.0</td><td></td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>2302.843895612683</td><td>1000.0</td><td>8000.0</td><td></td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=69>fe_forr</th><td>amp_[Fe II] 23F_4114</td><td><input disabled type="checkbox" checked></input></td><td>2.0000000000000004</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4147</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4177</td><td><input disabled type="checkbox" checked></input></td><td>0.17622453403898097</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 23F_4179</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4232</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4244</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4245</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 23F_4251</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4277</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 7F_4287</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4306</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4320</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4347</td><td><input disabled type="checkbox" checked></input></td><td>0.0627442682521264</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4353</td><td><input disabled type="checkbox" checked></input></td><td>0.1267001465471664</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4358</td><td><input disabled type="checkbox" checked></input></td><td>0.13829468532003725</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 7F_4359</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 21F_4372</td><td><input disabled type="checkbox" checked></input></td><td>0.3400468079033</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 6F_4383</td><td><input disabled type="checkbox" checked></input></td><td>0.07915255282835483</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 7F_4414</td><td><input disabled type="checkbox" checked></input></td><td>0.0573475177985204</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 6F_4416</td><td><input disabled type="checkbox" checked></input></td><td>0.10055994007540124</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 6F_4432</td><td><input disabled type="checkbox" checked></input></td><td>0.10466915009243802</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 7F_4452</td><td><input disabled type="checkbox" checked></input></td><td>0.0766696608322851</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 6F_4458</td><td><input disabled type="checkbox" checked></input></td><td>0.006735802112730881</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 7F_4475</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 6F_4489</td><td><input disabled type="checkbox" checked></input></td><td>0.09234262455823702</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 6F_4493</td><td><input disabled type="checkbox" checked></input></td><td>0.10778212450181546</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 6F_4528</td><td><input disabled type="checkbox" checked></input></td><td>0.009606787145778064</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 4F_4640</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 4F_4664</td><td><input disabled type="checkbox" checked></input></td><td>0.06134529379809722</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 4F_4728</td><td><input disabled type="checkbox" checked></input></td><td>0.2167605804165932</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_4775</td><td><input disabled type="checkbox" checked></input></td><td>0.017844402778140638</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 4F_4798</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_4815</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_4874</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 4F_4890</td><td><input disabled type="checkbox" checked></input></td><td>0.0014250445414870326</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II]_4899</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_4905</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_4947</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_4951</td><td><input disabled type="checkbox" checked></input></td><td>0.06585905165583968</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_4973</td><td><input disabled type="checkbox" checked></input></td><td>0.0779293526863573</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_5006</td><td><input disabled type="checkbox" checked></input></td><td>0.007985859344261222</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_5020</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 20F_5044</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II]_5060</td><td><input disabled type="checkbox" checked></input></td><td>0.04109224196799842</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5072</td><td><input disabled type="checkbox" checked></input></td><td>0.0512224732653635</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 18F_5108</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5112</td><td><input disabled type="checkbox" checked></input></td><td>0.05673874986480197</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 18F_5158</td><td><input disabled type="checkbox" checked></input></td><td>0.003560872272973799</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5159</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 18F_5182</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5185</td><td><input disabled type="checkbox" checked></input></td><td>0.005991099016358887</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5220</td><td><input disabled type="checkbox" checked></input></td><td>0.18764910042568086</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5262</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 18F_5269</td><td><input disabled type="checkbox" checked></input></td><td>0.08618999852864953</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 18F_5273</td><td><input disabled type="checkbox" checked></input></td><td>0.045899007884621465</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5297</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5334</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 18F_5348</td><td><input disabled type="checkbox" checked></input></td><td>0.07521737356301017</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 19F_5376</td><td><input disabled type="checkbox" checked></input></td><td>0.0693033229406127</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 17F_5413</td><td><input disabled type="checkbox" checked></input></td><td>0.12095103709990129</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 18F_5433</td><td><input disabled type="checkbox" checked></input></td><td>0.07685248889153319</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 34F_5477</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 17F_5496</td><td><input disabled type="checkbox" checked></input></td><td>0.014309559158659549</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 17F_5527</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 34F_5528</td><td><input disabled type="checkbox" checked></input></td><td>0.006012317124119387</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 18F_5556</td><td><input disabled type="checkbox" checked></input></td><td>0.013519267830641108</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_[Fe II] 34F_5747</td><td><input disabled type="checkbox" checked></input></td><td>0.054215270959509454</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>27.19381397558162</td><td>-3000.0</td><td>3000.0</td><td>km/s</td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>392.5813930118759</td><td>100.0</td><td>1600.0</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=12>naffFe</th><td>amp_z4F</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_z4D</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a4G</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a4H</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b2H</td><td><input disabled type="checkbox" checked></input></td><td>0.040288824984562974</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4D</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4F</td><td><input disabled type="checkbox" checked></input></td><td>0.0749111911211882</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4P</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a6S</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a2D2</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>-179.6178727557705</td><td>-3000.0</td><td>3000.0</td><td></td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>1500.0</td><td>100.0</td><td>1500.0</td><td></td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>br_NaI_5890</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.03562993752252023</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5890.0</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>1731.1831193916796</td><td>-3000.0</td><td>3000.0</td><td>km/s</td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>4455.373274269022</td><td>100.0</td><td>7000.0</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>br_NaI1_5896</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.03353275126641624</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5896.0</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>-2390.6400797791093</td><td>-3000.0</td><td>3000.0</td><td>km/s</td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>7000.0</td><td>100.0</td><td>7000.0</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>br_OI_6046</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6046.44</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>-14.716182580882274</td><td>-3000.0</td><td>3000.0</td><td>km/s</td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>2942.325669861195</td><td>100.0</td><td>7000.0</td><td>km/s</td></tr></tbody></table></details></div></div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[16]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">gres</span><span class="o">.</span><span class="n">parnames</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[16]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+(&#39;brokenpowerlaw.refer&#39;,
+ &#39;brokenpowerlaw.ampl&#39;,
+ &#39;brokenpowerlaw.index1&#39;,
+ &#39;brokenpowerlaw.index2&#39;,
+ &#39;OIII5007.ampl&#39;,
+ &#39;OIII5007.offs_kms&#39;,
+ &#39;OIII5007.fwhm&#39;,
+ &#39;nr_NII6584.ampl&#39;,
+ &#39;nr_[O III]_4363.ampl&#39;,
+ &#39;nr_[O I]_6300.ampl&#39;,
+ &#39;nr_[O I]_6363.ampl&#39;,
+ &#39;nr_[S II]_6716.ampl&#39;,
+ &#39;nr_[S II]_6730.ampl&#39;,
+ &#39;nr_Hd_4101.ampl&#39;,
+ &#39;nr_Hg_4340.ampl&#39;,
+ &#39;nr_Hb_4861.ampl&#39;,
+ &#39;nr_Ha_6562.ampl&#39;,
+ &#39;nr_HeI_4143.ampl&#39;,
+ &#39;nr_HeI_4471.ampl&#39;,
+ &#39;nr_HeII_4685.ampl&#39;,
+ &#39;nr_HeI_5877.ampl&#39;,
+ &#39;nr_HeI_6680.ampl&#39;,
+ &#39;br_Hd_4102.ampl&#39;,
+ &#39;br_Hd_4102.offs_kms&#39;,
+ &#39;br_Hd_4102.fwhm&#39;,
+ &#39;br_Hg_4340.ampl&#39;,
+ &#39;br_Hg_4340.offs_kms&#39;,
+ &#39;br_Hg_4340.fwhm&#39;,
+ &#39;br_Hb_4861.ampl&#39;,
+ &#39;br_Hb_4861.offs_kms&#39;,
+ &#39;br_Hb_4861.fwhm&#39;,
+ &#39;br_Ha_6563.ampl&#39;,
+ &#39;br_Ha_6563.offs_kms&#39;,
+ &#39;br_Ha_6563.fwhm&#39;,
+ &#39;br_HeI_4144.ampl&#39;,
+ &#39;br_HeI_4144.offs_kms&#39;,
+ &#39;br_HeI_4144.fwhm&#39;,
+ &#39;br_HeI_4471.ampl&#39;,
+ &#39;br_HeI_4471.offs_kms&#39;,
+ &#39;br_HeI_4471.fwhm&#39;,
+ &#39;br_HeII_4686.ampl&#39;,
+ &#39;br_HeII_4686.offs_kms&#39;,
+ &#39;br_HeII_4686.fwhm&#39;,
+ &#39;br_HeI_5877.ampl&#39;,
+ &#39;br_HeI_5877.offs_kms&#39;,
+ &#39;br_HeI_5877.fwhm&#39;,
+ &#39;br_HeI_6680.ampl&#39;,
+ &#39;br_HeI_6680.offs_kms&#39;,
+ &#39;br_HeI_6680.fwhm&#39;,
+ &#39;broad2.amp_Hd_4102&#39;,
+ &#39;broad2.amp_Hg_4340&#39;,
+ &#39;broad2.amp_Hb_4861&#39;,
+ &#39;broad2.amp_Ha_6563&#39;,
+ &#39;broad2.offs_kms&#39;,
+ &#39;broad2.fwhm&#39;,
+ &#39;feii.amp_z4F&#39;,
+ &#39;feii.amp_z4D&#39;,
+ &#39;feii.amp_a4G&#39;,
+ &#39;feii.amp_a4H&#39;,
+ &#39;feii.amp_b2H&#39;,
+ &#39;feii.amp_b4D&#39;,
+ &#39;feii.amp_b4F&#39;,
+ &#39;feii.amp_b4P&#39;,
+ &#39;feii.amp_a6S&#39;,
+ &#39;feii.amp_a2D2&#39;,
+ &#39;feii.offs_kms&#39;,
+ &#39;feii.fwhm&#39;,
+ &#39;out_OIII50007.ampl&#39;,
+ &#39;out_OIII50007.offs_kms&#39;,
+ &#39;out_OIII50007.fwhm&#39;,
+ &#39;out_NII6584.ampl&#39;,
+ &#39;out_Hd_4101.ampl&#39;,
+ &#39;out_Hg_4340.ampl&#39;,
+ &#39;out_Hb_4861.ampl&#39;,
+ &#39;out_Ha_6562.ampl&#39;)
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[18]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">save_json</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[57]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">plotly.express</span> <span class="k">as</span> <span class="nn">px</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[59]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s1</span><span class="o">=</span><span class="n">read_text</span><span class="p">(</span><span class="s1">&#39;/home/yukawa/Documents/tde/SN2016ezh20161222_photcal_V.txt&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[65]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">plotly.graph_objects</span> <span class="k">as</span> <span class="nn">go</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[76]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">plotly.graph_objects</span> <span class="k">as</span> <span class="nn">go</span>
+<span class="n">fig</span><span class="o">=</span><span class="n">go</span><span class="o">.</span><span class="n">Figure</span><span class="p">()</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">add_trace</span><span class="p">(</span><span class="n">go</span><span class="o">.</span><span class="n">Scatter</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span><span class="n">mode</span><span class="o">=</span><span class="s1">&#39;lines&#39;</span><span class="p">,</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;prvi spektar&#39;</span><span class="p">))</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">add_trace</span><span class="p">(</span><span class="n">go</span><span class="o">.</span><span class="n">Scatter</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">s1</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="n">s1</span><span class="o">.</span><span class="n">flux</span><span class="o">*</span><span class="mi">10</span><span class="o">**</span><span class="mi">15</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;lines&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;drugi spektar&#39;</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area rendered_html docutils container">
+<div>                            <div id="c50d31dc-e345-407f-8743-a6f017c06836" class="plotly-graph-div" style="height:525px; width:100%;"></div>            <script type="text/javascript">                require(["plotly"], function(Plotly) {                    window.PLOTLYENV=window.PLOTLYENV || {};                                    if (document.getElementById("c50d31dc-e345-407f-8743-a6f017c06836")) {                    Plotly.newPlot(                        "c50d31dc-e345-407f-8743-a6f017c06836",                        [{"mode":"lines","name":"prvi spektar","x":[4132.697163307803,4137.099606827499,4141.502050347204,4145.90449386691,4150.3069373866165,4154.709380906313,4159.111824426018,4163.514267945724,4167.916711465429,4172.319154985125,4176.7215985048315,4181.124042024538,4185.526485544243,4189.928929063939,4194.331372583644,4198.733816103351,4203.136259623047,4207.538703142753,4211.941146662458,4216.343590182164,4220.74603370186,4225.148477221566,4229.5509207412715,4233.953364260978,4238.355807780674,4242.758251300379,4247.160694820084,4251.563138339782,4255.965581859487,4260.368025379193,4264.770468898898,4269.172912418595,4273.575355938301,4277.977799458006,4282.3802429777115,4286.782686497409,4291.185130017114,4295.587573536819,4299.990017056516,4304.392460576222,4308.794904095927,4313.197347615633,4317.599791135329,4322.002234655035,4326.404678174741,4330.807121694446,4335.2095652141425,4339.612008733849,4344.014452253554,4348.416895773259,4352.819339292956,4357.221782812662,4361.6242263323675,4366.026669852064,4370.42911337177,4374.831556891476,4379.234000411181,4383.636443930877,4388.038887450583,4392.441330970289,4396.843774489994,4401.246218009691,4405.648661529397,4410.051105049102,4414.4535485688075,4418.855992088504,4423.25843560821,4427.660879127916,4432.063322647621,4436.465766167317,4440.868209687023,4445.270653206729,4449.673096726426,4454.075540246131,4458.477983765837,4462.880427285542,4467.282870805238,4471.685314324944,4476.087757844651,4480.490201364356,4484.892644884052,4489.295088403757,4493.697531923463,4498.09997544316,4502.502418962866,4506.904862482571,4511.307306002277,4515.709749521973,4520.112193041678,4524.514636561385,4528.917080081091,4533.319523600787,4537.721967120492,4542.124410640198,4546.526854159894,4550.9292976796005,4555.331741199306,4559.734184719012,4564.136628238708,4568.539071758413,4572.9415152781185,4577.3439587978255,4581.746402317522,4586.148845837227,4590.551289356932,4594.953732876628,4599.356176396334,4603.7586199160405,4608.161063435746,4612.563506955442,4616.965950475148,4621.368393994853,4625.770837514559,4630.1732810342555,4634.575724553962,4638.978168073667,4643.380611593372,4647.783055113069,4652.185498632775,4656.5879421524805,4660.990385672177,4665.392829191883,4669.795272711588,4674.197716231293,4678.60015975099,4683.002603270696,4687.405046790402,4691.807490310107,4696.209933829803,4700.612377349509,4705.014820869215,4709.4172643889115,4713.819707908617,4718.222151428323,4722.624594948028,4727.027038467725,4731.42948198743,4735.8319255071365,4740.234369026842,4744.636812546538,4749.039256066243,4753.44169958595,4757.844143105655,4762.2465866253515,4766.649030145058,4771.051473664763,4775.453917184468,4779.856360704165,4784.258804223871,4788.6612477435765,4793.063691263273,4797.466134782978,4801.868578302685,4806.27102182239,4810.673465342086,4815.0759088617915,4819.478352381498,4823.880795901203,4828.2832394209,4832.685682940605,4837.088126460311,4841.4905699800165,4845.893013499713,4850.295457019418,4854.697900539125,4859.100344058821,4863.502787578526,4867.9052310982315,4872.307674617938,4876.710118137634,4881.11256165734,4885.515005177045,4889.917448696742,4894.319892216447,4898.722335736153,4903.124779255859,4907.527222775556,4911.929666295261,4916.332109814966,4920.7345533346725,4925.136996854369,4929.539440374075,4933.94188389378,4938.344327413486,4942.746770933182,4947.1492144528875,4951.551657972593,4955.95410149229,4960.356545011996,4964.758988531701,4969.161432051406,4973.5638755711025,4977.9663190908095,4982.368762610515,4986.77120613022,4991.173649649916,4995.576093169622,4999.9785366893275,5004.380980209034,5008.78342372873,5013.185867248436,5017.588310768141,5021.990754287837,5026.393197807543,5030.7956413272495,5035.198084846955,5039.600528366651,5044.002971886357,5048.405415406062,5052.8078589257675,5057.210302445465,5061.612745965171,5066.015189484876,5070.417633004581,5074.820076524277,5079.222520043984,5083.62496356369,5088.027407083386,5092.429850603091,5096.832294122797,5101.234737642502,5105.637181162199,5110.039624681905,5114.442068201611,5118.844511721307,5123.246955241012,5127.649398760717,5132.051842280424,5136.4542858001205,5140.856729319826,5145.259172839531,5149.661616359237,5154.064059878934,5158.466503398639,5162.8689469183455,5167.271390438051,5171.673833957747,5176.076277477452,5180.478720997159,5184.881164516855,5189.2836080365605,5193.686051556266,5198.088495075972,5202.490938595677,5206.893382115374,5211.295825635079,5215.6982691547855,5220.100712674482,5224.503156194187,5228.905599713892,5233.308043233599,5237.710486753295,5242.1129302730005,5246.515373792706,5250.917817312403,5255.320260832109,5259.722704351814,5264.125147871519,5268.527591391216,5272.930034910922,5277.332478430627,5281.734921950333,5286.13736547003,5290.539808989735,5294.942252509441,5299.344696029137,5303.747139548843,5308.149583068549,5312.552026588254,5316.95447010795,5321.3569136276565,5325.759357147362,5330.161800667068,5334.564244186764,5338.96668770647,5343.369131226175,5347.771574745881,5352.174018265577,5356.576461785284,5360.978905304989,5365.381348824685,5369.78379234439,5374.1862358640965,5378.588679383802,5382.991122903499,5387.393566423204,5391.79600994291,5396.198453462615,5400.6008969823115,5405.003340502018,5409.405784021724,5413.80822754142,5418.210671061125,5422.613114580831,5427.0155581005365,5431.418001620234,5435.820445139939,5440.222888659645,5444.62533217935,5449.027775699046,5453.4302192187515,5457.832662738459,5462.235106258164,5466.63754977786,5471.039993297565,5475.442436817271,5479.844880336967,5484.247323856674,5488.649767376379,5493.052210896085,5497.454654415781,5501.857097935486,5506.2595414551915,5510.661984974899,5515.064428494595,5519.4668720143,5523.869315534005,5528.271759053702,5532.674202573408,5537.076646093114,5541.479089612819,5545.881533132516,5550.283976652221,5554.686420171926,5559.088863691633,5563.4913072113295,5567.893750731035,5572.29619425074,5576.698637770446,5581.101081290142,5585.503524809848,5589.905968329554,5594.30841184926,5598.710855368956,5603.113298888661,5607.515742408367,5611.918185928063,5616.3206294477695,5620.723072967475,5625.12551648718,5629.527960006877,5633.930403526583,5638.332847046288,5642.735290565994,5647.137734085691,5651.540177605396,5655.942621125101,5660.345064644807,5664.747508164504,5669.14995168421,5673.552395203915,5677.954838723611,5682.357282243317,5686.759725763023,5691.162169282728,5695.564612802425,5699.967056322131,5704.369499841836,5708.771943361533,5713.174386881238,5717.576830400944,5721.97927392065,5726.381717440346,5730.784160960051,5735.186604479758,5739.589047999463,5743.991491519159,5748.393935038865,5752.796378558571,5757.198822078267,5761.601265597973,5766.003709117678,5770.406152637384,5774.80859615709,5779.211039676786,5783.613483196492,5788.015926716198,5792.418370235894,5796.820813755599,5801.2232572753055,5805.625700795011,5810.028144314708,5814.430587834413,5818.833031354119,5823.235474873815,5827.6379183935205,5832.040361913226,5836.442805432933,5840.845248952629,5845.247692472334,5849.650135992039,5854.0525795117455,5858.455023031442,5862.857466551148,5867.259910070853,5871.66235359055,5876.064797110255,5880.4672406299605,5884.869684149667,5889.272127669373,5893.674571189069,5898.077014708774,5902.479458228479,5906.8819017481765,5911.284345267883,5915.686788787588,5920.089232307293,5924.49167582699,5928.894119346695,5933.296562866401,5937.699006386107,5942.101449905804,5946.503893425509,5950.906336945214,5955.30878046491,5959.711223984617,5964.113667504323,5968.516111024028,5972.918554543724,5977.32099806343,5981.723441583135,5986.1258851028415,5990.528328622538,5994.930772142244,5999.333215661949,6003.735659181645,6008.138102701351,6012.540546221057,6016.942989740763,6021.345433260459,6025.747876780165,6030.15032029987,6034.552763819575,6038.955207339272,6043.357650858979,6047.760094378684,6052.162537898389,6056.564981418085,6060.967424937792,6065.369868457497,6069.772311977194,6074.174755496899,6078.577199016605,6082.97964253631,6087.382086056016,6091.784529575712,6096.186973095419,6100.589416615124,6104.99186013482,6109.394303654525,6113.796747174232,6118.199190693928,6122.601634213634,6127.004077733339,6131.406521253045,6135.808964772742,6140.211408292447,6144.6138518121525,6149.016295331859,6153.418738851555,6157.82118237126,6162.223625890966,6166.626069410672,6171.028512930368,6175.430956450074,6179.83339996978,6184.235843489476,6188.638287009182,6193.040730528887,6197.443174048593,6201.8456175682895,6206.248061087995,6210.6505046077,6215.052948127407,6219.455391647103,6223.857835166808,6228.260278686514,6232.66272220621,6237.065165725917,6241.467609245622,6245.870052765327,6250.272496285023,6254.67493980473,6259.077383324435,6263.479826844141,6267.882270363838,6272.284713883543,6276.687157403248,6281.089600922945,6285.492044442651,6289.894487962357,6294.296931482062,6298.699375001758,6303.101818521464,6307.50426204117,6311.906705560876,6316.309149080572,6320.711592600278,6325.114036119983,6329.516479639688,6333.918923159385,6338.321366679092,6342.723810198797,6347.126253718502,6351.528697238198,6355.931140757904,6360.33358427761,6364.736027797307,6369.138471317012,6373.540914836718,6377.943358356423,6382.345801876119,6386.7482453958255,6391.150688915532,6395.553132435237,6399.955575954933,6404.358019474639,6408.760462994344,6413.162906514041,6417.565350033747,6421.967793553453,6426.370237073158,6430.772680592854,6435.175124112559,6439.577567632266,6443.980011151972,6448.382454671668,6452.784898191373,6457.187341711079,6461.589785230784,6465.992228750481,6470.394672270187,6474.797115789893,6479.199559309589,6483.602002829294,6488.004446349,6492.4068898687065,6496.809333388403,6501.211776908108,6505.614220427813,6510.01666394751,6514.419107467216,6518.8215509869215,6523.223994506627,6527.626438026324,6532.028881546029,6536.431325065734,6540.83376858544,6545.236212105137,6549.638655624843,6554.041099144548,6558.443542664254,6562.84598618395,6567.248429703656,6571.6508732233615,6576.053316743068,6580.455760262764,6584.858203782469,6589.260647302175,6593.663090821881,6598.065534341577,6602.467977861283,6606.870421380988,6611.272864900684,6615.675308420391,6620.077751940096,6624.480195459792,6628.882638979498,6633.285082499204,6637.687526018909,6642.089969538606,6646.492413058311,6650.894856578017,6655.297300097723,6659.699743617419,6664.102187137126,6668.504630656831,6672.907074176536,6677.309517696232,6681.711961215939,6686.114404735644,6690.51684825535,6694.919291775046,6699.321735294752,6703.724178814457,6708.126622334154,6712.529065853859,6716.931509373566,6721.333952893262,6725.736396412967,6730.138839932672,6734.541283452379,6738.943726972084,6743.346170491781,6747.748614011486,6752.151057531192,6756.5535010508975,6760.955944570594,6765.3583880903,6769.760831610006,6774.163275129702,6778.565718649407,6782.968162169113,6787.370605688819,6791.773049208516,6796.175492728221,6800.577936247927,6804.980379767623,6809.382823287328,6813.785266807034,6818.187710326741,6822.590153846437,6826.992597366142,6831.395040885847,6835.797484405553,6840.19992792525,6844.602371444956,6849.004814964661,6853.407258484367,6857.809702004063,6862.212145523768,6866.614589043475,6871.017032563171,6875.419476082877,6879.821919602582,6884.224363122287,6888.626806641984,6893.0292501616905,6897.431693681396,6901.834137201101,6906.236580720798,6910.639024240503,6915.041467760208,6919.443911279915,6923.846354799612,6928.248798319317,6932.651241839022,6937.053685358718,6941.456128878425,6945.8585723981305,6950.261015917836,6954.663459437532,6959.065902957238,6963.468346476943,6967.870789996649,6972.2732335163455,6976.675677036052,6981.078120555757,6985.480564075462,6989.883007595158,6994.285451114865,6998.6878946345705],"y":[2.0573450263754474,2.050177704149658,2.012040500796822,1.9166598196993996,2.069568329539937,2.0433691053914234,2.042221632987282,1.9610714461243333,2.0715881179074094,1.9852198479745844,2.1164483706975217,1.9346985087659399,2.0035188181916292,1.8787981610365136,1.9019093027938136,1.882497440261176,1.9633449421663598,1.915814180716585,1.7344902720429791,1.7408370751785516,1.7947913181895485,1.7801201226377057,1.8547511970709938,1.8706954318925493,1.86840744435789,1.8546352781583038,1.8942422972269974,1.851168005506846,1.7914851541270935,1.829347002827383,1.8497060531960299,1.9132196631183553,1.868428032825384,1.8152052243097228,1.786483664822968,1.6666657293004492,1.7398240479752103,1.7585387383661821,1.779758150943164,1.6072559802933573,1.639973225762628,1.7422778403859684,1.7208213948959594,1.8045141916711365,1.7595928192667558,1.9336790960493915,2.0674826966607895,2.093794466518976,2.0198367827157897,2.005142002530534,2.032133753218848,2.0039402073278474,1.9765857010445143,1.8789661061357488,1.9535444533569213,1.9909622995544265,1.791963093678456,1.8027287560358456,1.755555383208533,1.821832618714104,1.7788907147439679,1.7143480744354078,1.8209721080316041,1.8453869062974262,1.841359555466882,1.8639770863866156,1.7813501779869059,1.7980201551913328,1.810025371055904,1.8655699574475553,1.7938603934182265,1.7857167022874334,1.8091070935525562,1.866797190234652,1.8538351118998897,1.8914311581782512,1.880726481015674,1.9021461274169935,1.8214036216496594,1.909949902697753,1.93429734463349,1.9192497519300755,1.8838704987416244,1.9648426296071178,1.8963212994356713,1.8549487931881512,1.9315794065625316,1.778165191063138,1.7515428962133117,1.8265762594315047,1.7605032896646904,1.72873876247611,1.7562103442130537,1.7206294586603923,1.8120531001662106,1.7604947061165974,1.747445665103256,1.726655057129844,1.6974772250345669,1.6927556930933583,1.633237942969052,1.748515121597318,1.7282038526834442,1.6686851049562788,1.664512254764762,1.635901514102822,1.6348886460743037,1.6381998162844533,1.637448189196805,1.6070258607907142,1.5504507975983972,1.5478074932136225,1.5617731040436977,1.6057993807875035,1.5835396032860223,1.5750662005501168,1.5424514198046662,1.5273520282411182,1.6124083464903294,1.5905567860399714,1.6253281498572576,1.6844125945975967,1.630177502704702,1.6329933075776657,1.7464924215022943,1.7597887157356045,1.6768105572041085,1.6881034928816159,1.7033669755302279,1.7631911318925,1.7641339517657042,1.6852405634991159,1.7152699955519843,1.7552616710356297,1.699701612586984,1.662760979142827,1.6470666693585732,1.6524473861251918,1.7015716859241192,1.6233907367304719,1.6287775155568982,1.6080169098479933,1.5784237845822022,1.5670546873856865,1.5097870846658048,1.4689117823709592,1.489385176436862,1.466329179509567,1.4408032568324827,1.45238448209169,1.4466698114738132,1.4541346353999374,1.4081184749659568,1.4166925603011884,1.4037083465125888,1.4355404816892199,1.4716321377531225,1.4340785966419285,1.4612632673082107,1.4401829321124553,1.5025794878399137,1.5148756268360137,1.693395118693549,1.9116477891039696,2.0867254682432193,2.061530073227378,1.9711640946591262,1.7864602425234593,1.6998722191112359,1.5884265117740208,1.5306993633991124,1.4720147484445172,1.481213142175492,1.4357182153565864,1.3856432885901262,1.4496629129843601,1.4106714590950231,1.4057581245511488,1.4847627461035064,1.5188362333796852,1.425995649416285,1.3935419125257131,1.43024376588993,1.4772196698456743,1.3884009428649216,1.4060328419576147,1.4468430856141303,1.4312024270486925,1.4618763261185534,1.4554909160194351,1.390661022583323,1.4139693823751391,1.3935601211865418,1.4133549327243617,1.3556729021615277,1.3901741838503665,1.45567396206184,1.5756692476385197,1.648117057126501,1.604470298449996,1.5632459462819586,1.4727760870953492,1.3986625998751534,1.4326729048779325,1.4017400449213828,1.3352254221296351,1.331237834230931,1.2940789801357326,1.3254191791849261,1.2986532545380631,1.28251162082591,1.3426915547746054,1.351966985579462,1.2709591864009024,1.3499030971822314,1.325893873517279,1.226975444899463,1.2857389801601404,1.3678201066887474,1.3060791299164654,1.275960334209677,1.2574648187731312,1.3060042042917905,1.2961930653055949,1.2883211671815735,1.335525384279586,1.4027843556349193,1.3938588524431657,1.3524854379330646,1.360505413611384,1.362285111941188,1.4358004885522961,1.4988074487367444,1.5135426388918656,1.5030777474679302,1.5572824004949943,1.5644088780883127,1.4636548292895195,1.477726629422517,1.4921351460758698,1.4897414075198074,1.523568005910549,1.4542212793193787,1.4806391917132846,1.5159991835390236,1.4506739715582482,1.4590772480035767,1.4955064928499966,1.4981423108258685,1.4583679962845333,1.469085059789866,1.473689919977824,1.4874389892285802,1.4720696054517959,1.4672796412503797,1.4522831765711925,1.286117337240977,1.3094455770951412,1.4722410125763739,1.467680581530973,1.3625343193657613,1.399754057110049,1.3090824654971753,1.2931327329388904,1.310158534198716,1.3297109024795721,1.32451646116104,1.2956496301364997,1.343344782175588,1.3549859267436057,1.3072424908419034,1.2974100378316558,1.3173812173469857,1.2710625962140902,1.1852747512036192,1.2385379260755156,1.2699431721122876,1.2976345855205715,1.2835128177399755,1.2121533523633918,1.2249896835905878,1.1988154295503506,1.1956667590155736,1.1927325283904826,1.1741835425555864,1.1715418257500396,1.1999246639676882,1.2140434564869595,1.1945297876009446,1.139938362425097,1.1542639806639607,1.2288081156730326,1.2570148716757341,1.2141220741397254,1.1282413696732618,1.1598932405209115,1.185186618461099,1.1241822715510785,1.164867549575709,1.1246323869660355,1.0722334746292577,1.1004017044681011,1.1011696339620158,1.0913677365428938,1.1173472948819203,1.038171726161286,1.0852722815699047,1.0954587523807855,1.0393451359632653,1.105391095166978,1.0754877483001481,1.0454295629052601,1.1065811780950658,1.0762587989746184,1.0660465769227316,1.088822856848548,1.037257511963199,1.097723621586831,1.194337831902733,1.079787991897226,1.0055165790501563,1.0867988299570857,1.1121756935676395,1.0977588416453756,1.0173294239774344,1.0364411985305177,1.1063683761640415,1.0471644932429671,1.0041917303088717,1.0160019061372612,0.9912195685131565,1.0850036677406816,1.03250390661345,0.9751358886959551,0.9683896498279762,0.9175675906853156,0.9238593554501399,0.9873234333712402,1.0305481127294744,1.0169673210435748,0.9825086860003759,0.9864853084241224,0.9777684378577687,0.9522916213189948,0.9567186313792388,0.9157766436851213,0.8941950326015264,0.9657599304321492,0.9961557331450969,1.0061238156343182,1.0072141973519342,0.9686169204660852,0.9591937184647995,0.948715384638432,0.965922306216806,0.9499064348208522,0.9463402901236567,0.9686293763634474,0.9935251571296756,0.9956988562428394,0.9824687948067714,1.0019363280943983,1.0012836318772034,0.9595951716920624,0.9619450239158914,0.9776813244661001,0.9846394081830646,1.0268173243192853,1.0948368793035572,1.025194660365121,0.9849259222557698,0.9701093849674338,0.950674949164613,0.9409305303570478,1.0074084765216655,1.0345330464776883,0.9153383447793257,0.9848066863706983,1.0380197235506234,0.9564242555063045,0.9339426912913232,0.9276356360709401,0.9407364826122775,0.9735178852359154,0.9578549504102244,0.9890852820215877,1.0427040636686509,0.9776247416642395,0.9482585596822751,0.9506767118789263,0.9684720471359368,1.0208579790228018,1.0560902586386551,0.9990981153960617,0.988962296264992,0.9729843651112184,1.0038821323366003,1.0229182850519838,0.9790186442623234,0.9771333369867314,0.996361335272823,1.0049525050636907,1.0336971259929595,1.0066194178490315,0.9508223003117927,0.9890499751915861,1.0066545113961094,0.9812800631208319,0.9346939409061306,0.9303245729220815,0.9541611389922485,0.9722527128366986,0.9458292070505323,0.9695828753171415,0.9692765265638807,0.9456666052469339,0.9123816665690714,0.9074009173911026,0.9402181751796775,0.9112273844276484,0.907182335946478,0.9556384531858222,0.9197799476417032,0.8544134266758984,0.8672004267379213,0.8758545458692915,0.8688816177225724,0.8770621814001308,0.8288780647556871,0.8503390479513887,0.9016144967021072,0.8721055197575881,0.8498238984478061,0.8523921831060319,0.8733527903732466,0.8687014277016536,0.8297816584915053,0.8349366820438687,0.8388342743593499,0.8736358832417426,0.8110446951427532,0.8579605135329408,0.8157248336554344,0.7861762408677517,0.8735849228849287,0.8412684691795052,0.81578798501939,0.8109275184159479,0.8413879032492385,0.8205684439755113,0.8105083415982361,0.8520414240820269,0.8349861954413895,0.8455454071306955,0.8920509901210676,0.8815277381617256,0.882108806294957,0.8257921824797663,0.8491929889639146,0.8110151415962704,0.8388829329754156,0.8320124092522901,0.8073388709837025,0.8220350265153312,0.8271116439896383,0.7883898144050876,0.7822842294935872,0.8325195949860318,0.8446703363027093,0.78967715081281,0.7653968509421829,0.8202712880243276,0.8499470301248823,0.8107612127989798,0.8207566675968766,0.8181948919430323,0.7730790358074817,0.8414003524967291,0.8513078458029717,0.7861846512051818,0.8015702922929361,0.8067286226200614,0.817464794886494,0.8071811196743608,0.7621063444476316,0.744959203661089,0.7242622545835956,0.7856170868467977,0.7778043265125137,0.7659649006178493,0.7726755622457856,0.7615614282825909,0.7616473396042697,0.74975110313026,0.7310930719108885,0.7426293553972163,0.743443919390895,0.7550614041279186,0.7676991161745251,0.7707884879075524,0.7825882914441463,0.773866925231969,0.758659191309114,0.7402981468825013,0.6985771913867507,0.6457098800077247,0.6385903877866024,0.6678848435845852,0.6822297381818047,0.6481445246280896,0.7124673188263942,0.7064374603267981,0.6573549662788827,0.6999546628241378,0.7559752705030327,0.7417803889925201,0.7323921979122064,0.7361533726265367,0.6679351474439567,0.7095029034233272,0.7400253639443368,0.6981056118096508,0.7160936929628341,0.70658474824692,0.6422504670061044,0.6899788647793351,0.7389229730568566,0.7005784536123358,0.7086114790994876,0.6974864734016285,0.6476805991762034,0.6855830220332905,0.7136496845909165,0.7092061301134507,0.6857911506841369,0.6634996695778361,0.6978975185198286,0.7409565718313741,0.7027106329660922,0.7168143745849089,0.749542498854682,0.814388000101119,0.8200634280476585,0.8328372890896621,0.8646182471610024,0.8612593726756878,0.9433934192869698,1.0814860766313836,1.3120259728233878,1.7044171099281278,2.028224468563587,2.265344691347209,2.203584161973961,1.9555304115743977,1.549647392734223,1.3196686921516112,1.2204130631797878,1.107266341767548,1.0699742989543326,1.053241619290368,1.0171751038948358,0.9973189372240493,0.9043481078606255,0.884223972923206,0.9074552141862644,0.9046006339154329,0.8494487167526479,0.8008208094117099,0.719772357160137,0.7063950538065701,0.6771861924914863,0.6423689822761409,0.6514684167979792,0.6573682878694557,0.6368004632155648,0.6307642386929921,0.6711667858970676,0.7086058527490208,0.7672014781178867,0.7768888589286472,0.7223928479436751,0.7040333522176194,0.6430367046757909,0.6243878599672941,0.6212627311477429,0.7258405951813421,0.7609215220346175,0.6883018260142713,0.6771951864763974,0.6757176173822442,0.6716393410509847,0.6350963272110967,0.6148310661737043,0.6241639376360385,0.5895037020756142,0.6443359763459334,0.6657593366963065,0.6430918282358945,0.6383300666079376,0.6842373820029459,0.6691245769580818,0.6513804865808176,0.6942899720210431,0.6851205440841646,0.6561738868334979,0.6570326244330265,0.7175135256942691,0.7344225624487829,0.667620616476133,0.6867070534768469,0.70373995970711,0.702562482224852,0.7340673626964717,0.7332255193482684,0.7081577868749521,0.6603938462222956,0.6246962244481092,0.6571278288500813,0.6721527425481895,0.6913060436999806,0.7414182569405854,0.753714130712544,0.7063170190988977,0.7179420377650125,0.7253781720905578,0.7339079084101451,0.7024282018603071,0.6978230762918985,0.691650397667159,0.6875085047700533,0.7137451232754812,0.7335648446084354,0.7586182884883853,0.7003414532514183,0.6939569809475619,0.7257528718454845,0.7233955082631622,0.7381681923542098,0.7128961007152065,0.7033322437995843,0.7134980209025635,0.6999957362170347,0.6794973456089173,0.6717933579216845,0.6745579084818745,0.6898201318294737,0.719320401663427,0.7391801867357599,0.684284899358853,0.6415426495747378,0.6533213779472213,0.6975862425062075],"type":"scatter"},{"mode":"lines","name":"drugi spektar","x":[3339.312,3343.387,3347.462,3351.537,3355.612,3359.687,3363.762,3367.837,3371.912,3375.987,3380.061,3384.136,3388.211,3392.286,3396.361,3400.436,3404.511,3408.586,3412.661,3416.735,3420.81,3424.885,3428.96,3433.035,3437.11,3441.185,3445.26,3449.335,3453.41,3457.484,3461.559,3465.634,3469.709,3473.784,3477.859,3481.934,3486.009,3490.084,3494.158,3498.233,3502.308,3506.383,3510.458,3514.533,3518.608,3522.683,3526.758,3530.832,3534.907,3538.982,3543.057,3547.132,3551.207,3555.282,3559.357,3563.432,3567.507,3571.581,3575.656,3579.731,3583.806,3587.881,3591.956,3596.031,3600.106,3604.181,3608.255,3612.33,3616.405,3620.48,3624.555,3628.63,3632.705,3636.78,3640.855,3644.93,3649.004,3653.079,3657.154,3661.229,3665.304,3669.379,3673.454,3677.529,3681.604,3685.678,3689.753,3693.828,3697.903,3701.978,3706.053,3710.128,3714.203,3718.278,3722.352,3726.427,3730.502,3734.577,3738.652,3742.727,3746.802,3750.877,3754.952,3759.027,3763.101,3767.176,3771.251,3775.326,3779.401,3783.476,3787.551,3791.626,3795.701,3799.775,3803.85,3807.925,3812.0,3816.075,3820.15,3824.225,3828.3,3832.375,3836.45,3840.524,3844.599,3848.674,3852.749,3856.824,3860.899,3864.974,3869.049,3873.124,3877.198,3881.273,3885.348,3889.423,3893.498,3897.573,3901.648,3905.723,3909.798,3913.872,3917.947,3922.022,3926.097,3930.172,3934.247,3938.322,3942.397,3946.472,3950.547,3954.621,3958.696,3962.771,3966.846,3970.921,3974.996,3979.071,3983.146,3987.221,3991.295,3995.37,3999.445,4003.52,4007.595,4011.67,4015.745,4019.82,4023.895,4027.969,4032.044,4036.119,4040.194,4044.269,4048.344,4052.419,4056.494,4060.569,4064.644,4068.718,4072.793,4076.868,4080.943,4085.018,4089.093,4093.168,4097.243,4101.318,4105.392,4109.467,4113.542,4117.617,4121.692,4125.767,4129.842,4133.917,4137.992,4142.067,4146.141,4150.216,4154.291,4158.366,4162.441,4166.516,4170.591,4174.666,4178.741,4182.815,4186.89,4190.965,4195.04,4199.115,4203.19,4207.265,4211.34,4215.415,4219.489,4223.564,4227.639,4231.714,4235.789,4239.864,4243.939,4248.014,4252.089,4256.164,4260.238,4264.313,4268.388,4272.463,4276.538,4280.613,4284.688,4288.763,4292.838,4296.912,4300.987,4305.062,4309.137,4313.212,4317.287,4321.362,4325.437,4329.512,4333.587,4337.661,4341.736,4345.811,4349.886,4353.961,4358.036,4362.111,4366.186,4370.261,4374.335,4378.41,4382.485,4386.56,4390.635,4394.71,4398.785,4402.86,4406.935,4411.009,4415.084,4419.159,4423.234,4427.309,4431.384,4435.459,4439.534,4443.609,4447.684,4451.758,4455.833,4459.908,4463.983,4468.058,4472.133,4476.208,4480.283,4484.358,4488.432,4492.507,4496.582,4500.657,4504.732,4508.807,4512.882,4516.957,4521.032,4525.107,4529.181,4533.256,4537.331,4541.406,4545.481,4549.556,4553.631,4557.706,4561.781,4565.855,4569.93,4574.005,4578.08,4582.155,4586.23,4590.305,4594.38,4598.455,4602.529,4606.604,4610.679,4614.754,4618.829,4622.904,4626.979,4631.054,4635.129,4639.204,4643.278,4647.353,4651.428,4655.503,4659.578,4663.653,4667.728,4671.803,4675.878,4679.952,4684.027,4688.102,4692.177,4696.252,4700.327,4704.402,4708.477,4712.552,4716.626,4720.701,4724.776,4728.851,4732.926,4737.001,4741.076,4745.151,4749.226,4753.301,4757.375,4761.45,4765.525,4769.6,4773.675,4777.75,4781.825,4785.9,4789.975,4794.049,4798.124,4802.199,4806.274,4810.349,4814.424,4818.499,4822.574,4826.649,4830.724,4834.798,4838.873,4842.948,4847.023,4851.098,4855.173,4859.248,4863.323,4867.398,4871.472,4875.547,4879.622,4883.697,4887.772,4891.847,4895.922,4899.997,4904.072,4908.146,4912.221,4916.296,4920.371,4924.446,4928.521,4932.596,4936.671,4940.746,4944.821,4948.895,4952.97,4957.045,4961.12,4965.195,4969.27,4973.345,4977.42,4981.495,4985.569,4989.644,4993.719,4997.794,5001.869,5005.944,5010.019,5014.094,5018.169,5022.244,5026.318,5030.393,5034.468,5038.543,5042.618,5046.693,5050.768,5054.843,5058.918,5062.992,5067.067,5071.142,5075.217,5079.292,5083.367,5087.442,5091.517,5095.592,5099.666,5103.741,5107.816,5111.891,5115.966,5120.041,5124.116,5128.191,5132.266,5136.341,5140.415,5144.49,5148.565,5152.64,5156.715,5160.79,5164.865,5168.94,5173.015,5177.089,5181.164,5185.239,5189.314,5193.389,5197.464,5201.539,5205.614,5209.689,5213.763,5217.838,5221.913,5225.988,5230.063,5234.138,5238.213,5242.288,5246.363,5250.438,5254.512,5258.587,5262.662,5266.737,5270.812,5274.887,5278.962,5283.037,5287.112,5291.186,5295.261,5299.336,5303.411,5307.486,5311.561,5315.636,5319.711,5323.786,5327.861,5331.935,5336.01,5340.085,5344.16,5348.235,5352.31,5356.385,5360.46,5364.535,5368.609,5372.684,5376.759,5380.834,5384.909,5388.984,5393.059,5397.134,5401.209,5405.283,5409.358,5413.433,5417.508,5421.583,5425.658,5429.733,5433.808,5437.883,5441.958,5446.032,5450.107,5454.182,5458.257,5462.332,5466.407,5470.482,5474.557,5478.632,5482.706,5486.781,5490.856,5494.931,5499.006,5503.081,5507.156,5511.231,5515.306,5519.381,5523.455,5527.53,5531.605,5535.68,5539.755,5543.83,5547.905,5551.98,5556.055,5560.129,5564.204,5568.279,5572.354,5576.429,5580.504,5584.579,5588.654,5592.729,5596.803,5600.878,5604.953,5609.028,5613.103,5617.178,5621.253,5625.328,5629.403,5633.478,5637.552,5641.627,5645.702,5649.777,5653.852,5657.927,5662.002,5666.077,5670.152,5674.226,5678.301,5682.376,5686.451,5690.526,5694.601,5698.676,5702.751,5706.826,5710.901,5714.975,5719.05,5723.125,5727.2,5731.275,5735.35,5739.425,5743.5,5747.575,5751.649,5755.724,5759.799,5763.874,5767.949,5772.024,5776.099,5780.174,5784.249,5788.323,5792.398,5796.473,5800.548,5804.623,5808.698,5812.773,5816.848,5820.923,5824.998,5829.072,5833.147,5837.222,5841.297,5845.372,5849.447,5853.522,5857.597,5861.672,5865.746,5869.821,5873.896,5877.971,5882.046,5886.121,5890.196,5894.271,5898.346,5902.42,5906.495,5910.57,5914.645,5918.72,5922.795,5926.87,5930.945,5935.02,5939.095,5943.169,5947.244,5951.319,5955.394,5959.469,5963.544,5967.619,5971.694,5975.769,5979.843,5983.918,5987.993,5992.068,5996.143,6000.218,6004.293,6008.368,6012.443,6016.518,6020.592,6024.667,6028.742,6032.817,6036.892,6040.967,6045.042,6049.117,6053.192,6057.266,6061.341,6065.416,6069.491,6073.566,6077.641,6081.716,6085.791,6089.866,6093.94,6098.015,6102.09,6106.165,6110.24,6114.315,6118.39,6122.465,6126.54,6130.615,6134.689,6138.764,6142.839,6146.914,6150.989,6155.064,6159.139,6163.214,6167.289,6171.363,6175.438,6179.513,6183.588,6187.663,6191.738,6195.813,6199.888,6203.963,6208.038,6212.112,6216.187,6220.262,6224.337,6228.412,6232.487,6236.562,6240.637,6244.712,6248.786,6252.861,6256.936,6261.011,6265.086,6269.161,6273.236,6277.311,6281.386,6285.46,6289.535,6293.61,6297.685,6301.76,6305.835,6309.91,6313.985,6318.06,6322.135,6326.209,6330.284,6334.359,6338.434,6342.509,6346.584,6350.659,6354.734,6358.809,6362.883,6366.958,6371.033,6375.108,6379.183,6383.258,6387.333,6391.408,6395.483,6399.557,6403.632,6407.707,6411.782,6415.857,6419.932,6424.007,6428.082,6432.157,6436.232,6440.306,6444.381,6448.456,6452.531,6456.606,6460.681,6464.756,6468.831,6472.906,6476.98,6481.055,6485.13,6489.205,6493.28,6497.355,6501.43,6505.505,6509.58,6513.655,6517.729,6521.804,6525.879,6529.954,6534.029,6538.104,6542.179,6546.254,6550.329,6554.403,6558.478,6562.553,6566.628,6570.703,6574.778,6578.853,6582.928,6587.003,6591.077,6595.152,6599.227,6603.302,6607.377,6611.452,6615.527,6619.602,6623.677,6627.752,6631.826,6635.901,6639.976,6644.051,6648.126,6652.201,6656.276,6660.351,6664.426,6668.5,6672.575,6676.65,6680.725,6684.8,6688.875,6692.95,6697.025,6701.1,6705.175,6709.249,6713.324,6717.399,6721.474,6725.549,6729.624,6733.699,6737.774,6741.849,6745.923,6749.998,6754.073,6758.148,6762.223,6766.298,6770.373,6774.448,6778.523,6782.597,6786.672,6790.747,6794.822,6798.897,6802.972,6807.047,6811.122,6815.197,6819.272,6823.346,6827.421,6831.496,6835.571,6839.646,6843.721,6847.796,6851.871,6855.946,6860.02,6864.095,6868.17,6872.245,6876.32,6880.395,6884.47,6888.545,6892.62,6896.695,6900.769,6904.844,6908.919,6912.994,6917.069,6921.144,6925.219,6929.294,6933.369,6937.443,6941.518,6945.593,6949.668,6953.743,6957.818,6961.893,6965.968,6970.043,6974.117,6978.192,6982.267,6986.342,6990.417,6994.492,6998.567,7002.642,7006.717,7010.792,7014.866,7018.941,7023.016,7027.091,7031.166,7035.241,7039.316,7043.391,7047.466,7051.54,7055.615,7059.69,7063.765,7067.84,7071.915,7075.99,7080.065,7084.14,7088.214,7092.289,7096.364,7100.439,7104.514,7108.589,7112.664,7116.739,7120.814,7124.889,7128.963,7133.038,7137.113,7141.188,7145.263,7149.338,7153.413,7157.488,7161.563,7165.637,7169.712,7173.787,7177.862,7181.937,7186.012,7190.087,7194.162,7198.237,7202.312,7206.386,7210.461,7214.536,7218.611,7222.686,7226.761,7230.836,7234.911,7238.986,7243.06,7247.135,7251.21,7255.285,7259.36,7263.435,7267.51,7271.585,7275.66,7279.734,7283.809,7287.884,7291.959,7296.034,7300.109,7304.184,7308.259,7312.334,7316.409,7320.483,7324.558,7328.633,7332.708,7336.783,7340.858,7344.933,7349.008,7353.083,7357.157,7361.232,7365.307,7369.382,7373.457,7377.532,7381.607,7385.682,7389.757,7393.832,7397.906,7401.981,7406.056,7410.131,7414.206,7418.281,7422.356,7426.431,7430.506,7434.58,7438.655,7442.73,7446.805,7450.88,7454.955,7458.615,7462.824,7467.033,7471.242,7475.451,7479.66,7483.869,7488.078,7492.287,7496.496,7500.705,7504.914,7509.123,7513.332,7517.541,7521.75,7525.959,7530.168,7534.377,7538.586,7542.795,7547.004,7551.213,7555.422,7559.631,7563.84,7568.049,7572.258,7576.467,7580.676,7584.885,7589.094,7593.303,7597.512,7601.721,7605.93,7610.139,7614.348,7618.557,7622.766,7626.975,7631.184,7635.393,7639.602,7643.811,7648.02,7652.229,7656.438,7660.647,7664.856,7669.065,7673.274,7677.483,7681.692,7685.901,7690.11,7694.319,7698.528,7702.737,7706.946,7711.155,7715.364,7719.573,7723.782,7727.991,7732.2,7736.41,7740.619,7744.828,7749.037,7753.246,7757.455,7761.664,7765.873,7770.082,7774.291,7778.5,7782.709,7786.918,7791.127,7795.336,7799.545,7803.754,7807.963,7812.172,7816.381,7820.59,7824.799,7829.008,7833.217,7837.426,7841.635,7845.844,7850.053,7854.262,7858.471,7862.68,7866.889,7871.098,7875.307,7879.516,7883.725,7887.934,7892.143,7896.352,7900.561,7904.77,7908.979,7913.188,7917.397,7921.606,7925.815,7930.024,7934.233,7938.442,7942.651,7946.86,7951.069,7955.278,7959.487,7963.696,7967.905,7972.114,7976.323,7980.532,7984.741,7988.95,7993.159,7997.368,8001.577,8005.786,8009.995,8014.204,8018.413,8022.622,8026.831,8031.04,8035.249,8039.458,8043.667,8047.876,8052.085,8056.294,8060.503,8064.712,8068.921,8073.13,8077.339,8081.548,8085.757,8089.966,8094.175,8098.384,8102.593,8106.802,8111.011,8115.22,8119.429,8123.638,8127.847,8132.056,8136.265,8140.474,8144.683,8148.892,8153.101,8157.31,8161.519,8165.728,8169.937,8174.146,8178.355,8182.564,8186.773,8190.982,8195.191,8199.4,8203.609,8207.818,8212.027,8216.236,8220.445,8224.654,8228.863,8233.072,8237.281,8241.49,8245.699,8249.908,8254.117,8258.326,8262.535,8266.744,8270.953,8275.162,8279.371,8283.58,8287.789,8291.998,8296.207,8300.416,8304.625,8308.834,8313.043,8317.252,8321.461,8325.67,8329.879,8334.088,8338.297,8342.506,8346.715,8350.924,8355.133,8359.342,8363.551,8367.76,8371.969,8376.178,8380.387,8384.596,8388.805,8393.014,8397.223,8401.432,8405.641,8409.85,8414.059,8418.268,8422.477,8426.686,8430.895,8435.104,8439.313,8443.522,8447.731,8451.94,8456.149,8460.358,8464.567,8468.776,8472.985,8477.194,8481.403,8485.612,8489.821,8494.03,8498.239,8502.448,8506.657,8510.866,8515.075,8519.284,8523.493,8527.702,8531.911,8536.12,8540.329,8544.538,8548.747,8552.956,8557.165,8561.374,8565.583,8569.792,8574.001,8578.21,8582.419,8586.628,8590.837,8595.046,8599.255,8603.464,8607.673,8611.882,8616.091,8620.3,8624.509,8628.718,8632.927,8637.136,8641.345,8645.554,8649.763,8653.972,8658.181,8662.39,8666.599,8670.808,8675.017,8679.226,8683.435,8687.644,8691.853,8696.062,8700.271,8704.48,8708.689,8712.898,8717.107,8721.316,8725.525,8729.734,8733.943,8738.152,8742.361,8746.57,8750.779,8754.988,8759.197,8763.406,8767.615,8771.824,8776.033,8780.242,8784.451,8788.66,8792.869,8797.078,8801.287,8805.496,8809.706,8813.915,8818.124,8822.333,8826.542,8830.751,8834.96,8839.169,8843.378,8847.587,8851.796,8856.005,8860.214,8864.423,8868.632,8872.841,8877.05,8881.259,8885.468,8889.677,8893.886,8898.095,8902.304,8906.513,8910.722,8914.931,8919.14,8923.349,8927.558,8931.767,8935.976,8940.185,8944.394,8948.603,8952.812,8957.021,8961.23,8965.439,8969.648,8973.857,8978.066,8982.275,8986.484,8990.693,8994.902,8999.111,9003.32,9007.529,9011.738,9015.947,9020.156,9024.365,9028.574,9032.783,9036.992,9041.201,9045.41,9049.619,9053.828,9058.037,9062.246,9066.455,9070.664,9074.873,9079.082,9083.291,9087.5,9091.709,9095.918,9100.127,9104.336,9108.545,9112.754,9116.963,9121.172,9125.381,9129.59,9133.799,9138.008,9142.217,9146.426,9150.635,9154.844,9159.053,9163.262,9167.471,9171.68,9175.889,9180.098,9184.307,9188.516,9192.725,9196.934,9201.143,9205.352,9209.561,9213.77,9217.979,9222.188,9226.397,9230.606,9234.815,9239.024,9243.233,9247.442,9251.651,9255.86,9260.069,9264.278,9268.487,9272.696,9276.905,9281.114,9285.323,9289.532,9293.741,9297.95,9302.159,9306.368,9310.577,9314.786,9318.995,9323.204,9327.413,9331.622,9335.831,9340.04,9344.249,9348.458,9352.667,9356.876,9361.085,9365.294,9369.503,9373.712,9377.921,9382.13,9386.339,9390.548,9394.757,9398.966,9403.175,9407.384,9411.593,9415.802,9420.011,9424.22,9428.429,9432.638,9436.847,9441.056,9445.265,9449.474,9453.683,9457.892,9462.101,9466.31,9470.519,9474.728,9478.937,9483.146,9487.355,9491.564,9495.773,9499.982,9504.191,9508.4,9512.609,9516.818,9521.027,9525.236,9529.445,9533.654,9537.863,9542.072,9546.281,9550.49,9554.699,9558.908,9563.117,9567.326,9571.535,9575.744,9579.953,9584.162,9588.371,9592.58,9596.789,9600.998,9605.207,9609.416,9613.625,9617.834,9622.043,9626.252,9630.461,9634.67,9638.879,9643.088,9647.297,9651.506,9655.715,9659.924,9664.133,9668.342,9672.551,9676.76,9680.969,9685.178,9689.387,9693.596,9697.805,9702.014,9706.223,9710.432,9714.641,9718.85,9723.059,9727.268,9731.477,9735.686,9739.895,9744.104,9748.313,9752.522,9756.731,9760.94,9765.149,9769.358,9773.567,9777.776,9781.985,9786.194,9790.403,9794.612,9798.821,9803.03,9807.239,9811.448,9815.657,9819.866,9824.075,9828.284,9832.493,9836.702,9840.911,9845.12,9849.329,9853.538,9857.747,9861.956,9866.165,9870.374,9874.583,9878.792,9883.002,9887.211,9891.42,9895.629,9899.838,9904.047,9908.256,9912.465,9916.674,9920.883,9925.092,9929.301,9933.51,9937.719,9941.928,9946.137,9950.346,9954.555,9958.764,9962.973,9967.182,9971.391,9975.6,9979.809],"y":[3.7730000000000006,3.6939999999999995,3.705,3.827,4.098,3.876,3.9570000000000003,3.776,3.7860000000000005,3.516,3.5629999999999997,3.679,3.66,3.6820000000000004,3.4930000000000003,3.7390000000000003,3.6889999999999996,3.801,3.661,3.9119999999999995,3.9499999999999997,3.975,3.974,4.0840000000000005,4.0040000000000004,4.008,3.757,3.771,4.023,4.253,4.05,3.936,3.8480000000000003,4.0440000000000005,3.977,4.08,3.972,3.9170000000000003,3.7300000000000004,3.812,3.783,3.9010000000000002,3.788,3.675,3.77,3.6839999999999997,3.8249999999999997,3.874,3.9899999999999998,3.7769999999999997,3.815,3.7459999999999996,3.6640000000000006,3.6830000000000003,3.5799999999999996,3.54,3.5319999999999996,3.519,3.471,3.339,3.381,3.34,3.3089999999999997,3.346,3.401,3.3659999999999997,3.42,3.3899999999999997,3.403,3.298,3.491,3.525,3.529,3.495,3.485,3.505,3.591,3.5220000000000002,3.476,3.433,3.449,3.3899999999999997,3.495,3.509,3.437,3.385,3.392,3.477,3.394,3.2809999999999997,3.296,3.3970000000000002,3.374,3.276,3.183,3.1809999999999996,3.207,3.234,3.24,3.177,3.193,3.24,3.174,3.156,3.197,3.278,3.31,3.3379999999999996,3.344,3.2510000000000003,3.319,3.321,3.222,3.197,3.184,3.126,3.049,3.0719999999999996,3.08,3.048,2.9979999999999998,2.942,2.9480000000000004,2.9389999999999996,2.9059999999999997,2.9330000000000003,2.891,2.8770000000000002,2.88,2.868,2.886,2.8770000000000002,2.9050000000000002,2.8649999999999998,2.863,2.86,2.922,2.975,3.053,3.126,3.15,3.201,3.1470000000000002,3.169,3.1239999999999997,3.071,3.019,3.006,3.01,2.973,2.945,2.908,2.8760000000000003,2.8409999999999997,2.7630000000000003,2.741,2.762,2.756,2.735,2.696,2.622,2.615,2.585,2.543,2.535,2.568,2.54,2.537,2.6069999999999998,2.685,2.662,2.591,2.539,2.5540000000000003,2.538,2.617,2.617,2.673,2.7390000000000003,2.756,2.789,2.742,2.686,2.6820000000000004,2.6599999999999997,2.674,2.62,2.563,2.6060000000000003,2.545,2.532,2.517,2.5020000000000002,2.493,2.481,2.456,2.447,2.464,2.492,2.489,2.518,2.561,2.567,2.592,2.569,2.5820000000000003,2.586,2.5820000000000003,2.5029999999999997,2.482,2.4,2.4450000000000003,2.4219999999999997,2.414,2.372,2.3369999999999997,2.296,2.283,2.272,2.269,2.302,2.265,2.3,2.342,2.4179999999999997,2.4899999999999998,2.427,2.356,2.376,2.362,2.353,2.373,2.409,2.486,2.524,2.492,2.423,2.3569999999999998,2.3609999999999998,2.3459999999999996,2.36,2.374,2.386,2.352,2.36,2.359,2.32,2.331,2.31,2.311,2.306,2.2680000000000002,2.267,2.267,2.218,2.2030000000000003,2.178,2.175,2.158,2.125,2.064,2.0909999999999997,2.057,2.048,2.007,2.057,2.0709999999999997,2.113,2.1550000000000002,2.2239999999999998,2.201,2.184,2.1519999999999997,2.161,2.175,2.2030000000000003,2.191,2.1790000000000003,2.214,2.174,2.196,2.216,2.21,2.27,2.2600000000000002,2.263,2.2939999999999996,2.321,2.3400000000000003,2.331,2.2609999999999997,2.234,2.181,2.139,2.14,2.116,2.1229999999999998,2.107,2.0909999999999997,2.108,2.0429999999999997,2.09,2.15,2.212,2.19,2.1519999999999997,2.0949999999999998,2.101,2.078,2.062,2.072,2.06,2.0709999999999997,2.088,2.11,2.117,2.105,2.096,2.113,2.1189999999999998,2.125,2.147,2.125,2.0949999999999998,2.025,2.01,1.9980000000000002,1.983,2.001,2.014,2.082,2.2089999999999996,2.256,2.271,2.1999999999999997,2.167,2.148,2.0940000000000003,2.0740000000000003,2.064,2.033,2.0429999999999997,2.101,2.088,2.072,2.0949999999999998,2.063,2.0370000000000004,2.001,1.9799999999999998,1.9909999999999999,2.0189999999999997,2.03,2.0429999999999997,1.9949999999999999,1.996,2.0180000000000002,2.014,2.054,2.047,2.031,2.058,2.04,2.0180000000000002,2.0149999999999997,2.016,2.063,2.0999999999999996,2.114,2.169,2.1799999999999997,2.199,2.2319999999999998,2.25,2.266,2.282,2.3089999999999997,2.366,2.4,2.398,2.355,2.307,2.272,2.215,2.236,2.2640000000000002,2.3089999999999997,2.317,2.3360000000000003,2.318,2.229,2.197,2.168,2.1700000000000004,2.218,2.257,2.269,2.269,2.1830000000000003,2.08,2.035,2.0180000000000002,2.004,2.007,2.0260000000000002,2.0130000000000003,2.0,1.989,1.957,1.9240000000000002,1.874,1.803,1.744,1.7329999999999999,1.716,1.75,1.7840000000000003,1.7820000000000003,1.7610000000000001,1.757,1.7530000000000001,1.7530000000000001,1.746,1.711,1.722,1.677,1.659,1.691,1.6540000000000001,1.637,1.648,1.625,1.599,1.593,1.619,1.62,1.599,1.5599999999999998,1.568,1.573,1.529,1.526,1.528,1.483,1.478,1.46,1.461,1.467,1.4380000000000002,1.4240000000000002,1.4120000000000001,1.417,1.399,1.4000000000000001,1.429,1.428,1.469,1.4889999999999999,1.471,1.505,1.5359999999999998,1.566,1.539,1.567,1.587,1.639,1.7309999999999999,1.8679999999999999,2.04,2.2070000000000003,2.262,2.121,1.965,1.8399999999999999,1.717,1.6949999999999998,1.6440000000000001,1.605,1.592,1.587,1.575,1.558,1.566,1.568,1.606,1.66,1.674,1.658,1.585,1.517,1.4889999999999999,1.467,1.476,1.484,1.522,1.517,1.494,1.443,1.448,1.428,1.433,1.417,1.414,1.404,1.43,1.455,1.5070000000000001,1.588,1.645,1.71,1.697,1.65,1.661,1.608,1.553,1.5070000000000001,1.51,1.496,1.5230000000000001,1.484,1.518,1.51,1.537,1.522,1.47,1.4740000000000002,1.457,1.44,1.403,1.42,1.409,1.387,1.419,1.4149999999999998,1.3980000000000001,1.377,1.383,1.39,1.379,1.401,1.414,1.454,1.473,1.48,1.493,1.503,1.553,1.576,1.633,1.715,1.754,1.78,1.792,1.715,1.636,1.649,1.648,1.663,1.6680000000000001,1.67,1.6300000000000001,1.618,1.577,1.579,1.597,1.595,1.605,1.614,1.637,1.634,1.595,1.57,1.555,1.564,1.5719999999999998,1.573,1.5839999999999999,1.5619999999999998,1.59,1.607,1.629,1.592,1.555,1.5190000000000001,1.493,1.481,1.482,1.483,1.516,1.567,1.556,1.528,1.503,1.471,1.4649999999999999,1.416,1.417,1.392,1.385,1.372,1.385,1.409,1.391,1.367,1.347,1.335,1.304,1.299,1.2910000000000001,1.257,1.261,1.239,1.22,1.218,1.224,1.218,1.244,1.216,1.244,1.2530000000000001,1.246,1.231,1.224,1.207,1.1729999999999998,1.184,1.1820000000000002,1.153,1.183,1.179,1.18,1.169,1.14,1.137,1.1560000000000001,1.163,1.148,1.127,1.141,1.137,1.128,1.12,1.115,1.138,1.113,1.105,1.126,1.1320000000000001,1.127,1.115,1.099,1.0759999999999998,1.082,1.065,1.045,1.0499999999999998,1.036,1.03,1.0230000000000001,1.0130000000000001,1.016,1.0110000000000001,1.008,0.9919,0.9703999999999999,0.9819,0.9751,0.979,0.966,0.9642999999999999,0.9611999999999999,0.9568000000000001,0.9505999999999999,0.9566,0.958,0.9633,0.957,0.9527000000000001,0.9753000000000001,0.9631,0.9545,0.9381,0.9385999999999999,0.9289,0.9195000000000001,0.9046,0.8878,0.9011,0.8926,0.8841,0.8956999999999999,0.8906,0.8804,0.8726,0.8786,0.8991,0.9018999999999999,0.9116000000000001,0.9125,0.9082,0.9276,0.9296999999999999,0.9179999999999999,0.9169999999999999,0.9172999999999999,0.923,0.9248,0.9144,0.9068,0.9024,0.9018999999999999,0.9056,0.901,0.899,0.8869,0.8794,0.8858,0.872,0.8699,0.8674,0.8495,0.8594,0.8571,0.8631,0.8575999999999999,0.849,0.8581,0.8555,0.8487,0.8701,0.8558,0.8617,0.8652000000000001,0.8734999999999999,0.8789,0.8885,0.8887999999999999,0.9100999999999999,0.927,0.941,0.944,0.9477,0.9579000000000001,0.9608,0.9542999999999999,0.9426999999999999,0.9415,0.9453999999999999,0.9323999999999999,0.9318000000000001,0.925,0.9439,0.953,0.9379,0.9345000000000001,0.9282,0.9309999999999999,0.9339999999999999,0.9295,0.9318000000000001,0.9239,0.9241999999999999,0.9171,0.9261,0.9328000000000001,0.9202,0.9209,0.9291,0.9323,0.9296999999999999,0.9239,0.9110999999999999,0.9023000000000001,0.9042999999999999,0.8915,0.8884,0.8778,0.87,0.8642,0.8596,0.8567,0.8533,0.8486,0.8534999999999999,0.8469,0.8486,0.8385,0.8324,0.8251999999999999,0.8236,0.8406,0.8442,0.8421000000000001,0.837,0.8399,0.8371000000000001,0.8265,0.8418,0.8347,0.8429000000000001,0.8508,0.835,0.8297,0.8534,0.8492,0.8435,0.8561000000000001,0.8622,0.8708,0.8977999999999999,0.9115,0.9117999999999999,0.9038,0.9051,0.8935000000000001,0.9007999999999999,0.8843,0.896,0.9067,0.8987999999999999,0.8958,0.8942,0.902,0.8966000000000001,0.8884,0.8952,0.9065000000000001,0.9059,0.8997999999999999,0.9053,0.9046,0.9162,0.914,0.9116000000000001,0.9339000000000001,0.9473,0.9480999999999999,0.9415,0.9143000000000001,0.9045,0.9069,0.8832,0.8786,0.8716,0.8631,0.8511,0.8468,0.8557,0.8352,0.8337,0.8509,0.8342999999999999,0.8400000000000001,0.8329,0.8133,0.8222999999999999,0.8247,0.8090999999999999,0.8114,0.8154,0.8157,0.8339,0.8521,0.8588,0.856,0.8364,0.8150999999999999,0.8116,0.8427,0.8842,0.8983,0.8881999999999999,0.8772,0.8817,0.9003000000000001,0.8992000000000001,0.9035,0.9171,0.9133000000000001,0.9176,0.9216,0.9203999999999999,0.9381999999999999,0.9389,0.9276,0.923,0.9174000000000001,0.9345000000000001,0.9407000000000001,0.937,0.9339000000000001,0.9509,0.9525,0.9391,0.9166,0.9011,0.8808,0.8712000000000001,0.8769,0.8724999999999999,0.8742,0.8747,0.8798,0.8691,0.8805999999999999,0.8993,0.9046,0.9199,0.9236000000000001,0.9445000000000001,0.9732,0.9757,0.9884000000000001,1.017,1.066,1.1340000000000001,1.2489999999999999,1.452,1.769,2.254,2.642,2.718,2.428,1.965,1.649,1.522,1.456,1.404,1.3179999999999998,1.2530000000000001,1.21,1.199,1.179,1.133,1.095,1.0759999999999998,1.069,1.058,1.027,0.9819,0.9576,0.942,0.9298000000000001,0.9172,0.8984999999999999,0.8896000000000001,0.8836,0.8716,0.8615,0.8521,0.8409,0.8502,0.8433999999999999,0.8193,0.8044,0.7885,0.7775,0.7988,0.8016000000000001,0.7875,0.777,0.7854,0.8012,0.7847000000000001,0.7552,0.7518,0.7581,0.7446,0.7413000000000001,0.7261,0.6998,0.6997,0.7173,0.7222,0.6990999999999999,0.6953,0.7043,0.7012999999999999,0.6930999999999999,0.6923,0.6882,0.6879,0.6940999999999999,0.692,0.6775,0.674,0.6862,0.6792,0.674,0.6795,0.6915,0.6861,0.6712,0.6750999999999999,0.6632,0.682,0.6754,0.6587999999999999,0.6709,0.6616000000000001,0.6471,0.6483,0.6574,0.6683,0.6573,0.6478,0.6507000000000001,0.6211,0.6384,0.6455000000000001,0.6532,0.6547,0.6483,0.6494,0.6347,0.6525,0.6474,0.6431,0.6589999999999999,0.6605,0.6451,0.6277999999999999,0.6207,0.6252,0.6373,0.6407,0.6459,0.6394,0.6211,0.6102000000000001,0.6234000000000001,0.6265999999999999,0.6295,0.6312,0.6381,0.6252,0.6211,0.6219,0.6144,0.6463,0.6601,0.6451,0.6361,0.5737,0.473,0.431,0.582,0.7305,0.7742,0.7787999999999999,0.7057,0.6303,0.6543,0.6644,0.6615,0.6854,0.6855,0.6664,0.6652,0.6592,0.6624,0.6613,0.6527999999999999,0.6409,0.6438,0.6524,0.6486000000000001,0.6474,0.6516,0.6337999999999999,0.6362,0.6305,0.6202,0.6187,0.6219,0.6447,0.6395000000000001,0.6474,0.6396,0.6244000000000001,0.621,0.6172,0.6325000000000001,0.6246,0.6223,0.6248,0.6255000000000001,0.6142,0.6125,0.6407,0.6315000000000001,0.6496000000000001,0.6763,0.6791,0.6808000000000001,0.6818,0.6753,0.6813,0.6838,0.6925,0.7132000000000001,0.7199,0.7142000000000001,0.7101999999999999,0.7233999999999999,0.7262000000000001,0.7406,0.7357,0.7238,0.7275,0.7213,0.7446,0.7403000000000001,0.7487,0.754,0.758,0.7775,0.7783,0.7578,0.7482,0.7558,0.7331,0.7314,0.6990000000000001,0.6965,0.6990000000000001,0.7039,0.7250000000000001,0.7057,0.6889,0.6898,0.6797,0.6773,0.6612,0.6608,0.6517000000000001,0.6486999999999999,0.6343,0.6164999999999999,0.6112,0.6139,0.6147999999999999,0.6009,0.6047,0.6013999999999999,0.6025,0.5945,0.5883,0.5914,0.606,0.617,0.6062,0.6152,0.6137,0.6077,0.6207999999999999,0.6274,0.6194,0.6156,0.62,0.6052,0.598,0.604,0.5828,0.5882,0.6008,0.5833,0.6056,0.605,0.5862,0.5859,0.5759,0.555,0.5585,0.5694,0.5652,0.5618,0.5614,0.5593,0.5501,0.5537,0.5463,0.5379,0.5389,0.5341,0.5301,0.5463,0.5542,0.5498,0.5422,0.5169,0.5129999999999999,0.49760000000000004,0.4786,0.4762,0.5082,0.5206000000000001,0.5081,0.5117999999999999,0.5014000000000001,0.4892,0.4913,0.47319999999999995,0.46979999999999994,0.45999999999999996,0.45609999999999995,0.4545,0.46230000000000004,0.484,0.47459999999999997,0.48109999999999997,0.4739,0.4564,0.45969999999999994,0.45480000000000004,0.4588,0.4679,0.4754,0.4874,0.46540000000000004,0.4788,0.48150000000000004,0.45299999999999996,0.46019999999999994,0.4534,0.4607,0.47559999999999997,0.4927,0.49210000000000004,0.5167,0.5196,0.5508,0.5655,0.5660999999999999,0.5462,0.5474,0.5540999999999999,0.5826,0.5879000000000001,0.5982000000000001,0.5882,0.5751999999999999,0.5720999999999999,0.5856,0.6029,0.6116,0.6252,0.6116999999999999,0.6195999999999999,0.6476000000000001,0.6517000000000001,0.6474,0.6411,0.6306999999999999,0.6356999999999999,0.6462,0.6397,0.6442,0.6644,0.6833,0.6866,0.6793,0.6759,0.6746,0.6687,0.6603,0.66,0.6419,0.6617,0.658,0.6573,0.6575000000000001,0.6496000000000001,0.6667,0.6403,0.629,0.626,0.6065,0.6092,0.6129,0.6291,0.6308999999999999,0.6322,0.6093,0.6059,0.5922000000000001,0.5871999999999999,0.5694,0.5599,0.5668,0.5615,0.5540999999999999,0.5470999999999999,0.5344,0.5407,0.5311,0.5249,0.5247,0.5135,0.5208,0.5237,0.5245000000000001,0.5244,0.5105999999999999,0.5127999999999999,0.5122,0.4783,0.4799,0.4932,0.49090000000000006,0.4871,0.4988,0.49090000000000006,0.4776,0.4816,0.48279999999999995,0.46859999999999996,0.47090000000000004,0.4872,0.4791,0.4713,0.5036999999999999,0.4826,0.4703,0.46520000000000006,0.4747,0.47400000000000003,0.46830000000000005,0.4511,0.46950000000000003,0.47190000000000004,0.4715,0.48030000000000006,0.48680000000000007,0.4673,0.4713,0.46499999999999997,0.4487,0.46019999999999994,0.46669999999999995,0.48850000000000005,0.49429999999999996,0.5026,0.5036,0.5029,0.5192,0.4905,0.49760000000000004,0.5326,0.5024000000000001,0.5036,0.5124,0.5013,0.5122,0.5395,0.5331,0.5148,0.5156000000000001,0.5045999999999999,0.5107,0.5023,0.5051,0.5122,0.5265,0.5158999999999999,0.5133,0.5036,0.5302,0.5273,0.5064,0.5102,0.48700000000000004,0.48229999999999995,0.47459999999999997,0.4572,0.4752,0.484,0.4897,0.47000000000000003,0.48249999999999993,0.47380000000000005,0.47769999999999996,0.473,0.49810000000000004,0.4962,0.49429999999999996,0.4867,0.48460000000000003,0.4706,0.46780000000000005,0.4687,0.4775,0.4674,0.4824,0.48279999999999995,0.4905,0.4826,0.498,0.4993,0.49839999999999995,0.48829999999999996,0.5032,0.5153,0.5082,0.5269,0.5373,0.5441,0.5482,0.5281,0.5169,0.547,0.5592,0.5275,0.5001,0.5202,0.5334000000000001,0.5376,0.5455,0.5348,0.5254,0.5710999999999999,0.5660000000000001,0.5607,0.5629000000000001,0.5347,0.5327,0.5342,0.5164,0.5425000000000001,0.5431,0.5323,0.5622,0.5631999999999999,0.549,0.5343,0.5284,0.5509000000000001,0.5332,0.5131,0.5177,0.5192,0.5286,0.5165,0.5247,0.5112,0.5237,0.47529999999999994,0.4674,0.5158999999999999,0.5133,0.522,0.4345,0.4371,0.4337,0.45899999999999996,0.4866,0.47740000000000005,0.4232,0.42310000000000003,0.43489999999999995,0.5021,0.48440000000000005,0.4487,0.4978,0.3977,0.36819999999999997,0.526,0.5476,0.49789999999999995,0.5082,0.49189999999999995,0.5067,0.4694,0.4329,0.45949999999999996,0.48009999999999997,0.4713,0.4369,0.4547,0.42260000000000003,0.4173,0.433,0.4284,0.4324,0.48489999999999994,0.4528,0.40040000000000003,0.4043,0.4167,0.4138,0.4174,0.4232,0.4254,0.4311,0.432,0.3837,0.3742,0.38639999999999997,0.4224,0.429,0.37220000000000003,0.3649,0.4335,0.4005,0.4133,0.41809999999999997,0.389,0.4062,0.3879,0.42819999999999997,0.4154,0.3938,0.43189999999999995,0.4546,0.4421,0.4072,0.392,0.3822,0.40390000000000004,0.41259999999999997,0.41100000000000003,0.4053,0.41050000000000003,0.4034,0.3844,0.4006,0.4005,0.3889,0.3875,0.3405,0.3879,0.3623,0.3701,0.3639,0.3742,0.4174,0.38739999999999997,0.3942,0.391,0.3903,0.4048,0.37729999999999997,0.3696,0.35710000000000003,0.394,0.3666,0.40909999999999996,0.4048,0.4271,0.4103,0.3918,0.381,0.3739,0.3718,0.34859999999999997,0.39349999999999996,0.373,0.3553,0.38739999999999997,0.42600000000000005,0.4317,0.4168,0.4032,0.4015,0.397,0.4202,0.3926,0.40299999999999997,0.38830000000000003,0.3971,0.39949999999999997,0.3976,0.3997,0.376,0.42819999999999997,0.4303,0.3922,0.424,0.427,0.3734,0.37270000000000003,0.3819,0.3972,0.3942,0.3514,0.3742,0.4107,0.4213,0.41650000000000004,0.3767,0.41040000000000004,0.4035,0.4278,0.4225,0.4098,0.40390000000000004,0.4213,0.4292,0.43,0.463,0.4429,0.35710000000000003,0.3861,0.4759,0.427,0.45560000000000006,0.4608,0.4311,0.4073,0.3856,0.3882],"type":"scatter"}],                        {"template":{"data":{"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"choropleth":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"choropleth"}],"contour":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"contour"}],"contourcarpet":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"contourcarpet"}],"heatmap":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"heatmap"}],"heatmapgl":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"heatmapgl"}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"histogram2d":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"histogram2d"}],"histogram2dcontour":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"histogram2dcontour"}],"mesh3d":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"mesh3d"}],"parcoords":[{"line":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"parcoords"}],"pie":[{"automargin":true,"type":"pie"}],"scatter":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatter"}],"scatter3d":[{"line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatter3d"}],"scattercarpet":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattercarpet"}],"scattergeo":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattergeo"}],"scattergl":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattergl"}],"scattermapbox":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattermapbox"}],"scatterpolar":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterpolar"}],"scatterpolargl":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterpolargl"}],"scatterternary":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterternary"}],"surface":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"surface"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}]},"layout":{"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"autotypenumbers":"strict","coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]],"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]},"colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"geo":{"bgcolor":"white","lakecolor":"white","landcolor":"#E5ECF6","showlakes":true,"showland":true,"subunitcolor":"white"},"hoverlabel":{"align":"left"},"hovermode":"closest","mapbox":{"style":"light"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"bgcolor":"#E5ECF6","radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","gridwidth":2,"linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white"},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","gridwidth":2,"linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white"},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","gridwidth":2,"linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white"}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"ternary":{"aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"bgcolor":"#E5ECF6","caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"title":{"x":0.05},"xaxis":{"automargin":true,"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","zerolinewidth":2},"yaxis":{"automargin":true,"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","zerolinewidth":2}}}},                        {"responsive": true}                    ).then(function(){
+
+var gd = document.getElementById('c50d31dc-e345-407f-8743-a6f017c06836');
+var x = new MutationObserver(function (mutations, observer) {{
+        var display = window.getComputedStyle(gd).display;
+        if (!display || display === 'none') {{
+            console.log([gd, 'removed!']);
+            Plotly.purge(gd);
+            observer.disconnect();
+        }}
+}});
+
+// Listen for the removal of the full notebook cells
+var notebookContainer = gd.closest('#notebook-container');
+if (notebookContainer) {{
+    x.observe(notebookContainer, {childList: true});
+}}
+
+// Listen for the clearing of the current output cell
+var outputEl = gd.closest('.output');
+if (outputEl) {{
+    x.observe(outputEl, {childList: true});
+}}
+
+                        })                };                });            </script>        </div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modules.html" class="btn btn-neutral float-right" title="Documentation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, N. Rakic, D. Ilic and L. C. Popovic.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

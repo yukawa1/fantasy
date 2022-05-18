@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>fantasy.tools &mdash; Fantasy 0.1.0 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../../index.html">
+            <img src="../../_static/fantasy.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../Example.html">Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">Documentation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Fantasy</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+      <li>fantasy.tools</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for fantasy.tools</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">astropy.io</span> <span class="kn">import</span> <span class="n">fits</span>
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">product</span>
+<span class="kn">from</span> <span class="nn">numpy.testing._private.utils</span> <span class="kn">import</span> <span class="n">KnownFailureException</span>
+<span class="kn">import</span> <span class="nn">sfdmap</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">PyAstronomy</span> <span class="kn">import</span> <span class="n">pyasl</span>
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+<span class="kn">import</span> <span class="nn">pylab</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">from</span> <span class="nn">spectres</span> <span class="kn">import</span> <span class="n">spectres</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="kn">import</span> <span class="n">interpolate</span><span class="p">,</span> <span class="n">linalg</span>
+<span class="kn">from</span> <span class="nn">scipy.integrate</span> <span class="kn">import</span> <span class="n">simps</span>
+<span class="kn">from</span> <span class="nn">sherpa.data</span> <span class="kn">import</span> <span class="n">Data1D</span>
+<span class="kn">from</span> <span class="nn">sherpa.fit</span> <span class="kn">import</span> <span class="n">Fit</span>
+<span class="kn">from</span> <span class="nn">sherpa.optmethods</span> <span class="kn">import</span> <span class="n">LevMar</span><span class="p">,</span> <span class="n">NelderMead</span><span class="p">,</span> <span class="n">MonCar</span><span class="p">,</span> <span class="n">GridSearch</span>
+<span class="kn">from</span> <span class="nn">sherpa.stats</span> <span class="kn">import</span> <span class="n">LeastSq</span><span class="p">,</span> <span class="n">Cash</span><span class="p">,</span> <span class="n">Chi2</span><span class="p">,</span> <span class="n">Likelihood</span><span class="p">,</span> <span class="n">Stat</span>
+<span class="kn">from</span> <span class="nn">sherpa.estmethods</span> <span class="kn">import</span> <span class="n">Confidence</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">glob</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">concurrent.futures</span>
+<span class="kn">from</span> <span class="nn">sherpa.models.parameter</span> <span class="kn">import</span> <span class="n">Parameter</span><span class="p">,</span> <span class="n">tinyval</span>
+<span class="kn">import</span> <span class="nn">natsort</span>
+<span class="kn">from</span> <span class="nn">sklearn</span> <span class="kn">import</span> <span class="n">preprocessing</span>
+<span class="kn">from</span> <span class="nn">RegscorePy</span> <span class="kn">import</span> <span class="n">aic</span><span class="p">,</span> <span class="n">bic</span>
+<span class="kn">import</span> <span class="nn">multiprocessing.pool</span>
+<span class="kn">import</span> <span class="nn">os</span>
+
+<span class="n">script_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span>
+<span class="n">sfdpath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">script_dir</span><span class="p">,</span> <span class="s2">&quot;sfddata&quot;</span><span class="p">)</span>
+<span class="n">pathEigen</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">script_dir</span><span class="p">,</span> <span class="s2">&quot;eigen/&quot;</span><span class="p">)</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="spectrum"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum">[docs]</a><span class="k">class</span> <span class="nc">spectrum</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wave</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_flux</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_err</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_z</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ra</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dec</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mjd</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_plate</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fiber</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_host</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_agn</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_style</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="spectrum.DeRedden"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.DeRedden">[docs]</a>    <span class="k">def</span> <span class="nf">DeRedden</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ebv</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Function for dereddening  a flux vector  using the parametrization given by</span>
+<span class="sd">        [Fitzpatrick (1999)](https://iopscience.iop.org/article/10.1086/316293).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        ebv : float, optional</span>
+<span class="sd">            Color excess E(B-V). If not given it will be automatically derived from</span>
+<span class="sd">             Dust map data from [Schlegel, Finkbeiner and Davis (1998)](http://adsabs.harvard.edu/abs/1998ApJ...500..525S),</span>
+<span class="sd">             by default 0</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">ebv</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">pyasl</span><span class="o">.</span><span class="n">unred</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="n">ebv</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">sfdmap</span><span class="o">.</span><span class="n">SFDMap</span><span class="p">(</span><span class="n">sfdpath</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">pyasl</span><span class="o">.</span><span class="n">unred</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="n">m</span><span class="o">.</span><span class="n">ebv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ra</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dec</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="spectrum.CorRed"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.CorRed">[docs]</a>    <span class="k">def</span> <span class="nf">CorRed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">redshift</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The CorRed function corrects the flux for redshift.</span>
+<span class="sd">        It takes in a redshift and corrects the wavelength, flux, and error arrays by that given redshift.</span>
+
+<span class="sd">        :param self: Used to Reference the class object.</span>
+<span class="sd">        :param redshift=0: Used to Specify the redshift of the object.</span>
+<span class="sd">        :return: The wavelength, flux and error arrays for the object at a redshift of z=0.</span>
+
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">redshift</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">z</span> <span class="o">=</span> <span class="n">redshift</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">z</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">z</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">z</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fwhm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fwhm</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">z</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="spectrum.rebin"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.rebin">[docs]</a>    <span class="k">def</span> <span class="nf">rebin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">minw</span><span class="o">=</span><span class="mi">3900</span><span class="p">,</span> <span class="n">maxw</span><span class="o">=</span><span class="mi">6800</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The rebin function rebins the spectrum to a smaller wavelength range.</span>
+<span class="sd">        The default is 3900-6800 angstroms, but you can specify your own min and max values.</span>
+<span class="sd">        </span>
+<span class="sd">        :param self: Used to Reference the object itself.</span>
+<span class="sd">        :param minw=3900: Used to Set the minimum wavelength of the new array.</span>
+<span class="sd">        :param maxw=6800: Used to Define the upper limit of the wavelength range to be used for fitting.</span>
+<span class="sd">        :return: The new wavelength and flux values for the spectrum.</span>
+<span class="sd">        </span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">minw</span><span class="p">,</span> <span class="n">maxw</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">flux</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">spectres</span><span class="p">(</span><span class="n">new</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="n">spec_errs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">err</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">flux</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="n">err</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="n">new</span></div>
+
+<div class="viewcode-block" id="spectrum.crop"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.crop">[docs]</a>    <span class="k">def</span> <span class="nf">crop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xmin</span><span class="o">=</span><span class="mi">4050</span><span class="p">,</span> <span class="n">xmax</span><span class="o">=</span><span class="mi">7300</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The crop function crops the spectrum to a specified wavelength range.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters: </span>
+<span class="sd">        xmin (float): The minimum wavelength of the crop region. Default is 4050 Angstroms. </span>
+<span class="sd">        xmax (float): The maximum wavelength of the crop region. Default is 7300 Angstroms. </span>
+<span class="sd">        </span>
+<span class="sd">            Returns: None, but modifies self in place by cropping it to only include wavelengths between xmin and xmax.</span>
+<span class="sd">        </span>
+<span class="sd">        :param self: Used to Reference the object itself.</span>
+<span class="sd">        :param xmin=4050: Used to Set the lower wavelength limit of the cropped spectrum.</span>
+<span class="sd">        :param xmax=7300: Used to Select the wavelength range of interest.</span>
+<span class="sd">        :return: A new spectrum object with the cropped wavelength range.</span>
+<span class="sd">        </span>
+<span class="sd">    </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="n">xmin</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="n">xmax</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">err</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span></div>
+<div class="viewcode-block" id="spectrum.plot_spec"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.plot_spec">[docs]</a>    <span class="k">def</span> <span class="nf">plot_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The plot_spec function plots the spectra.</span>
+<span class="sd">        </span>
+<span class="sd">        :param self: Used to Access the class attributes.</span>
+<span class="sd">        :return: A tuple containing the x and y values for a plot of the spectrum.  </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="spectrum.show_range"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.show_range">[docs]</a>    <span class="k">def</span> <span class="nf">show_range</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Minimum of wavelength is &quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Maximum of wavelength is &quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span></div>
+
+<div class="viewcode-block" id="spectrum.fit_host"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.fit_host">[docs]</a>    <span class="k">def</span> <span class="nf">fit_host</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The fit_host function fits the host galaxy and AGN components to the spectrum.</span>
+<span class="sd">        It takes a list of tuples as an input, which are combinations of number of </span>
+<span class="sd">        galaxy components and number of QSO components. The function fits each combination </span>
+<span class="sd">        of parameters with a linear model, then calculates reduced chi square for each fit. </span>
+<span class="sd">        The function returns the best fit combination based on reduced chi square value.</span>
+<span class="sd">        </span>
+<span class="sd">        :param self: Used to Access variables that belongs to the class.</span>
+<span class="sd">        :return: The number of components for the host galaxy and the agn.</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave_old</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">flux_old</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err_old</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">err</span>
+        <span class="n">lis</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">product</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">13</span><span class="p">)))</span>
+        <span class="n">ch</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">HOST</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">AGN</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">FIT</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">_prepare_host</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">err</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">lis</span><span class="p">)):</span>
+            <span class="n">gal</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lis</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">qso</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lis</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">hs</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">][:</span><span class="n">gal</span><span class="p">]</span>
+            <span class="n">ags</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">4</span><span class="p">][:</span><span class="n">qso</span><span class="p">]</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="n">_fith</span><span class="p">(</span><span class="n">hs</span><span class="p">,</span> <span class="n">ags</span><span class="p">,</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">host</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">gal</span><span class="p">):</span>
+                <span class="n">host</span> <span class="o">+=</span> <span class="n">k</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">ag_r</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">qso</span><span class="p">):</span>
+                <span class="n">ag_r</span> <span class="o">+=</span> <span class="n">k</span><span class="p">[</span><span class="n">gal</span> <span class="o">+</span> <span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">a</span><span class="p">[</span><span class="mi">4</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">_check_host</span><span class="p">(</span><span class="n">host</span><span class="p">)</span> <span class="o">==</span> <span class="kc">True</span> <span class="ow">and</span> <span class="n">_check_host</span><span class="p">(</span><span class="n">ag_r</span><span class="p">)</span> <span class="o">==</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="n">HOST</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">host</span><span class="p">)</span>
+                <span class="n">AGN</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ag_r</span><span class="p">)</span>
+                <span class="n">FIT</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">host</span> <span class="o">+</span> <span class="n">ag_r</span><span class="p">)</span>
+                <span class="n">ch</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_calculate_chi</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">host</span> <span class="o">+</span> <span class="n">ag_r</span><span class="p">,</span> <span class="n">k</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ch</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;Uuups... All of the combinations returned negative host.Better luck with other AGN&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">_find_nearest</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Number of galaxy components &quot;</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">lis</span><span class="p">[</span><span class="n">idx</span><span class="p">][</span><span class="mi">0</span><span class="p">]))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Number of QSO components &quot;</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">lis</span><span class="p">[</span><span class="n">idx</span><span class="p">][</span><span class="mi">1</span><span class="p">]))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Reduced chi square &quot;</span><span class="p">,</span> <span class="n">ch</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+
+            <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">18</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">HOST</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;host&quot;</span><span class="p">)</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">AGN</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;AGN&quot;</span><span class="p">)</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">FIT</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;FIT&quot;</span><span class="p">)</span>
+
+            <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">HOST</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">host</span> <span class="o">=</span> <span class="n">HOST</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="spectrum.restore"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.restore">[docs]</a>    <span class="k">def</span> <span class="nf">restore</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave_old</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux_old</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">err_old</span></div>
+
+<div class="viewcode-block" id="spectrum.plot"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.plot">[docs]</a>    <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">fig</span> <span class="o">=</span> <span class="n">px</span><span class="o">.</span><span class="n">line</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">)</span>
+        <span class="n">fig</span><span class="o">.</span><span class="n">show</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="spectrum.fit"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">stat</span><span class="o">=</span><span class="n">Chi2</span><span class="p">(),</span> <span class="n">method</span><span class="o">=</span><span class="n">LevMar</span><span class="p">(),</span> <span class="n">ntrial</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">       The fit function fits a model to the data. </span>
+<span class="sd">       The user can choose between several different statistics and methods.</span>
+<span class="sd">       The default is least squares with the LevMar method.</span>
+<span class="sd">       </span>
+<span class="sd">       :param self: Used to Reference the class itself.</span>
+<span class="sd">       :param model: Used to Define the model that is being fit to the data.</span>
+<span class="sd">       :param stat=LeastSq(): Used to Specify the statistic that is used to fit the data.</span>
+<span class="sd">       :param method=LevMar(): Used to Specify the type of fit to be used.</span>
+<span class="sd">       :return: The model and data objects.</span>
+<span class="sd">       </span>
+<span class="sd">       &quot;&quot;&quot;</span>
+        <span class="n">stat</span> <span class="o">=</span> <span class="n">stat</span>
+        <span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">Data1D</span><span class="p">(</span><span class="s2">&quot;AGN&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">err</span><span class="p">)</span>
+        <span class="n">gfit</span> <span class="o">=</span> <span class="n">Fit</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">stat</span><span class="o">=</span><span class="n">stat</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
+        <span class="n">gfit</span> <span class="o">=</span> <span class="n">Fit</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">stat</span><span class="o">=</span><span class="n">stat</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
+
+        <span class="n">gres</span> <span class="o">=</span> <span class="n">gfit</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+        <span class="n">statistic</span><span class="o">=</span><span class="n">gres</span><span class="o">.</span><span class="n">dstatval</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;stati&#39;</span><span class="p">,</span> <span class="n">statistic</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">ntrial</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            
+            <span class="n">i</span><span class="o">=</span><span class="mi">0</span>
+            <span class="k">while</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">ntrial</span><span class="p">:</span>
+                <span class="n">gfit</span> <span class="o">=</span> <span class="n">Fit</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">stat</span><span class="o">=</span><span class="n">stat</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
+                <span class="n">gres</span> <span class="o">=</span> <span class="n">gfit</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;iter stat: &quot;</span><span class="p">,</span> <span class="n">gres</span><span class="o">.</span><span class="n">dstatval</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">gres</span><span class="o">.</span><span class="n">dstatval</span><span class="o">==</span><span class="n">statistic</span><span class="p">:</span>
+                    <span class="k">break</span>
+                <span class="n">i</span><span class="o">+=</span><span class="mi">1</span>
+            
+        <span class="bp">self</span><span class="o">.</span><span class="n">gres</span> <span class="o">=</span> <span class="n">gres</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">d</span> <span class="o">=</span> <span class="n">d</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="n">mod</span> <span class="o">=</span> <span class="n">model</span></div>
+
+<div class="viewcode-block" id="spectrum.save_json"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.save_json">[docs]</a>    <span class="k">def</span> <span class="nf">save_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;pars&quot;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The save_json function saves the parameter values in a JSON file.</span>
+<span class="sd">        The filename is constructed from the name of the model and either &#39;pars&#39; or &#39;samples&#39;.</span>
+<span class="sd">        </span>
+<span class="sd">        :param self: Used to Refer to the object itself.</span>
+<span class="sd">        :param suffix=&#39;pars&#39;: Used to Specify the name of the file that is saved.</span>
+<span class="sd">        :return: A dictionary of the parameter names and values.</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">dicte</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">gres</span><span class="o">.</span><span class="n">parnames</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gres</span><span class="o">.</span><span class="n">parvals</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">dicte</span><span class="p">)</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">suffix</span> <span class="o">+</span> <span class="s2">&quot;.json&quot;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fp</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">fp</span><span class="p">)</span></div>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">__fitting</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">mod</span>
+        <span class="n">stat</span> <span class="o">=</span> <span class="n">LeastSq</span><span class="p">()</span>
+        <span class="n">method</span> <span class="o">=</span> <span class="n">LevMar</span><span class="p">()</span>
+        <span class="n">gfit</span> <span class="o">=</span> <span class="n">Fit</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">stat</span><span class="o">=</span><span class="n">stat</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
+        <span class="n">gres</span> <span class="o">=</span> <span class="n">gfit</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">gres</span><span class="o">.</span><span class="n">parvals</span><span class="p">)</span>
+
+<div class="viewcode-block" id="spectrum.bootstrap"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.bootstrap">[docs]</a>    <span class="k">def</span> <span class="nf">bootstrap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ntrails</span><span class="p">):</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span>
+        <span class="n">rande</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ntrails</span><span class="p">):</span>
+            <span class="n">rande</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">randomize</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c1"># with concurrent.futures.ThreadPoolExecutor() as executor:</span>
+        <span class="c1">#     #results=executor.map(self.__fitting,rande)</span>
+        <span class="c1">#      for da in rande:</span>
+        <span class="c1">#          f= executor.submit(self.__fitting, da)</span>
+        <span class="c1">#          print((f.result)</span>
+
+        <span class="c1"># #dicte=zip(name, reuslts)</span>
+        <span class="c1"># #res=dict(dicte)</span>
+        <span class="c1"># print(results)</span>
+        <span class="n">pool</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">pool</span><span class="o">.</span><span class="n">ThreadPool</span><span class="p">(</span><span class="n">processes</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+
+        <span class="n">return_list</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__fitting</span><span class="p">,</span> <span class="n">rande</span><span class="p">,</span> <span class="n">chunksize</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">pool</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="c1"># dicte=zip(self.gres.parnames, return_list)</span>
+        <span class="c1"># res=dict(dicte)</span>
+        <span class="c1"># print(res)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">return_list</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">gres</span><span class="o">.</span><span class="n">parnames</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df</span> <span class="o">=</span> <span class="n">df</span></div></div>
+
+
+<div class="viewcode-block" id="read_sdss"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.read_sdss">[docs]</a><span class="k">class</span> <span class="nc">read_sdss</span><span class="p">(</span><span class="n">spectrum</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">read_sdss</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="n">hdulist</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="n">hdu</span> <span class="o">=</span> <span class="n">hdulist</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">hdu</span><span class="o">.</span><span class="n">data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">z</span> <span class="o">=</span> <span class="n">hdulist</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;z&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ra</span> <span class="o">=</span> <span class="n">hdulist</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;plug_ra&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dec</span> <span class="o">=</span> <span class="n">hdulist</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;plug_dec&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mjd</span> <span class="o">=</span> <span class="n">hdulist</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;mjd&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">plate</span> <span class="o">=</span> <span class="n">hdulist</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;plateid&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fiber</span> <span class="o">=</span> <span class="n">hdulist</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;fiberid&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">filename</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">y</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">flux</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">**</span> <span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">loglam</span><span class="p">)</span>
+            <span class="n">iv</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">ivar</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">y</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">FLUX</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">**</span> <span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">LOGLAM</span><span class="p">)</span>
+            <span class="n">iv</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">IVAR</span>
+        <span class="n">super_threshold_indices</span> <span class="o">=</span> <span class="n">iv</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="n">iv</span><span class="p">[</span><span class="n">super_threshold_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">iv</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">iv</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">y</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mf">299792.458</span>
+        <span class="n">wdisp</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;wdisp&quot;</span><span class="p">]</span>
+        <span class="n">frac</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">dlam</span> <span class="o">=</span> <span class="p">(</span><span class="n">frac</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span>
+        <span class="n">fwhm</span> <span class="o">=</span> <span class="mf">2.355</span> <span class="o">*</span> <span class="n">wdisp</span> <span class="o">*</span> <span class="n">dlam</span>
+        <span class="n">velscale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">frac</span><span class="p">)</span> <span class="o">*</span> <span class="n">c</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fwhm</span> <span class="o">=</span> <span class="n">fwhm</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">velscale</span> <span class="o">=</span> <span class="n">velscale</span></div>
+
+
+<div class="viewcode-block" id="read_gama_fits"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.read_gama_fits">[docs]</a><span class="k">class</span> <span class="nc">read_gama_fits</span><span class="p">(</span><span class="n">spectrum</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Class for reading [GAMA](http://www.gama-survey.org/) spectrum file as ```spectrum``` object.</span>
+<span class="sd">        Extracting the</span>
+<span class="sd">        - Wavelength</span>
+<span class="sd">        - Flux</span>
+<span class="sd">        - Flux error</span>
+<span class="sd">        - Redshift</span>
+<span class="sd">        - Ra and Dec</span>
+<span class="sd">        - Plate, Fiber and MJD</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        filename : .fits</span>
+<span class="sd">            Name of the SDSS fits file to read</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">read_gama_fits</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="n">hdu</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;TELESCOP&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;SDSS 2.5-M&quot;</span><span class="p">:</span>
+            <span class="n">h1</span> <span class="o">=</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span>
+            <span class="n">lam_temp</span> <span class="o">=</span> <span class="n">h1</span><span class="p">[</span><span class="s2">&quot;CRVAL1&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">h1</span><span class="p">[</span><span class="s2">&quot;CDELT1&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">h1</span><span class="p">[</span><span class="s2">&quot;NAXIS1&quot;</span><span class="p">])</span>
+            <span class="n">wave</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">**</span> <span class="n">lam_temp</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="n">wave</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">wmin</span> <span class="o">=</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;WMIN&quot;</span><span class="p">]</span>
+            <span class="n">wmax</span> <span class="o">=</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;WMAX&quot;</span><span class="p">]</span>
+            <span class="n">NAXIS1</span> <span class="o">=</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;NAXIS1&quot;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">wmin</span><span class="p">,</span> <span class="n">wmax</span><span class="p">,</span> <span class="n">NAXIS1</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+        <span class="n">flux</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mf">299792.458</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ra</span> <span class="o">=</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;RA&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dec</span> <span class="o">=</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;DEC&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">z</span> <span class="o">=</span> <span class="n">hdu</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="s2">&quot;Z&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">filename</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">dataset</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">{</span><span class="s2">&quot;wave&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="s2">&quot;flux&quot;</span><span class="p">:</span> <span class="n">flux</span><span class="p">,</span> <span class="s2">&quot;err&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()},</span> <span class="n">index</span><span class="o">=</span><span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+        <span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span>
+
+        <span class="c1"># flux=np.asarray(flux)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">wave</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="c1"># flux[np.isnan(flux)]=0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">flux</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">err</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="c1"># wdisp = data[&#39;wdisp&#39;]</span>
+        <span class="n">frac</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">dlam</span> <span class="o">=</span> <span class="p">(</span><span class="n">frac</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span>
+        <span class="n">fwhm</span> <span class="o">=</span> <span class="mf">2.355</span> <span class="o">*</span> <span class="n">dlam</span>
+        <span class="n">velscale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">frac</span><span class="p">)</span> <span class="o">*</span> <span class="n">c</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fwhm</span> <span class="o">=</span> <span class="n">fwhm</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">velscale</span> <span class="o">=</span> <span class="n">velscale</span></div>
+
+
+<div class="viewcode-block" id="read_text"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.read_text">[docs]</a><span class="k">class</span> <span class="nc">read_text</span><span class="p">(</span><span class="n">spectrum</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Class to read ASCI like file as as ```spectrum``` object.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        filename : ASCII</span>
+<span class="sd">            File name should be three or two columns where first column is </span>
+<span class="sd">            wavelength, second flux and third (optinal) flux error. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">read_text</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">genfromtxt</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">unpack</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">genfromtxt</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">unpack</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">)</span>
+
+        <span class="n">c</span> <span class="o">=</span> <span class="mf">299792.458</span>
+        <span class="c1"># wdisp = data[&#39;wdisp&#39;]</span>
+        <span class="n">frac</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">dlam</span> <span class="o">=</span> <span class="p">(</span><span class="n">frac</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span>
+        <span class="n">fwhm</span> <span class="o">=</span> <span class="mf">2.355</span> <span class="o">*</span> <span class="n">dlam</span>
+        <span class="n">velscale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">frac</span><span class="p">)</span> <span class="o">*</span> <span class="n">c</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fwhm</span> <span class="o">=</span> <span class="n">fwhm</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">velscale</span> <span class="o">=</span> <span class="n">velscale</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">filename</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span></div>
+
+
+<span class="k">def</span> <span class="nf">_maskingEigen</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Preparing mask for eigen spectra host preparation</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array</span>
+<span class="sd">        Spectrum wavelength to mask in order to rebin  </span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    boolean array</span>
+<span class="sd">        </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="nb">min</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">3450</span><span class="p">:</span>
+        <span class="n">minx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">minx</span> <span class="o">=</span> <span class="mi">3450</span>
+    <span class="k">if</span> <span class="nb">max</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">7000</span><span class="p">:</span>
+        <span class="n">maxx</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="mi">10</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">maxx</span> <span class="o">=</span> <span class="mi">7200</span> <span class="o">-</span> <span class="mi">10</span>
+
+    <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">minx</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">maxx</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">mask</span>
+
+
+<span class="k">def</span> <span class="nf">_prepare_host</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="n">flux</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="n">galaxy</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">agns</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Preparing qso and galaxy eigen spectra</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    wave : array</span>
+<span class="sd">        Spectrum wavelength</span>
+<span class="sd">    flux : array</span>
+<span class="sd">        Spectrum flux</span>
+<span class="sd">    err : array</span>
+<span class="sd">        Spectrum error flux</span>
+<span class="sd">    galaxy : int, optional</span>
+<span class="sd">        number of galaxy eigen spectra, by default 5</span>
+<span class="sd">    agns : int, optional</span>
+<span class="sd">        number of qso eigen spectra, by default 10</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    data cube</span>
+<span class="sd">        rebbined spectra and derived host galaxy</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">galaxy</span> <span class="o">&gt;</span> <span class="mi">10</span> <span class="ow">or</span> <span class="n">agns</span> <span class="o">&gt;</span> <span class="mi">50</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;number of galaxy eigenspectra has to be less than 10 and QSO eigenspectra less than 50&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+
+        <span class="n">glx</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">pathEigen</span> <span class="o">+</span> <span class="s2">&quot;gal_eigenspec_Yip2004.fits&quot;</span><span class="p">)</span>
+        <span class="n">glx</span> <span class="o">=</span> <span class="n">glx</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+        <span class="n">gl_wave</span> <span class="o">=</span> <span class="n">glx</span><span class="p">[</span><span class="s2">&quot;wave&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">gl_flux</span> <span class="o">=</span> <span class="n">glx</span><span class="p">[</span><span class="s2">&quot;pca&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">glx</span><span class="p">[</span><span class="s2">&quot;pca&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">glx</span><span class="p">[</span><span class="s2">&quot;pca&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+
+        <span class="n">qso</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">pathEigen</span> <span class="o">+</span> <span class="s2">&quot;qso_eigenspec_Yip2004_global.fits&quot;</span><span class="p">)</span>
+        <span class="n">qso</span> <span class="o">=</span> <span class="n">qso</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+        <span class="n">qso_wave</span> <span class="o">=</span> <span class="n">qso</span><span class="p">[</span><span class="s2">&quot;wave&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">qso_flux</span> <span class="o">=</span> <span class="n">qso</span><span class="p">[</span><span class="s2">&quot;pca&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">qso</span><span class="p">[</span><span class="s2">&quot;pca&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">qso</span><span class="p">[</span><span class="s2">&quot;pca&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">_maskingEigen</span><span class="p">(</span><span class="n">wave</span><span class="p">)</span>
+        <span class="n">wave1</span> <span class="o">=</span> <span class="n">wave</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+
+        <span class="n">flux</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">spectres</span><span class="p">(</span><span class="n">wave1</span><span class="p">,</span> <span class="n">wave</span><span class="p">,</span> <span class="n">flux</span><span class="p">,</span> <span class="n">spec_errs</span><span class="o">=</span><span class="n">err</span><span class="p">)</span>
+        <span class="n">qso_prime</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">g_prime</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">galaxy</span><span class="p">):</span>
+            <span class="n">gix</span> <span class="o">=</span> <span class="n">_resam</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="n">gl_wave</span><span class="p">,</span> <span class="n">gl_flux</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">g_prime</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">gix</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">agns</span><span class="p">):</span>
+            <span class="n">yi</span> <span class="o">=</span> <span class="n">_resam</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="n">qso_wave</span><span class="p">,</span> <span class="n">qso_flux</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">qso_prime</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">yi</span><span class="p">)</span>
+        <span class="c1"># self.wave = wave1</span>
+        <span class="c1"># np.save(&#39;gal.npy&#39;, g_prime)</span>
+        <span class="k">return</span> <span class="n">wave1</span><span class="p">,</span> <span class="n">flux</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="n">g_prime</span><span class="p">,</span> <span class="n">qso_prime</span>
+    <span class="k">return</span>
+
+
+<span class="k">def</span> <span class="nf">_resam</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">wv</span><span class="p">,</span> <span class="n">flx</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;[summary]</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        x ([type]): [description]</span>
+<span class="sd">        wv ([type]): [description]</span>
+<span class="sd">        flx ([type]): [description]</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        [type]: [description]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">_maskingEigen</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">spectres</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">wv</span><span class="p">,</span> <span class="n">flx</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">y</span>
+
+
+<span class="k">def</span> <span class="nf">_fitHost</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="n">flux</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="n">galax</span><span class="p">,</span> <span class="n">qsos</span><span class="p">):</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">_prepare_host</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="n">flux</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="n">galax</span><span class="p">,</span> <span class="n">qsos</span><span class="p">)</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">a</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">rcond</span><span class="o">=</span><span class="kc">None</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">_calculate_chi</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">er</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">coef</span><span class="p">):</span>
+    <span class="n">diff</span> <span class="o">=</span> <span class="nb">pow</span><span class="p">(</span><span class="n">data</span> <span class="o">-</span> <span class="n">func</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
+    <span class="n">test_statistic</span> <span class="o">=</span> <span class="p">(</span><span class="n">diff</span> <span class="o">/</span> <span class="nb">pow</span><span class="p">(</span><span class="n">er</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">))</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">NDF</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">coef</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">test_statistic</span> <span class="o">/</span> <span class="n">NDF</span>
+
+
+<span class="k">def</span> <span class="nf">_fith</span><span class="p">(</span><span class="n">hs</span><span class="p">,</span> <span class="n">ags</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">hs</span><span class="p">,</span> <span class="n">ags</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="kc">None</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">k</span>
+
+
+<span class="k">def</span> <span class="nf">_find_nearest</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
+    <span class="n">array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">array</span><span class="p">)</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">array</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">argmin</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">idx</span>
+
+
+<span class="k">def</span> <span class="nf">_check_host</span><span class="p">(</span><span class="n">hst</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">hst</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mi">100</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">True</span>
+
+
+<div class="viewcode-block" id="randomize"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.randomize">[docs]</a><span class="k">def</span> <span class="nf">randomize</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+    <span class="n">flux</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">y</span><span class="p">))</span> <span class="o">*</span> <span class="n">d</span><span class="o">.</span><span class="n">staterror</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">Data1D</span><span class="p">(</span><span class="s2">&quot;AGN&quot;</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">flux</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">staterror</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">d</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, N. Rakic, D. Ilic and L. C. Popovic.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
