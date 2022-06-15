@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "fantasy"
-version = "0.2.0"
+name = "fantasy_agn"
+version = "0.3.0"
 description = ""
-authors = ["Nemanja <yukawa@quasar>"]
+authors = ["Nemanja <rakinemanja@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = ">=3.7,<3.11"
@@ -18,7 +18,6 @@ scipy = "^1.8.0"
 sfdmap = "0.1.1"
 sherpa = "4.14.0"
 spectres = "2.1.1"
-
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
 
