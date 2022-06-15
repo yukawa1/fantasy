@@ -1,16 +1,7 @@
 fantasy\_agn package
 ====================
 
-Submodules
-----------
 
-fantasy\_agn.models module
---------------------------
-
-.. automodule:: fantasy_agn.models
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 fantasy\_agn.tools module
 -------------------------
@@ -20,10 +11,14 @@ fantasy\_agn.tools module
    :undoc-members:
    :show-inheritance:
 
-Module contents
----------------
+fantasy\_agn.models module
+--------------------------
 
-.. automodule:: fantasy_agn
+.. automodule:: fantasy_agn.models
    :members:
    :undoc-members:
    :show-inheritance:
+
+
+
+
