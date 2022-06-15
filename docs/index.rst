@@ -23,14 +23,15 @@ The code is flexible in the selection of different groups of lines, either alrea
 It is an open source, easy to use code, available for installation through pip install option. It is based on sherpa python package (Burke et al. 2019).
 
 
-**If you are using this code in your research, please cite the following papers xxxx, xxxx.**
+**If you are using this code in your research, please cite the following papers Ilic et al. 2020, Rakic et al. 2022, submitted, Ilic et al. 2022, in prep.**
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
    
+   install
    Tutorial
-   Documentation
+   fantasy_agn
    
 
 
