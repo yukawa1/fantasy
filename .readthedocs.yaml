@@ -10,6 +10,11 @@ build:
   os: ubuntu-20.04
   tools:
     python: "3.9"
+    g++
+    gcc
+    bison
+    make
+    flex
     # You can also specify other tool versions:
     # nodejs: "16"
     # rust: "1.55"
