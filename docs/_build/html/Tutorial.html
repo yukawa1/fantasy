@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FANTASY Tutorial &mdash; Fantasy 0.1.0 documentation</title>
+  <title>FANTASY Tutorial &mdash; Fantasy 0.4.0 documentation</title>
       <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -21,7 +21,8 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="prev" title="Example" href="Example.html" /> 
+    <link rel="next" title="fantasy_agn package" href="fantasy_agn.html" />
+    <link rel="prev" title="FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis" href="index.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -42,8 +43,8 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="Example.html">Example</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">FANTASY Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fantasy_agn.html">fantasy_agn package</a></li>
 </ul>
 
         </div>
@@ -373,23 +374,23 @@ to use code, available for installation through pip install option. It is based 
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Below command import the above mentioned reading commands</span>
-<span class="kn">from</span> <span class="nn">fantasy.tools</span> <span class="kn">import</span> <span class="n">read_sdss</span><span class="p">,</span> <span class="n">read_text</span><span class="p">,</span> <span class="n">read_gama_fits</span>
+<span class="kn">from</span> <span class="nn">fantasy_agn.tools</span> <span class="kn">import</span> <span class="n">read_sdss</span><span class="p">,</span> <span class="n">read_text</span><span class="p">,</span> <span class="n">read_gama_fits</span>
 
 <span class="c1"># Below command import the necessary commands, which will be described later</span>
-<span class="kn">from</span> <span class="nn">fantasy.models</span> <span class="kn">import</span> <span class="n">create_input_folder</span>
+<span class="kn">from</span> <span class="nn">fantasy_agn.models</span> <span class="kn">import</span> <span class="n">create_input_folder</span>
 
-<span class="kn">from</span> <span class="nn">fantasy.models</span> <span class="kn">import</span> <span class="n">create_feii_model</span><span class="p">,</span> <span class="n">create_model</span><span class="p">,</span> <span class="n">create_tied_model</span><span class="p">,</span> <span class="n">continuum</span><span class="p">,</span> <span class="n">create_line</span><span class="p">,</span> <span class="n">create_fixed_model</span>
+<span class="kn">from</span> <span class="nn">fantasy_agn.models</span> <span class="kn">import</span> <span class="n">create_feii_model</span><span class="p">,</span> <span class="n">create_model</span><span class="p">,</span> <span class="n">create_tied_model</span><span class="p">,</span> <span class="n">continuum</span><span class="p">,</span> <span class="n">create_line</span><span class="p">,</span> <span class="n">create_fixed_model</span>
 </pre></div>
 </div>
 </div>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># This command reads the spectrum with the listed name, from the folder of this notebook or</span>
 <span class="c1"># from the given path e.g.,&#39;/path/to/files/spec*.txt&#39;</span>
 
-<span class="n">s</span><span class="o">=</span><span class="n">read_sdss</span><span class="p">(</span><span class="s1">&#39;spec-2770-54510-0433.fits&#39;</span><span class="p">)</span>
+<span class="n">s</span><span class="o">=</span><span class="n">read_sdss</span><span class="p">(</span><span class="s1">&#39;/home/yukawa/Downloads/spec-2770-54510-0433.fits&#39;</span><span class="p">)</span>
 
 <span class="c1"># Reading all .txt files with &quot;spec&quot; in the name</span>
 <span class="c1"># file_list=glob.glob(&#39;/path/to/files/spec*.txt&#39;)</span>
@@ -401,7 +402,7 @@ to use code, available for installation through pip install option. It is based 
 </ol>
 <p>Before performing the fittings, the FANTASY code provide several preprocessing options to prepare the spectrum, namely: - Galactic extinction correction - <em>DeRedden()</em> - redshift correction - <em>CorRed()</em> - host-galaxy fitting and subtraction - <em>fit_host</em> - croping/scaling of spectra - <em>crop(xmin,xmax)</em></p>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># DeRedden() command corrects for the Galactic extinction, based on coordinates of the object provided in the fits,</span>
@@ -416,7 +417,7 @@ to use code, available for installation through pip install option. It is based 
 </div>
 </div>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[6]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># CorRed() corrects for the cosmological redshift, based on redshift of the object provided in the fits.</span>
@@ -428,7 +429,7 @@ to use code, available for installation through pip install option. It is based 
 </div>
 </div>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[6]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[7]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Crop function cuts the spectrum in a set wavelength range, e.g., if you want to fit just one emission line or a certain wavelength range</span>
@@ -438,7 +439,7 @@ to use code, available for installation through pip install option. It is based 
 </div>
 </div>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[7]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Useful tip is to avoid using very small flux units.</span>
@@ -449,7 +450,7 @@ to use code, available for installation through pip install option. It is based 
 </div>
 </div>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[9]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Command *fit_host()* fits the observed spectrum with the combination of eignevectors for</span>
@@ -471,7 +472,7 @@ to use code, available for installation through pip install option. It is based 
 <div class="highlight"><pre>
 Number of galaxy components  4
 Number of QSO components  4
-Reduced chi square  6.465770733744246
+Reduced chi square  6.465770908593817
 </pre></div></div>
 </div>
 <div class="nboutput nblast docutils container">
@@ -483,7 +484,7 @@ Reduced chi square  6.465770733744246
 </div>
 <p>One possibility is to</p>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">restore</span><span class="p">()</span> <span class="c1">#command to restore the spectrum before host galaxy fitting and substraction</span>
@@ -499,7 +500,7 @@ Reduced chi square  6.465770733744246
 <div class="highlight"><pre>
 Number of galaxy components  3
 Number of QSO components  12
-Reduced chi square  14.743763144862031
+Reduced chi square  14.743762729510756
 </pre></div></div>
 </div>
 <div class="nboutput nblast docutils container">
@@ -510,7 +511,7 @@ Reduced chi square  14.743763144862031
 </div>
 </div>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[16]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#Let&#39;s compare two host results.</span>
@@ -525,12 +526,12 @@ Reduced chi square  14.743763144862031
 </div>
 </div>
 <div class="nboutput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[16]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
 </pre></div>
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-&lt;matplotlib.legend.Legend at 0x13f6726a0&gt;
+&lt;matplotlib.legend.Legend at 0x7f737628ad30&gt;
 </pre></div></div>
 </div>
 <div class="nboutput nblast docutils container">
@@ -548,10 +549,10 @@ Reduced chi square  14.743763144862031
 <p>IMPORTANT: If the folder already exsists, it will be overwritten, which can be avoided by using the parameter overwrite=‘False’.</p>
 <p>TIP: Users can extend/shorten these line lists, as well as create completly new ones.</p>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[17]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[14]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">create_input_folder</span><span class="p">(</span><span class="n">xmin</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span><span class="n">xmax</span><span class="o">=</span><span class="mi">8000</span><span class="p">,</span> <span class="n">path_to_folder</span><span class="o">=</span><span class="s1">&#39;/Users/dilic/work/agn/Nemanja/FANTASY_update/tutorial/lines/&#39;</span><span class="p">,</span><span class="n">overwrite</span><span class="o">=</span><span class="s1">&#39;False&#39;</span><span class="p">)</span>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">create_input_folder</span><span class="p">(</span><span class="n">xmin</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span><span class="n">xmax</span><span class="o">=</span><span class="mi">8000</span><span class="p">,</span> <span class="n">path_to_folder</span><span class="o">=</span><span class="s1">&#39;/home/yukawa/test/&#39;</span><span class="p">,</span><span class="n">overwrite</span><span class="o">=</span><span class="s1">&#39;True&#39;</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -560,7 +561,7 @@ Reduced chi square  14.743763144862031
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-Directory  /Users/dilic/work/agn/Nemanja/FANTASY_update/tutorial/lines/  already exists
+Directory  /home/yukawa/test/  already exists
 </pre></div></div>
 </div>
 <ol class="arabic simple" start="4">
@@ -576,7 +577,7 @@ shift tided to the reference line (typically [OIII] 5007 line); user can specify
 </ul>
 <p>For multi-line models, user can call a single line-list and many line-lists using the option files=[‘list1.csv’,‘list2.csv’].</p>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[19]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[15]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">cont</span><span class="o">=</span><span class="n">continuum</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">min_refer</span><span class="o">=</span><span class="mi">5790</span><span class="p">,</span> <span class="n">refer</span><span class="o">=</span><span class="mi">5800</span><span class="p">,</span> <span class="n">max_refer</span><span class="o">=</span><span class="mi">5810</span><span class="p">)</span>
@@ -587,7 +588,7 @@ shift tided to the reference line (typically [OIII] 5007 line); user can specify
 </div>
 </div>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[20]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[16]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Code fits simultaneously all features.</span>
@@ -600,7 +601,7 @@ shift tided to the reference line (typically [OIII] 5007 line); user can specify
 </ol>
 <p>Command <em>s.fit()</em> perform fittings of the spectrum, which is based on Python Sherpa package, with above defined model. Code offers the possibility to set the number of consequent fittings (option ntrial) to increase the convergence, given with the chi2, which is listed.</p>
 <div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[21]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[17]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">ntrial</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
@@ -612,26 +613,19 @@ shift tided to the reference line (typically [OIII] 5007 line); user can specify
 </div>
 <div class="output_area docutils container">
 <div class="highlight"><pre>
-stati 619617.5810068528
-1 iter stat:  10016.898938560465
-2 iter stat:  3233.509417138339
-3 iter stat:  1273.3420603006962
+stati 628370.1723813603
+1 iter stat:  6819.550993702287
+2 iter stat:  2241.6390910924965
+3 iter stat:  1024.3799531028344
 </pre></div></div>
 </div>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
-</pre></div>
-</div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>Congratulations, you are DONE!
-</pre></div>
-</div>
-</div>
+<p>Congratulations, you are DONE!</p>
 <ol class="arabic simple" start="6">
 <li><p>Plotting the results</p></li>
 </ol>
 <p>You can plot the results using your favorite plotting style, an example is given below.</p>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[19]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">context</span><span class="p">([</span><span class="s1">&#39;nature&#39;</span><span class="p">,</span> <span class="s1">&#39;notebook&#39;</span><span class="p">])</span>
@@ -659,30 +653,25 @@ stati 619617.5810068528
 </pre></div>
 </div>
 </div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="_images/Tutorial_30_0.png" src="_images/Tutorial_30_0.png" />
+</div>
+</div>
 <p>7.Inspecting/saving the plotting results</p>
 <p>To examine the fitting results, simply use the command <em>model</em>, which will display all parameters for each emission line. Note that for complex model, for which the name/prefix has been indicated when defining the model.</p>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[20]:
 </pre></div>
 </div>
 <div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span>
 </pre></div>
 </div>
 </div>
-<div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[23]:
-</pre></div>
-</div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># To see the fitting results, one can use standard outputs from Sherpa package, such as:</span>
-<span class="c1"># gres - to list all fitting results</span>
-<span class="c1"># gres.parnames - to list all parameters</span>
-<span class="c1"># save_json() - to save the results</span>
-<span class="n">s</span><span class="o">.</span><span class="n">gres</span>
-</pre></div>
-</div>
-</div>
 <div class="nboutput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[23]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[20]:
 </pre></div>
 </div>
 <div class="output_area rendered_html docutils container">
@@ -774,7 +763,114 @@ div.sherpa .failed {
     font-size: large;
     padding: 1em;
 }
-</style><div class="sherpa-text-fallback">&lt;Fit results instance&gt;</div><div hidden class="sherpa"><details open><summary>Fit parameters</summary><table class="fit"><thead><tr><th>Parameter</th><th>Best-fit value</th><th>Approximate error</th></tr></thead><tbody><tr><td>brokenpowerlaw.refer</td><td>        5810</td><td>&#177;      25.4334</td></tr><tr><td>brokenpowerlaw.ampl</td><td>     63.1799</td><td>&#177;     0.404956</td></tr><tr><td>brokenpowerlaw.index1</td><td>    -1.61397</td><td>&#177;    0.0127901</td></tr><tr><td>brokenpowerlaw.index2</td><td>           1</td><td>&#177;    0.0371847</td></tr><tr><td>br.amp_Hd_4102</td><td>      29.813</td><td>&#177;      1.35838</td></tr><tr><td>br.amp_Hg_4340</td><td>      58.639</td><td>&#177;       2.4164</td></tr><tr><td>br.amp_Hb_4861</td><td>     87.2594</td><td>&#177;     0.740192</td></tr><tr><td>br.amp_Ha_6563</td><td>     202.751</td><td>&#177;       1.4116</td></tr><tr><td>br.amp_HeI_4144</td><td>     3.38059</td><td>&#177;     0.829523</td></tr><tr><td>br.amp_HeI_4471</td><td>      13.489</td><td>&#177;     0.531778</td></tr><tr><td>br.amp_HeII_4686</td><td>      14.981</td><td>&#177;     0.474702</td></tr><tr><td>br.amp_HeI_5877</td><td>     13.7199</td><td>&#177;     0.417641</td></tr><tr><td>br.amp_HeI_7065</td><td>     57.6314</td><td>&#177;     0.467647</td></tr><tr><td>br.amp_HeI_7281</td><td>     258.244</td><td>&#177;      5.23228</td></tr><tr><td>br.amp_HeI_7816</td><td>           2</td><td>&#177;            0</td></tr><tr><td>br.offs_kms</td><td>     378.284</td><td>&#177;        7.215</td></tr><tr><td>br.fwhm</td><td>        5808</td><td>&#177;      21.4501</td></tr><tr><td>nr_OIII5007.ampl</td><td>     103.933</td><td>&#177;     0.943584</td></tr><tr><td>nr_OIII5007.offs_kms</td><td>     52.3042</td><td>&#177;       3.1034</td></tr><tr><td>nr_OIII5007.fwhm</td><td>        1200</td><td>&#177;      7.69857</td></tr><tr><td>nr_NII6584.ampl</td><td>     231.198</td><td>&#177;      4.17811</td></tr><tr><td>nr_[O III]_4363.ampl</td><td>           0</td><td>&#177;       2.3602</td></tr><tr><td>nr_[O I]_6300.ampl</td><td>     23.3256</td><td>&#177;     0.774259</td></tr><tr><td>nr_[O I]_6363.ampl</td><td>     23.5914</td><td>&#177;     0.816105</td></tr><tr><td>nr_[S II]_6716.ampl</td><td>     33.4508</td><td>&#177;     0.940455</td></tr><tr><td>nr_[S II]_6730.ampl</td><td>     39.3383</td><td>&#177;     0.939131</td></tr><tr><td>nr_[O II]_7330.ampl</td><td>           2</td><td>&#177;            0</td></tr><tr><td>nr_Hd_4101.ampl</td><td>     21.4471</td><td>&#177;      1.64122</td></tr><tr><td>nr_Hg_4340.ampl</td><td>     28.3184</td><td>&#177;      2.54537</td></tr><tr><td>nr_Hb_4861.ampl</td><td>     171.241</td><td>&#177;      2.00691</td></tr><tr><td>nr_Ha_6562.ampl</td><td>         500</td><td>&#177;      4.38591</td></tr><tr><td>feii.amp_e6D</td><td>           2</td><td>&#177;            0</td></tr><tr><td>feii.amp_z4F</td><td>     89.3037</td><td>&#177;      5.76807</td></tr><tr><td>feii.amp_z4D</td><td>     29.8846</td><td>&#177;      0.51487</td></tr><tr><td>feii.amp_z4P</td><td>           2</td><td>&#177;            0</td></tr><tr><td>feii.amp_a4G</td><td>     39.4093</td><td>&#177;     0.457842</td></tr><tr><td>feii.amp_a4H</td><td>     9.98454</td><td>&#177;      1.46142</td></tr><tr><td>feii.amp_b2H</td><td>     10.3376</td><td>&#177;     0.551227</td></tr><tr><td>feii.amp_b4D</td><td>     23.7052</td><td>&#177;     0.767224</td></tr><tr><td>feii.amp_b4F</td><td>     34.4368</td><td>&#177;     0.466344</td></tr><tr><td>feii.amp_b4P</td><td>     30.7931</td><td>&#177;     0.830998</td></tr><tr><td>feii.amp_a6S</td><td>     55.8902</td><td>&#177;     0.656085</td></tr><tr><td>feii.amp_a2D2</td><td>     14.0571</td><td>&#177;      1.16067</td></tr><tr><td>feii.offs_kms</td><td>     295.555</td><td>&#177;      8.20125</td></tr><tr><td>feii.fwhm</td><td>        2000</td><td>&#177;      15.6287</td></tr></tbody></table></details><details><summary>Summary (10)</summary><div class="datavals"><div class="dataname">Method</div><div class="dataval">levmar</div><div class="dataname">Statistic</div><div class="dataval">chi2</div><div class="dataname">Final statistic</div><div class="dataval">73159.8</div><div class="dataname">Number of evaluations</div><div class="dataval">902</div><div class="dataname">Reduced statistic</div><div class="dataval">29.2522</div><div class="dataname">Probability (Q-value)</div><div class="dataval">0</div><div class="dataname">Initial statistic</div><div class="dataval">74433.1</div><div class="dataname">&#916; statistic</div><div class="dataval">1273.34</div><div class="dataname">Number of data points</div><div class="dataval">2546</div><div class="dataname">Degrees of freedom</div><div class="dataval">2501</div></div></details></div></div>
+</style><div class="sherpa-text-fallback">&lt;BinaryOpModel model instance &#x27;(((brokenpowerlaw + br) + (((((((((((((nr_OIII5007 + nr_OIII4958) + nr_NII6584) + nr_NIII6548) + nr_[O III]_4363) + nr_[O I]_6300) + nr_[O I]_6363) + nr_[S II]_6716) + nr_[S II]_6730) + nr_[O II]_7330) + nr_Hd_4101) + nr_Hg_4340) + nr_Hb_4861) + nr_Ha_6562)) + feii)&#x27;&gt;</div><div hidden class="sherpa"><details open><summary>Model</summary><table class="model"><caption>Expression: ((brokenpowerlaw + br) + (((((((((((((nr_OIII5007 + nr_OIII4958) + nr_NII6584) + nr_NIII6548) + nr_[O III]_4363) + nr_[O I]_6300) + nr_[O I]_6363) + nr_[S II]_6716) + nr_[S II]_6730) + nr_[O II]_7330) + nr_Hd_4101) + nr_Hg_4340) + nr_Hb_4861) + nr_Ha_6562)) + feii</caption><thead><tr><th>Component</th><th>Parameter</th><th>Thawed</th><th>Value</th><th>Min</th><th>Max</th><th>Units</th></tr></thead><tbody><tr><th class="model-odd" scope="rowgroup" rowspan=4>brokenpowerlaw</th><td>refer</td><td><input disabled type="checkbox" checked></input></td><td>5810.0</td><td>5790.0</td><td>5810.0</td><td>angstroms</td></tr><tr><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>63.17991521926965</td><td>57.16278043648206</td><td>63.17991521926965</td><td>angstroms</td></tr><tr><td>index1</td><td><input disabled type="checkbox" checked></input></td><td>-1.5273507354771985</td><td>-3.0</td><td>0.0</td><td></td></tr><tr><td>index2</td><td><input disabled type="checkbox" checked></input></td><td>1.0</td><td>-1.0</td><td>1.0</td><td></td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=13>br</th><td>amp_Hd_4102</td><td><input disabled type="checkbox" checked></input></td><td>32.51824533315963</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_Hg_4340</td><td><input disabled type="checkbox" checked></input></td><td>60.42571983515702</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_Hb_4861</td><td><input disabled type="checkbox" checked></input></td><td>77.97815879124119</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_Ha_6563</td><td><input disabled type="checkbox" checked></input></td><td>169.3990532610452</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_4144</td><td><input disabled type="checkbox" checked></input></td><td>3.1989642819021697</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_4471</td><td><input disabled type="checkbox" checked></input></td><td>14.23587061796477</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeII_4686</td><td><input disabled type="checkbox" checked></input></td><td>16.10505869591862</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_5877</td><td><input disabled type="checkbox" checked></input></td><td>12.281106356715714</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_7065</td><td><input disabled type="checkbox" checked></input></td><td>54.411293480982735</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_7281</td><td><input disabled type="checkbox" checked></input></td><td>163.24267988457296</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>amp_HeI_7816</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>600.0</td><td></td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>408.426340976845</td><td>0.0</td><td>800.0</td><td>km/s</td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>6558.315456700328</td><td>100.0</td><td>7000.0</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_OIII5007</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>104.07710540586287</td><td>0.2</td><td>1000.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>5006.803341</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>40.926922567892554</td><td>0.0</td><td>300.0</td><td>km/s</td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>1200.0</td><td>900.0</td><td>1200.0</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_OIII4958</th><td>ampl</td><td>linked</td><td>34.692368468620955</td><td colspan=2>&#8656; nr_OIII5007.ampl / 3.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4958.896072</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_NII6584</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>278.768899844708</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6583.46</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_NIII6548</th><td>ampl</td><td>linked</td><td>92.92296661490268</td><td colspan=2>&#8656; nr_NII6584.ampl / 3.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6548.05</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_[O III]_4363</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>0.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4363.213686</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_[O I]_6300</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>24.021631405785154</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6300.304</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_[O I]_6363</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>22.48488491725291</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6363.8</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_[S II]_6716</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>26.166076035586716</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6716.44</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_[S II]_6730</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>39.489687034458925</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6730.81</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_[O II]_7330</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>7330.73</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Hd_4101</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>22.120148118112844</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4101.742</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Hg_4340</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>32.38276043979228</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4340.471</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=4>nr_Hb_4861</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>186.68700055470023</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>4861.333</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-even" scope="rowgroup" rowspan=4>nr_Ha_6562</th><td>ampl</td><td><input disabled type="checkbox" checked></input></td><td>500.0</td><td>0.0</td><td>500.0</td><td></td></tr><tr><td>pos</td><td><input disabled type="checkbox"></input></td><td>6562.82</td><td>0.0</td><td>MAX</td><td>angstroms</td></tr><tr><td>offs_kms</td><td>linked</td><td>40.926922567892554</td><td colspan=2>&#8656; nr_OIII5007.offs_kms</td><td>km/s</td></tr><tr><td>fwhm</td><td>linked</td><td>1200.0</td><td colspan=2>&#8656; nr_OIII5007.fwhm</td><td>km/s</td></tr><tr class="block"><th class="model-odd" scope="rowgroup" rowspan=14>feii</th><td>amp_e6D</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_z4F</td><td><input disabled type="checkbox" checked></input></td><td>109.93385217205125</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_z4D</td><td><input disabled type="checkbox" checked></input></td><td>28.32967810671408</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_z4P</td><td><input disabled type="checkbox" checked></input></td><td>2.0</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a4G</td><td><input disabled type="checkbox" checked></input></td><td>41.39377187264004</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a4H</td><td><input disabled type="checkbox" checked></input></td><td>5.60312605304303</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b2H</td><td><input disabled type="checkbox" checked></input></td><td>10.587950711247053</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4D</td><td><input disabled type="checkbox" checked></input></td><td>16.90879995659253</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4F</td><td><input disabled type="checkbox" checked></input></td><td>35.69526531210065</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_b4P</td><td><input disabled type="checkbox" checked></input></td><td>32.6201129507892</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a6S</td><td><input disabled type="checkbox" checked></input></td><td>56.42207420339825</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>amp_a2D2</td><td><input disabled type="checkbox" checked></input></td><td>14.186205841383337</td><td>0.0</td><td>1000.0</td><td></td></tr><tr><td>offs_kms</td><td><input disabled type="checkbox" checked></input></td><td>330.02708388488537</td><td>-3000.0</td><td>3000.0</td><td></td></tr><tr><td>fwhm</td><td><input disabled type="checkbox" checked></input></td><td>2000.0</td><td>600.0</td><td>2000.0</td><td></td></tr></tbody></table></details></div></div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[21]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># To see the fitting results, one can use standard outputs from Sherpa package, such as:</span>
+<span class="c1"># gres - to list all fitting results</span>
+<span class="c1"># gres.parnames - to list all parameters</span>
+<span class="c1"># save_json() - to save the results</span>
+<span class="n">s</span><span class="o">.</span><span class="n">gres</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[21]:
+</pre></div>
+</div>
+<div class="output_area rendered_html docutils container">
+<style>/*
+Copyright (C) 2020  Smithsonian Astrophysical Observatory
+
+
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc.,
+ 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+*/
+
+:root {
+  --sherpa-border-color: var(--jp-border-color2, #e0e0e0);
+  --sherpa-background-color: var(--jp-layout-color0, white);
+  --sherpa-background-color-row-even: var(--jp-layout-color1, white);
+  --sherpa-background-color-row-odd: var(--jp-layout-color2, #eeeeee);
+
+  /* https://medium.com/ge-design/iot-cool-gray-is-a-great-background-color-for-data-visualization-ebf18c318418 */
+  --sherpa-background-color-dark1: #EBEFF2;
+  --sherpa-background-color-dark2: #D8E0E5;
+}
+
+div.sherpa-text-fallback {
+    display: none;
+}
+
+div.sherpa {
+    display: block;
+}
+
+div.sherpa details summary {
+    display: list-item;  /* needed for notebook, not lab */
+    font-size: larger;
+}
+
+div.sherpa details div.datavals {
+    display: grid;
+    grid-template-columns: 1fr 3fr;
+    column-gap: 0.5em;
+}
+
+div.sherpa div.dataname {
+    font-weight: bold;
+    border-right: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa div.dataval { }
+
+div.sherpa div.datavals div:nth-child(4n + 1) ,
+div.sherpa div.datavals div:nth-child(4n + 2) {
+    background: var(--sherpa-background-color-row-odd);
+}
+
+div.sherpa table.model tbody {
+    border-bottom: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model tr.block {
+    border-top: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model th.model-odd ,
+div.sherpa table.model th.model-even {
+    border-right: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model th.model-odd {
+    background: var(--sherpa-background-color-dark1);
+}
+
+div.sherpa table.model th.model-even {
+    background: var(--sherpa-background-color-dark2);
+}
+
+div.sherpa .failed {
+    background: orange;
+    font-size: large;
+    padding: 1em;
+}
+</style><div class="sherpa-text-fallback">&lt;Fit results instance&gt;</div><div hidden class="sherpa"><details open><summary>Fit parameters</summary><table class="fit"><thead><tr><th>Parameter</th><th>Best-fit value</th><th>Approximate error</th></tr></thead><tbody><tr><td>brokenpowerlaw.refer</td><td>        5810</td><td>&#177;      26.0748</td></tr><tr><td>brokenpowerlaw.ampl</td><td>     63.1799</td><td>&#177;     0.396833</td></tr><tr><td>brokenpowerlaw.index1</td><td>    -1.52735</td><td>&#177;    0.0138585</td></tr><tr><td>brokenpowerlaw.index2</td><td>           1</td><td>&#177;    0.0396013</td></tr><tr><td>br.amp_Hd_4102</td><td>     32.5182</td><td>&#177;      1.36654</td></tr><tr><td>br.amp_Hg_4340</td><td>     60.4257</td><td>&#177;      2.55835</td></tr><tr><td>br.amp_Hb_4861</td><td>     77.9782</td><td>&#177;     0.667277</td></tr><tr><td>br.amp_Ha_6563</td><td>     169.399</td><td>&#177;      1.14435</td></tr><tr><td>br.amp_HeI_4144</td><td>     3.19896</td><td>&#177;     0.882973</td></tr><tr><td>br.amp_HeI_4471</td><td>     14.2359</td><td>&#177;     0.520468</td></tr><tr><td>br.amp_HeII_4686</td><td>     16.1051</td><td>&#177;     0.459506</td></tr><tr><td>br.amp_HeI_5877</td><td>     12.2811</td><td>&#177;     0.408769</td></tr><tr><td>br.amp_HeI_7065</td><td>     54.4113</td><td>&#177;     0.460212</td></tr><tr><td>br.amp_HeI_7281</td><td>     163.243</td><td>&#177;      3.24174</td></tr><tr><td>br.amp_HeI_7816</td><td>           2</td><td>&#177;            0</td></tr><tr><td>br.offs_kms</td><td>     408.426</td><td>&#177;      8.79198</td></tr><tr><td>br.fwhm</td><td>     6558.32</td><td>&#177;      26.1267</td></tr><tr><td>nr_OIII5007.ampl</td><td>     104.077</td><td>&#177;     0.938973</td></tr><tr><td>nr_OIII5007.offs_kms</td><td>     40.9269</td><td>&#177;      2.95177</td></tr><tr><td>nr_OIII5007.fwhm</td><td>        1200</td><td>&#177;      7.27606</td></tr><tr><td>nr_NII6584.ampl</td><td>     278.769</td><td>&#177;      4.14325</td></tr><tr><td>nr_[O III]_4363.ampl</td><td>           0</td><td>&#177;      2.46483</td></tr><tr><td>nr_[O I]_6300.ampl</td><td>     24.0216</td><td>&#177;     0.765113</td></tr><tr><td>nr_[O I]_6363.ampl</td><td>     22.4849</td><td>&#177;     0.817068</td></tr><tr><td>nr_[S II]_6716.ampl</td><td>     26.1661</td><td>&#177;     0.945218</td></tr><tr><td>nr_[S II]_6730.ampl</td><td>     39.4897</td><td>&#177;     0.918308</td></tr><tr><td>nr_[O II]_7330.ampl</td><td>           2</td><td>&#177;            0</td></tr><tr><td>nr_Hd_4101.ampl</td><td>     22.1201</td><td>&#177;      1.55047</td></tr><tr><td>nr_Hg_4340.ampl</td><td>     32.3828</td><td>&#177;      2.46605</td></tr><tr><td>nr_Hb_4861.ampl</td><td>     186.687</td><td>&#177;      1.96907</td></tr><tr><td>nr_Ha_6562.ampl</td><td>         500</td><td>&#177;      4.41636</td></tr><tr><td>feii.amp_e6D</td><td>           2</td><td>&#177;            0</td></tr><tr><td>feii.amp_z4F</td><td>     109.934</td><td>&#177;      5.61573</td></tr><tr><td>feii.amp_z4D</td><td>     28.3297</td><td>&#177;     0.509455</td></tr><tr><td>feii.amp_z4P</td><td>           2</td><td>&#177;            0</td></tr><tr><td>feii.amp_a4G</td><td>     41.3938</td><td>&#177;     0.464199</td></tr><tr><td>feii.amp_a4H</td><td>     5.60313</td><td>&#177;      1.73002</td></tr><tr><td>feii.amp_b2H</td><td>      10.588</td><td>&#177;     0.551159</td></tr><tr><td>feii.amp_b4D</td><td>     16.9088</td><td>&#177;     0.759608</td></tr><tr><td>feii.amp_b4F</td><td>     35.6953</td><td>&#177;     0.477494</td></tr><tr><td>feii.amp_b4P</td><td>     32.6201</td><td>&#177;     0.875196</td></tr><tr><td>feii.amp_a6S</td><td>     56.4221</td><td>&#177;     0.655327</td></tr><tr><td>feii.amp_a2D2</td><td>     14.1862</td><td>&#177;      1.15969</td></tr><tr><td>feii.offs_kms</td><td>     330.027</td><td>&#177;      8.17394</td></tr><tr><td>feii.fwhm</td><td>        2000</td><td>&#177;      15.9777</td></tr></tbody></table></details><details><summary>Summary (10)</summary><div class="datavals"><div class="dataname">Method</div><div class="dataval">levmar</div><div class="dataname">Statistic</div><div class="dataval">chi2</div><div class="dataname">Final statistic</div><div class="dataval">68845.5</div><div class="dataname">Number of evaluations</div><div class="dataval">902</div><div class="dataname">Reduced statistic</div><div class="dataval">27.5272</div><div class="dataname">Probability (Q-value)</div><div class="dataval">0</div><div class="dataname">Initial statistic</div><div class="dataval">69869.8</div><div class="dataname">&#916; statistic</div><div class="dataval">1024.38</div><div class="dataname">Number of data points</div><div class="dataval">2546</div><div class="dataname">Degrees of freedom</div><div class="dataval">2501</div></div></details></div></div>
 </div>
 <ol class="arabic simple" start="8">
 <li><p>Simple analysis</p></li>
@@ -812,7 +908,8 @@ div.sherpa .failed {
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="Example.html" class="btn btn-neutral float-left" title="Example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="index.html" class="btn btn-neutral float-left" title="FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="fantasy_agn.html" class="btn btn-neutral float-right" title="fantasy_agn package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

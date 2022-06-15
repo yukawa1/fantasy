@@ -142,9 +142,9 @@ class spectrum(object):
         """
         The fit_host function fits a host galaxy and an AGN to the observed spectrum.
         It takes as input:
-            mask_host (bool): If True, it masks the host emission lines using _host_mask function. Default is False.
-            custom (bool): If True, it masks user defined emission lines using _custom_mask function. Default is False. 
-            mask_list ([float]): A list of wavelengths in angstroms that will be masked if custom=True .Default is empty list [].
+        mask_host (bool): If True, it masks the host emission lines using _host_mask function. Default is False.
+        custom (bool): If True, it masks user defined emission lines using _custom_mask function. Default is False. 
+        mask_list ([float]): A list of wavelengths in angstroms that will be masked if custom=True .Default is empty list [].
         
              Returns: 
         

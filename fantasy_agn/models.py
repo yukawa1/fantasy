@@ -981,7 +981,7 @@ OIII5007 = create_line(
 )
 
 
-def OIII_NII(ref_line=OIII5007, name=""):
+def OIII_NII(ref_line=OIII5007, prefix =""):
     """
     The narrow_basic function creates a narrow line profile for the OIII5007, NII6584, and NII6548 lines.
     It takes in the position of each line as well as its FWHM and amplitude. It also takes in an offset value which is 

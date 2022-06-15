@@ -12,7 +12,7 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('.'))
+sys.path.insert(0, os.path.abspath('..'))
 
 
 # -- Project information -----------------------------------------------------
@@ -22,7 +22,7 @@ copyright = '2022, N. Rakic, D. Ilic and L. C. Popovic'
 author = 'N. Rakic, D. Ilic and L. C. Popovic'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1.0'
+release = '0.4.0'
 
 
 # -- General configuration ---------------------------------------------------
