@@ -97,8 +97,6 @@ class spectrum(object):
         :param minw=3900: Used to Set the minimum wavelength of the new array.
         :param maxw=6800: Used to Define the upper limit of the wavelength range to be used for fitting.
         :return: The new wavelength and flux values for the spectrum.
-        
-        
         """
         new = np.arange(minw, maxw, 1)
         flux, err = spectres(new, self.wave, self.flux, spec_errs=self.err)
@@ -120,8 +118,6 @@ class spectrum(object):
         :param xmin=4050: Used to Set the lower wavelength limit of the cropped spectrum.
         :param xmax=7300: Used to Select the wavelength range of interest.
         :return: A new spectrum object with the cropped wavelength range.
-        
-    
         """
 
         mask = (self.wave > xmin) & (self.wave < xmax)
@@ -142,18 +138,25 @@ class spectrum(object):
         print("Minimum of wavelength is ", self.wave[0])
         print("Maximum of wavelength is ", self.wave[-1])
 
-    def fit_host(self):
+    def fit_host(self, mask_host=False, custom=False, mask_list=[]):
         """
-        The fit_host function fits the host galaxy and AGN components to the spectrum.
-        It takes a list of tuples as an input, which are combinations of number of 
-        galaxy components and number of QSO components. The function fits each combination 
-        of parameters with a linear model, then calculates reduced chi square for each fit. 
-        The function returns the best fit combination based on reduced chi square value.
+        The fit_host function fits a host galaxy and an AGN to the observed spectrum.
+        It takes as input:
+            mask_host (bool): If True, it masks the host emission lines using _host_mask function. Default is False.
+            custom (bool): If True, it masks user defined emission lines using _custom_mask function. Default is False. 
+            mask_list ([float]): A list of wavelengths in angstroms that will be masked if custom=True .Default is empty list [].
+        
+             Returns: 
+        
+                self.(wave,flux,err) : The wavelength array , flux array and error array after fitting for host galaxy and AGN components respectively.
         
         :param self: Used to Access variables that belongs to the class.
-        :return: The number of components for the host galaxy and the agn.
-        
+        :param mask_host=False: Used to Mask the host.
+        :param custom=False: Used to Mask the host.
+        :param mask_list=[]: Used to Mask the data points that are not used in the fit.
+        :return: The host and the agn component.
         """
+        
 
         self.wave_old = self.wave
         self.flux_old = self.flux
@@ -173,6 +176,10 @@ class spectrum(object):
             host = 0
             for i in range(gal):
                 host += k[i] * a[3][i]
+            if mask_host and custom==False:
+                host= _host_mask(a[0], host)
+            if mask_host and custom==True:
+                host= _custom_mask(a[0], host, mask_list)
             ag_r = 0
             for i in range(qso):
                 ag_r += k[gal + i] * a[4][i]
@@ -185,6 +192,7 @@ class spectrum(object):
             print(
                 "Uuups... All of the combinations returned negative host.Better luck with other AGN"
             )
+            self.host=np.zeros(len(a[0]))
         else:
             idx = _find_nearest(ch)
             print("Number of galaxy components ", int(lis[idx][0]))
@@ -196,15 +204,23 @@ class spectrum(object):
             plt.plot(a[0], HOST[idx], label="host")
             plt.plot(a[0], AGN[idx], label="AGN")
             plt.plot(a[0], FIT[idx], label="FIT")
+            self.host = HOST[idx]
+            self.flux = a[1] - HOST[idx]
+            self.agn=AGN[idx]
+            self.wave = a[0]
+            self.err = a[2]
+
 
             plt.legend()
-            plt.show()
-        self.wave = a[0]
-        self.flux = a[1] - HOST[idx]
-        self.err = a[2]
-        self.host = HOST[idx]
+            plt.savefig(self.name+'_host.pdf') 
+        
+        
 
     def restore(self):
+        """
+        Restore the spectra (wave, flux and error) to the one before host removal
+        """
+        
         self.wave = self.wave_old
         self.flux = self.flux_old
         self.err = self.err_old
@@ -213,21 +229,18 @@ class spectrum(object):
         fig = px.line(x=self.wave, y=self.flux)
         fig.show()
 
-    def fit(self, model, stat=Chi2(), method=LevMar(), ntrial=1):
+    def fit(self, model, ntrial=1):
         """
-       The fit function fits a model to the data. 
-       The user can choose between several different statistics and methods.
-       The default is least squares with the LevMar method.
-       
-       :param self: Used to Reference the class itself.
-       :param model: Used to Define the model that is being fit to the data.
-       :param stat=LeastSq(): Used to Specify the statistic that is used to fit the data.
-       :param method=LevMar(): Used to Specify the type of fit to be used.
-       :return: The model and data objects.
-       
-       """
-        stat = stat
-        method = method
+        The fit function fits a model to the data. 
+        It returns a tuple of (model, fit results).
+        
+        :param self: Used to Reference the class object.
+        :param model: Used to Define the model that is used in the fit.
+        :param ntrial=1: Used to Specify the number of times we want to repeat the fit.
+        :return: The results of the fit.
+        """
+        stat=Chi2()
+        method=LevMar()
         d = Data1D("AGN", self.wave, self.flux, self.err)
         gfit = Fit(d, model, stat=stat, method=method)
         gfit = Fit(d, model, stat=stat, method=method)
@@ -277,10 +290,19 @@ class spectrum(object):
         return list(gres.parvals)
 
     def bootstrap(self, ntrails):
+        """
+        The bootstrap function takes a data set and returns the best fit parameters for that dataset.
+        It does this by generating random datasets from the original dataset using a poisson distribution with mean equal to 1.
+        The function then fits these datasets and stores the resulting parameters in an array of dictionaries, which is returned.
+        
+        :param self: Used to Access variables that belongs to the class.
+        :param ntrails: Used to Specify the number of bootstrap trials.
+        :return: A pandas dataframe with the fitted parameters.
+        """
         d = self.d
         rande = []
         for i in range(ntrails):
-            rande.append(randomize(d))
+            rande.append(_randomize(d))
         results = []
         # with concurrent.futures.ThreadPoolExecutor() as executor:
         #     #results=executor.map(self.__fitting,rande)
@@ -558,8 +580,28 @@ def _check_host(hst):
         return True
 
 
-def randomize(d):
+def _randomize(d):
     flux = d.y + np.random.randn(len(d.y)) * d.staterror
     d = Data1D("AGN", d.x, flux, d.staterror)
     return d
 
+
+def _host_mask(wave, host):
+    line_mask = np.where( (wave < 4970.) & (wave > 4950.) |
+    (wave < 5020.) & (wave > 5000.) | 
+    (wave < 6590.) & (wave > 6540.) |
+    (wave < 3737.) & (wave > 3717.) |
+    (wave < 4872.) & (wave > 4852.) |
+    (wave < 4350.) & (wave > 4330.) |
+    (wave < 6750.) & (wave > 6600.) |
+    (wave < 4111.) & (wave > 4091.), True, False)
+                     
+    f = interpolate.interp1d(wave[~line_mask],host[~line_mask], bounds_error = False, fill_value = 0)
+    return f(wave)
+def _custom_mask(wave, host, mask_list):
+    line_mask=np.where(wave, False, True)
+    for m in mask_list:
+        mask = np.where( (wave < m[1]) & (wave > m[0]), True, False)
+        line_mask += mask
+    f = interpolate.interp1d(wave[~line_mask],host[~line_mask], bounds_error = False, fill_value = 0)
+    return f(wave)

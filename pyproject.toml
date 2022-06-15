@@ -5,7 +5,7 @@ description = ""
 authors = ["Nemanja <yukawa@quasar>"]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.11"
+python = ">=3.7,<3.11"
 astropy = ">4.3.1"
 matplotlib = "3.4.3"
 natsort = "8.1.0"

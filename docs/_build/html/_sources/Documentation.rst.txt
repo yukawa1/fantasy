@@ -4,14 +4,6 @@ Fantasy package
 Submodules
 ----------
 
-fantasy.models module
----------------------
-
-.. automodule:: fantasy.models
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 fantasy.tools module
 --------------------
 
@@ -20,10 +12,14 @@ fantasy.tools module
    :undoc-members:
    :show-inheritance:
 
-Module contents
----------------
+fantasy.models module
+---------------------
 
-.. automodule:: fantasy
+.. automodule:: fantasy.models
    :members:
    :undoc-members:
    :show-inheritance:
+
+
+
+

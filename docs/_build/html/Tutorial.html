@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FANTASY Tutorial &mdash; Fantasy 0.1.0 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+        <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Example" href="Example.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html">
+            <img src="_static/fantasy.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Example.html">Example</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">FANTASY Tutorial</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Fantasy</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>FANTASY Tutorial</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Tutorial.ipynb.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  
+<style>
+/* CSS for nbsphinx extension */
+
+/* remove conflicting styling from Sphinx themes */
+div.nbinput.container div.prompt *,
+div.nboutput.container div.prompt *,
+div.nbinput.container div.input_area pre,
+div.nboutput.container div.output_area pre,
+div.nbinput.container div.input_area .highlight,
+div.nboutput.container div.output_area .highlight {
+    border: none;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+}
+
+div.nbinput.container > div[class*=highlight],
+div.nboutput.container > div[class*=highlight] {
+    margin: 0;
+}
+
+div.nbinput.container div.prompt *,
+div.nboutput.container div.prompt * {
+    background: none;
+}
+
+div.nboutput.container div.output_area .highlight,
+div.nboutput.container div.output_area pre {
+    background: unset;
+}
+
+div.nboutput.container div.output_area div.highlight {
+    color: unset;  /* override Pygments text color */
+}
+
+/* avoid gaps between output lines */
+div.nboutput.container div[class*=highlight] pre {
+    line-height: normal;
+}
+
+/* input/output containers */
+div.nbinput.container,
+div.nboutput.container {
+    display: -webkit-flex;
+    display: flex;
+    align-items: flex-start;
+    margin: 0;
+    width: 100%;
+}
+@media (max-width: 540px) {
+    div.nbinput.container,
+    div.nboutput.container {
+        flex-direction: column;
+    }
+}
+
+/* input container */
+div.nbinput.container {
+    padding-top: 5px;
+}
+
+/* last container */
+div.nblast.container {
+    padding-bottom: 5px;
+}
+
+/* input prompt */
+div.nbinput.container div.prompt pre {
+    color: #307FC1;
+}
+
+/* output prompt */
+div.nboutput.container div.prompt pre {
+    color: #BF5B3D;
+}
+
+/* all prompts */
+div.nbinput.container div.prompt,
+div.nboutput.container div.prompt {
+    width: 4.5ex;
+    padding-top: 5px;
+    position: relative;
+    user-select: none;
+}
+
+div.nbinput.container div.prompt > div,
+div.nboutput.container div.prompt > div {
+    position: absolute;
+    right: 0;
+    margin-right: 0.3ex;
+}
+
+@media (max-width: 540px) {
+    div.nbinput.container div.prompt,
+    div.nboutput.container div.prompt {
+        width: unset;
+        text-align: left;
+        padding: 0.4em;
+    }
+    div.nboutput.container div.prompt.empty {
+        padding: 0;
+    }
+
+    div.nbinput.container div.prompt > div,
+    div.nboutput.container div.prompt > div {
+        position: unset;
+    }
+}
+
+/* disable scrollbars on prompts */
+div.nbinput.container div.prompt pre,
+div.nboutput.container div.prompt pre {
+    overflow: hidden;
+}
+
+/* input/output area */
+div.nbinput.container div.input_area,
+div.nboutput.container div.output_area {
+    -webkit-flex: 1;
+    flex: 1;
+    overflow: auto;
+}
+@media (max-width: 540px) {
+    div.nbinput.container div.input_area,
+    div.nboutput.container div.output_area {
+        width: 100%;
+    }
+}
+
+/* input area */
+div.nbinput.container div.input_area {
+    border: 1px solid #e0e0e0;
+    border-radius: 2px;
+    /*background: #f5f5f5;*/
+}
+
+/* override MathJax center alignment in output cells */
+div.nboutput.container div[class*=MathJax] {
+    text-align: left !important;
+}
+
+/* override sphinx.ext.imgmath center alignment in output cells */
+div.nboutput.container div.math p {
+    text-align: left;
+}
+
+/* standard error */
+div.nboutput.container div.output_area.stderr {
+    background: #fdd;
+}
+
+/* ANSI colors */
+.ansi-black-fg { color: #3E424D; }
+.ansi-black-bg { background-color: #3E424D; }
+.ansi-black-intense-fg { color: #282C36; }
+.ansi-black-intense-bg { background-color: #282C36; }
+.ansi-red-fg { color: #E75C58; }
+.ansi-red-bg { background-color: #E75C58; }
+.ansi-red-intense-fg { color: #B22B31; }
+.ansi-red-intense-bg { background-color: #B22B31; }
+.ansi-green-fg { color: #00A250; }
+.ansi-green-bg { background-color: #00A250; }
+.ansi-green-intense-fg { color: #007427; }
+.ansi-green-intense-bg { background-color: #007427; }
+.ansi-yellow-fg { color: #DDB62B; }
+.ansi-yellow-bg { background-color: #DDB62B; }
+.ansi-yellow-intense-fg { color: #B27D12; }
+.ansi-yellow-intense-bg { background-color: #B27D12; }
+.ansi-blue-fg { color: #208FFB; }
+.ansi-blue-bg { background-color: #208FFB; }
+.ansi-blue-intense-fg { color: #0065CA; }
+.ansi-blue-intense-bg { background-color: #0065CA; }
+.ansi-magenta-fg { color: #D160C4; }
+.ansi-magenta-bg { background-color: #D160C4; }
+.ansi-magenta-intense-fg { color: #A03196; }
+.ansi-magenta-intense-bg { background-color: #A03196; }
+.ansi-cyan-fg { color: #60C6C8; }
+.ansi-cyan-bg { background-color: #60C6C8; }
+.ansi-cyan-intense-fg { color: #258F8F; }
+.ansi-cyan-intense-bg { background-color: #258F8F; }
+.ansi-white-fg { color: #C5C1B4; }
+.ansi-white-bg { background-color: #C5C1B4; }
+.ansi-white-intense-fg { color: #A1A6B2; }
+.ansi-white-intense-bg { background-color: #A1A6B2; }
+
+.ansi-default-inverse-fg { color: #FFFFFF; }
+.ansi-default-inverse-bg { background-color: #000000; }
+
+.ansi-bold { font-weight: bold; }
+.ansi-underline { text-decoration: underline; }
+
+
+div.nbinput.container div.input_area div[class*=highlight] > pre,
+div.nboutput.container div.output_area div[class*=highlight] > pre,
+div.nboutput.container div.output_area div[class*=highlight].math,
+div.nboutput.container div.output_area.rendered_html,
+div.nboutput.container div.output_area > div.output_javascript,
+div.nboutput.container div.output_area:not(.rendered_html) > img{
+    padding: 5px;
+    margin: 0;
+}
+
+/* fix copybtn overflow problem in chromium (needed for 'sphinx_copybutton') */
+div.nbinput.container div.input_area > div[class^='highlight'],
+div.nboutput.container div.output_area > div[class^='highlight']{
+    overflow-y: hidden;
+}
+
+/* hide copybtn icon on prompts (needed for 'sphinx_copybutton') */
+.prompt .copybtn {
+    display: none;
+}
+
+/* Some additional styling taken form the Jupyter notebook CSS */
+div.rendered_html table {
+  border: none;
+  border-collapse: collapse;
+  border-spacing: 0;
+  color: black;
+  font-size: 12px;
+  table-layout: fixed;
+}
+div.rendered_html thead {
+  border-bottom: 1px solid black;
+  vertical-align: bottom;
+}
+div.rendered_html tr,
+div.rendered_html th,
+div.rendered_html td {
+  text-align: right;
+  vertical-align: middle;
+  padding: 0.5em 0.5em;
+  line-height: normal;
+  white-space: normal;
+  max-width: none;
+  border: none;
+}
+div.rendered_html th {
+  font-weight: bold;
+}
+div.rendered_html tbody tr:nth-child(odd) {
+  background: #f5f5f5;
+}
+div.rendered_html tbody tr:hover {
+  background: rgba(66, 165, 245, 0.2);
+}
+
+/* CSS overrides for sphinx_rtd_theme */
+
+/* 24px margin */
+.nbinput.nblast.container,
+.nboutput.nblast.container {
+    margin-bottom: 19px;  /* padding has already 5px */
+}
+
+/* ... except between code cells! */
+.nblast.container + .nbinput.container {
+    margin-top: -19px;
+}
+
+.admonition > p:before {
+    margin-right: 4px;  /* make room for the exclamation icon */
+}
+
+/* Fix math alignment, see https://github.com/rtfd/sphinx_rtd_theme/pull/686 */
+.math {
+    text-align: unset;
+}
+</style>
+<section id="FANTASY-Tutorial">
+<h1>FANTASY Tutorial<a class="headerlink" href="#FANTASY-Tutorial" title="Permalink to this headline"></a></h1>
+<p>Open source code FANTASY (Fully Automated pythoN tool for AGN Spectra analYsis) is a python based code for simultaneous multi-component fitting of AGN spectra, optimized for the optical rest-frame band (3600-8000A), but also applicable to the UV range (2000-3600A) and NIR range (8000-11000A).</p>
+<p>The code fits simultaneously the underlying broken power-law continuum and sets of defined emission line lists. There is an option to import and fit together the Fe II model, to fully account for the rich emission of complex Fe II ion which can produce thousands of line transitions, both in the range of Hg and Hb, but also Ha line. The Fe II model is based on the atomic parameters of Fe II, and builds upon the models presented in Kovacevic et al. 2010, Shapovalova et al. 2012, and assumes that
+different Fe II lines are grouped according to the same lower energy level in the transition with line ratios connected through the line transition oscillatory strengths.</p>
+<p>The code is flexible in the selection of different groups of lines, either already predefined lists (e.g., standard narrow lines, Hydrogen lines, Helium lines, other broad lines, forbidden Fe II lines, coronal lines, etc.), but gives full flexibility to the user to merge predefined line lists, create customized line list, etc. The code can be used either for fitting a single spectrum, as well as for the sample of spectra, which is illustrated in several given examples. It is an open source, easy
+to use code, available for installation through pip install option. It is based on sherpa python package (Burke et al. 2019).</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[1]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#Before starting, we call some of the standard python packages, such as matplotlib, pandas, numpy, etc.</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">matplotlib</span> <span class="k">as</span> <span class="nn">mpl</span>
+<span class="kn">from</span> <span class="nn">matplotlib.ticker</span> <span class="kn">import</span> <span class="p">(</span><span class="n">MultipleLocator</span><span class="p">,</span> <span class="n">FormatStrFormatter</span><span class="p">,</span> <span class="n">AutoMinorLocator</span><span class="p">)</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="kn">import</span> <span class="nn">glob</span>
+</pre></div>
+</div>
+</div>
+<ol class="arabic simple">
+<li><p>Reading data</p></li>
+</ol>
+<p>First step involves reading a spectrum or set of spectra. We designed integrated three spectral classes: - read_sdss - designedto read SDSS fits (<a class="reference external" href="https://www.sdss.org">https://www.sdss.org</a>) - read_gama_fits - designed to read GAMA fits (<a class="reference external" href="http://www.gama-survey.org">http://www.gama-survey.org</a>) - read_text - designed to read any ASCII files (e.g., wavelength, flux, flux_error)</p>
+<p>The user has the possible to read any other file format using prefered method.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Below command import the above mentioned reading commands</span>
+<span class="kn">from</span> <span class="nn">fantasy.tools</span> <span class="kn">import</span> <span class="n">read_sdss</span><span class="p">,</span> <span class="n">read_text</span><span class="p">,</span> <span class="n">read_gama_fits</span>
+
+<span class="c1"># Below command import the necessary commands, which will be described later</span>
+<span class="kn">from</span> <span class="nn">fantasy.models</span> <span class="kn">import</span> <span class="n">create_input_folder</span>
+
+<span class="kn">from</span> <span class="nn">fantasy.models</span> <span class="kn">import</span> <span class="n">create_feii_model</span><span class="p">,</span> <span class="n">create_model</span><span class="p">,</span> <span class="n">create_tied_model</span><span class="p">,</span> <span class="n">continuum</span><span class="p">,</span> <span class="n">create_line</span><span class="p">,</span> <span class="n">create_fixed_model</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># This command reads the spectrum with the listed name, from the folder of this notebook or</span>
+<span class="c1"># from the given path e.g.,&#39;/path/to/files/spec*.txt&#39;</span>
+
+<span class="n">s</span><span class="o">=</span><span class="n">read_sdss</span><span class="p">(</span><span class="s1">&#39;spec-2770-54510-0433.fits&#39;</span><span class="p">)</span>
+
+<span class="c1"># Reading all .txt files with &quot;spec&quot; in the name</span>
+<span class="c1"># file_list=glob.glob(&#39;/path/to/files/spec*.txt&#39;)</span>
+</pre></div>
+</div>
+</div>
+<ol class="arabic simple" start="2">
+<li><p>Prepartion of the spectra</p></li>
+</ol>
+<p>Before performing the fittings, the FANTASY code provide several preprocessing options to prepare the spectrum, namely: - Galactic extinction correction - <em>DeRedden()</em> - redshift correction - <em>CorRed()</em> - host-galaxy fitting and subtraction - <em>fit_host</em> - croping/scaling of spectra - <em>crop(xmin,xmax)</em></p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># DeRedden() command corrects for the Galactic extinction, based on coordinates of the object provided in the fits,</span>
+<span class="c1"># which will be automatically derived from dust map data from Schlegel, Finkbeiner and Davis (1998).</span>
+<span class="c1"># If coordinates are not available you could manually insert them using simple commands s.ra=xxx.xxx, s.dec=xxx.xxx</span>
+
+<span class="c1"># s.ra=29.519807539582 #example input of arbitrary rightascension</span>
+<span class="c1"># s.dec=-0.872742349310271 #example input of arbitrary declination</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">DeRedden</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># CorRed() corrects for the cosmological redshift, based on redshift of the object provided in the fits.</span>
+<span class="c1"># If coordinates are not available you could manually insert them using simple command s.z=x.xxx</span>
+<span class="c1"># s.z=0.0804 #example input of arbitrary redshift</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">CorRed</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[6]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Crop function cuts the spectrum in a set wavelength range, e.g., if you want to fit just one emission line or a certain wavelength range</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">crop</span><span class="p">(</span><span class="mi">4000</span><span class="p">,</span> <span class="mi">8000</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[7]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Useful tip is to avoid using very small flux units.</span>
+<span class="c1"># e.g., SDSS spectra are given in 1e-17 erg/s/cm2/A and these are already scaled within read_sdss()</span>
+
+<span class="c1">#s.flux=s.flux*10**17</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Command *fit_host()* fits the observed spectrum with the combination of eignevectors for</span>
+<span class="c1"># the galaxy (stellar) and QSO components. The code will test for different number of components</span>
+<span class="c1"># until reaching best result based on the chi2 parameter.</span>
+
+<span class="c1"># IMPPORTANT: Code will by default subtract the host galaxy from the observed spectrum;</span>
+<span class="c1"># if you need the original spectrum for some analysis, make sure to copy it before host fitting.</span>
+<span class="n">s</span><span class="o">.</span><span class="n">obs</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">flux</span>
+
+<span class="n">s</span><span class="o">.</span><span class="n">fit_host</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Number of galaxy components  4
+Number of QSO components  4
+Reduced chi square  6.465770733744246
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="_images/Tutorial_13_1.png" src="_images/Tutorial_13_1.png" />
+</div>
+</div>
+<p>One possibility is to</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[11]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">restore</span><span class="p">()</span> <span class="c1">#command to restore the spectrum before host galaxy fitting and substraction</span>
+<span class="n">s</span><span class="o">.</span><span class="n">host1</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">host</span>
+<span class="n">s</span><span class="o">.</span><span class="n">fit_host</span><span class="p">(</span><span class="n">mask_host</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">custom</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Number of galaxy components  3
+Number of QSO components  12
+Reduced chi square  14.743763144862031
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="_images/Tutorial_15_1.png" src="_images/Tutorial_15_1.png" />
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[16]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#Let&#39;s compare two host results.</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">context</span><span class="p">([</span><span class="s1">&#39;nature&#39;</span><span class="p">,</span> <span class="s1">&#39;notebook&#39;</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">18</span><span class="p">,</span><span class="mi">8</span><span class="p">))</span>
+<span class="c1">#plt.plot(s.wave, s.flux, color=&quot;#929591&quot;, label=&#39;Obs&#39;, lw=2)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">s</span><span class="o">.</span><span class="n">host1</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;#929591&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;Host&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">s</span><span class="o">.</span><span class="n">host</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;#F10C45&quot;</span><span class="p">,</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Host_masked&#39;</span><span class="p">,</span><span class="n">lw</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s1">&#39;upper right&#39;</span><span class="p">,</span>  <span class="n">prop</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;size&#39;</span><span class="p">:</span> <span class="mi">20</span><span class="p">},</span> <span class="n">frameon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ncol</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<br/><br/><br/></pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[16]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+&lt;matplotlib.legend.Legend at 0x13f6726a0&gt;
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="_images/Tutorial_16_1.png" src="_images/Tutorial_16_1.png" />
+</div>
+</div>
+<ol class="arabic simple" start="3">
+<li><p>Creation of the predefined lists of emission lines</p></li>
+</ol>
+<p>Within FANTASY there are some standard lists of AGN emission lines, such as: Hydrogen lines (e.g., Ha, Hb, Hg, Hd, Pa, Pb, Pg, Pd), Helium lines (both He I and He II), basic narrow lines ([OIII], [NII]), other AGN narrow lines, other AGN broad lines, Fe II lines, coronal lines, etc.</p>
+<p>The command create_input_folder(xmin,xmax,path_to_folder) creates a folder in the specified path, copies the predefined line lists within the specified wavelength range.</p>
+<p>IMPORTANT: If the folder already exsists, it will be overwritten, which can be avoided by using the parameter overwrite=‘False’.</p>
+<p>TIP: Users can extend/shorten these line lists, as well as create completly new ones.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[17]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">create_input_folder</span><span class="p">(</span><span class="n">xmin</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span><span class="n">xmax</span><span class="o">=</span><span class="mi">8000</span><span class="p">,</span> <span class="n">path_to_folder</span><span class="o">=</span><span class="s1">&#39;/Users/dilic/work/agn/Nemanja/FANTASY_update/tutorial/lines/&#39;</span><span class="p">,</span><span class="n">overwrite</span><span class="o">=</span><span class="s1">&#39;False&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+Directory  /Users/dilic/work/agn/Nemanja/FANTASY_update/tutorial/lines/  already exists
+</pre></div></div>
+</div>
+<ol class="arabic simple" start="4">
+<li><p>Defining the fitting model</p></li>
+</ol>
+<p>Basic and simple model for AGN spectra fittings, should contain: - underlying continuum (broken power-law, power-law, streight line) - emission line (narrow, broad)</p>
+<p>Depending on the wavelength range, spectral quality (S/N ratio, spectra resolution), and object type, the fitting model can be customized to contain many and complex emission features. One example for a typical type 1 AGN is given here.</p>
+<p>Below we describe the fitting components: - <em>continuum()</em> - calls BrokenPowerlaw() model for a given breaking point (parameter <em>refer</em> indicate the breaking wavelength); note that the continuum amplitude is then automatically set based on the flux value at the breaking point; - <em>create_fixed_model</em> - calls all lines from the indicated list have the same width and shift); user can specify common name for these lines (parameter <em>name</em>); - <em>create_tide_model</em> - calls all lines are having width and
+shift tided to the reference line (typically [OIII] 5007 line); user can specify common name for these lines (parameter <em>prefix</em>); - <em>create_feii_model</em> - calls for the FeII model, in which all iron lines have the same width and shift;</p>
+<ul class="simple">
+<li><p><em>create_line</em> - calls single line at the given wavelength (parameter <em>position</em>), with possibility to set width (fwhm), shift (<em>offset</em>) and intensity (<em>ampl</em>);</p></li>
+<li><p><em>create_model</em> - calls all lines from the indicated list, but no parameter is constrained;</p></li>
+</ul>
+<p>For multi-line models, user can call a single line-list and many line-lists using the option files=[‘list1.csv’,‘list2.csv’].</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[19]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">cont</span><span class="o">=</span><span class="n">continuum</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">min_refer</span><span class="o">=</span><span class="mi">5790</span><span class="p">,</span> <span class="n">refer</span><span class="o">=</span><span class="mi">5800</span><span class="p">,</span> <span class="n">max_refer</span><span class="o">=</span><span class="mi">5810</span><span class="p">)</span>
+<span class="n">broad</span><span class="o">=</span><span class="n">create_fixed_model</span><span class="p">([</span><span class="s1">&#39;hydrogen.csv&#39;</span><span class="p">,</span> <span class="s1">&#39;helium.csv&#39;</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;br&#39;</span><span class="p">,</span><span class="n">min_offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_offset</span><span class="o">=</span><span class="mi">800</span><span class="p">)</span>
+<span class="n">narrow</span><span class="o">=</span><span class="n">create_tied_model</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;OIII5007&#39;</span><span class="p">,</span><span class="n">files</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;narrow_basic.csv&#39;</span><span class="p">,</span><span class="s1">&#39;hydrogen.csv&#39;</span><span class="p">],</span><span class="n">prefix</span><span class="o">=</span><span class="s1">&#39;nr&#39;</span><span class="p">,</span> <span class="n">fwhm</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span><span class="n">min_offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_offset</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span> <span class="n">min_fwhm</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span> <span class="n">max_fwhm</span><span class="o">=</span><span class="mi">1200</span><span class="p">,</span><span class="n">fix_oiii_ratio</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">position</span><span class="o">=</span><span class="mf">5006.803341</span><span class="p">,</span> <span class="n">included</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">min_amplitude</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+<span class="n">fe</span><span class="o">=</span><span class="n">create_feii_model</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;feii&#39;</span><span class="p">,</span> <span class="n">fwhm</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">min_fwhm</span><span class="o">=</span><span class="mi">600</span><span class="p">,</span> <span class="n">max_fwhm</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">min_offset</span><span class="o">=-</span><span class="mi">3000</span><span class="p">,</span> <span class="n">max_offset</span><span class="o">=</span><span class="mi">3000</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[20]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Code fits simultaneously all features.</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">cont</span><span class="o">+</span><span class="n">broad</span><span class="o">+</span><span class="n">narrow</span><span class="o">+</span><span class="n">fe</span>
+</pre></div>
+</div>
+</div>
+<ol class="arabic simple" start="5">
+<li><p>Fittings</p></li>
+</ol>
+<p>Command <em>s.fit()</em> perform fittings of the spectrum, which is based on Python Sherpa package, with above defined model. Code offers the possibility to set the number of consequent fittings (option ntrial) to increase the convergence, given with the chi2, which is listed.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[21]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">s</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">ntrial</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+stati 619617.5810068528
+1 iter stat:  10016.898938560465
+2 iter stat:  3233.509417138339
+3 iter stat:  1273.3420603006962
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>Congratulations, you are DONE!
+</pre></div>
+</div>
+</div>
+<ol class="arabic simple" start="6">
+<li><p>Plotting the results</p></li>
+</ol>
+<p>You can plot the results using your favorite plotting style, an example is given below.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">context</span><span class="p">([</span><span class="s1">&#39;nature&#39;</span><span class="p">,</span> <span class="s1">&#39;notebook&#39;</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">18</span><span class="p">,</span><span class="mi">8</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">s</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;#929591&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;Obs&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">model</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;#F10C45&quot;</span><span class="p">,</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Model&#39;</span><span class="p">,</span><span class="n">lw</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">model</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">)</span><span class="o">-</span><span class="n">s</span><span class="o">.</span><span class="n">flux</span><span class="o">-</span><span class="mi">50</span><span class="p">,</span> <span class="s1">&#39;--&#39;</span><span class="p">,</span><span class="n">color</span><span class="o">=</span><span class="s2">&quot;#929591&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;Residual&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">1</span> <span class="p">)</span>
+
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">cont</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">),</span><span class="s1">&#39;--&#39;</span><span class="p">,</span><span class="n">color</span><span class="o">=</span><span class="s2">&quot;#042E60&quot;</span><span class="p">,</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Continuum&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">narrow</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">),</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Narrow&#39;</span><span class="p">,</span><span class="n">color</span><span class="o">=</span><span class="s2">&quot;#25A36F&quot;</span><span class="p">,</span><span class="n">lw</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">broad</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;Broad&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;#2E5A88&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">fe</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">),</span><span class="s1">&#39;-&#39;</span><span class="p">,</span><span class="n">color</span><span class="o">=</span><span class="s2">&quot;#CB416B&quot;</span><span class="p">,</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;Fe II model&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Rest Wavelength&#39;</span><span class="p">,</span><span class="n">fontsize</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;Flux&#39;</span><span class="p">,</span><span class="n">fontsize</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">(</span><span class="mi">4000</span><span class="p">,</span><span class="mi">7000</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylim</span><span class="p">(</span><span class="o">-</span><span class="mi">150</span><span class="p">,</span><span class="mi">900</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">tick_params</span><span class="p">(</span><span class="n">which</span><span class="o">=</span><span class="s1">&#39;both&#39;</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s2">&quot;in&quot;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">yticks</span><span class="p">(</span><span class="n">fontsize</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">4000</span><span class="p">,</span> <span class="mi">7000</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">500</span><span class="p">),</span><span class="n">fontsize</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s1">&#39;upper center&#39;</span><span class="p">,</span>  <span class="n">prop</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;size&#39;</span><span class="p">:</span> <span class="mi">22</span><span class="p">},</span> <span class="n">frameon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ncol</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s1">&#39;fantasy_fit.pdf&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<p>7.Inspecting/saving the plotting results</p>
+<p>To examine the fitting results, simply use the command <em>model</em>, which will display all parameters for each emission line. Note that for complex model, for which the name/prefix has been indicated when defining the model.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[23]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># To see the fitting results, one can use standard outputs from Sherpa package, such as:</span>
+<span class="c1"># gres - to list all fitting results</span>
+<span class="c1"># gres.parnames - to list all parameters</span>
+<span class="c1"># save_json() - to save the results</span>
+<span class="n">s</span><span class="o">.</span><span class="n">gres</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[23]:
+</pre></div>
+</div>
+<div class="output_area rendered_html docutils container">
+<style>/*
+Copyright (C) 2020  Smithsonian Astrophysical Observatory
+
+
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc.,
+ 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+*/
+
+:root {
+  --sherpa-border-color: var(--jp-border-color2, #e0e0e0);
+  --sherpa-background-color: var(--jp-layout-color0, white);
+  --sherpa-background-color-row-even: var(--jp-layout-color1, white);
+  --sherpa-background-color-row-odd: var(--jp-layout-color2, #eeeeee);
+
+  /* https://medium.com/ge-design/iot-cool-gray-is-a-great-background-color-for-data-visualization-ebf18c318418 */
+  --sherpa-background-color-dark1: #EBEFF2;
+  --sherpa-background-color-dark2: #D8E0E5;
+}
+
+div.sherpa-text-fallback {
+    display: none;
+}
+
+div.sherpa {
+    display: block;
+}
+
+div.sherpa details summary {
+    display: list-item;  /* needed for notebook, not lab */
+    font-size: larger;
+}
+
+div.sherpa details div.datavals {
+    display: grid;
+    grid-template-columns: 1fr 3fr;
+    column-gap: 0.5em;
+}
+
+div.sherpa div.dataname {
+    font-weight: bold;
+    border-right: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa div.dataval { }
+
+div.sherpa div.datavals div:nth-child(4n + 1) ,
+div.sherpa div.datavals div:nth-child(4n + 2) {
+    background: var(--sherpa-background-color-row-odd);
+}
+
+div.sherpa table.model tbody {
+    border-bottom: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model tr.block {
+    border-top: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model th.model-odd ,
+div.sherpa table.model th.model-even {
+    border-right: 1px solid var(--sherpa-border-color);
+}
+
+div.sherpa table.model th.model-odd {
+    background: var(--sherpa-background-color-dark1);
+}
+
+div.sherpa table.model th.model-even {
+    background: var(--sherpa-background-color-dark2);
+}
+
+div.sherpa .failed {
+    background: orange;
+    font-size: large;
+    padding: 1em;
+}
+</style><div class="sherpa-text-fallback">&lt;Fit results instance&gt;</div><div hidden class="sherpa"><details open><summary>Fit parameters</summary><table class="fit"><thead><tr><th>Parameter</th><th>Best-fit value</th><th>Approximate error</th></tr></thead><tbody><tr><td>brokenpowerlaw.refer</td><td>        5810</td><td>&#177;      25.4334</td></tr><tr><td>brokenpowerlaw.ampl</td><td>     63.1799</td><td>&#177;     0.404956</td></tr><tr><td>brokenpowerlaw.index1</td><td>    -1.61397</td><td>&#177;    0.0127901</td></tr><tr><td>brokenpowerlaw.index2</td><td>           1</td><td>&#177;    0.0371847</td></tr><tr><td>br.amp_Hd_4102</td><td>      29.813</td><td>&#177;      1.35838</td></tr><tr><td>br.amp_Hg_4340</td><td>      58.639</td><td>&#177;       2.4164</td></tr><tr><td>br.amp_Hb_4861</td><td>     87.2594</td><td>&#177;     0.740192</td></tr><tr><td>br.amp_Ha_6563</td><td>     202.751</td><td>&#177;       1.4116</td></tr><tr><td>br.amp_HeI_4144</td><td>     3.38059</td><td>&#177;     0.829523</td></tr><tr><td>br.amp_HeI_4471</td><td>      13.489</td><td>&#177;     0.531778</td></tr><tr><td>br.amp_HeII_4686</td><td>      14.981</td><td>&#177;     0.474702</td></tr><tr><td>br.amp_HeI_5877</td><td>     13.7199</td><td>&#177;     0.417641</td></tr><tr><td>br.amp_HeI_7065</td><td>     57.6314</td><td>&#177;     0.467647</td></tr><tr><td>br.amp_HeI_7281</td><td>     258.244</td><td>&#177;      5.23228</td></tr><tr><td>br.amp_HeI_7816</td><td>           2</td><td>&#177;            0</td></tr><tr><td>br.offs_kms</td><td>     378.284</td><td>&#177;        7.215</td></tr><tr><td>br.fwhm</td><td>        5808</td><td>&#177;      21.4501</td></tr><tr><td>nr_OIII5007.ampl</td><td>     103.933</td><td>&#177;     0.943584</td></tr><tr><td>nr_OIII5007.offs_kms</td><td>     52.3042</td><td>&#177;       3.1034</td></tr><tr><td>nr_OIII5007.fwhm</td><td>        1200</td><td>&#177;      7.69857</td></tr><tr><td>nr_NII6584.ampl</td><td>     231.198</td><td>&#177;      4.17811</td></tr><tr><td>nr_[O III]_4363.ampl</td><td>           0</td><td>&#177;       2.3602</td></tr><tr><td>nr_[O I]_6300.ampl</td><td>     23.3256</td><td>&#177;     0.774259</td></tr><tr><td>nr_[O I]_6363.ampl</td><td>     23.5914</td><td>&#177;     0.816105</td></tr><tr><td>nr_[S II]_6716.ampl</td><td>     33.4508</td><td>&#177;     0.940455</td></tr><tr><td>nr_[S II]_6730.ampl</td><td>     39.3383</td><td>&#177;     0.939131</td></tr><tr><td>nr_[O II]_7330.ampl</td><td>           2</td><td>&#177;            0</td></tr><tr><td>nr_Hd_4101.ampl</td><td>     21.4471</td><td>&#177;      1.64122</td></tr><tr><td>nr_Hg_4340.ampl</td><td>     28.3184</td><td>&#177;      2.54537</td></tr><tr><td>nr_Hb_4861.ampl</td><td>     171.241</td><td>&#177;      2.00691</td></tr><tr><td>nr_Ha_6562.ampl</td><td>         500</td><td>&#177;      4.38591</td></tr><tr><td>feii.amp_e6D</td><td>           2</td><td>&#177;            0</td></tr><tr><td>feii.amp_z4F</td><td>     89.3037</td><td>&#177;      5.76807</td></tr><tr><td>feii.amp_z4D</td><td>     29.8846</td><td>&#177;      0.51487</td></tr><tr><td>feii.amp_z4P</td><td>           2</td><td>&#177;            0</td></tr><tr><td>feii.amp_a4G</td><td>     39.4093</td><td>&#177;     0.457842</td></tr><tr><td>feii.amp_a4H</td><td>     9.98454</td><td>&#177;      1.46142</td></tr><tr><td>feii.amp_b2H</td><td>     10.3376</td><td>&#177;     0.551227</td></tr><tr><td>feii.amp_b4D</td><td>     23.7052</td><td>&#177;     0.767224</td></tr><tr><td>feii.amp_b4F</td><td>     34.4368</td><td>&#177;     0.466344</td></tr><tr><td>feii.amp_b4P</td><td>     30.7931</td><td>&#177;     0.830998</td></tr><tr><td>feii.amp_a6S</td><td>     55.8902</td><td>&#177;     0.656085</td></tr><tr><td>feii.amp_a2D2</td><td>     14.0571</td><td>&#177;      1.16067</td></tr><tr><td>feii.offs_kms</td><td>     295.555</td><td>&#177;      8.20125</td></tr><tr><td>feii.fwhm</td><td>        2000</td><td>&#177;      15.6287</td></tr></tbody></table></details><details><summary>Summary (10)</summary><div class="datavals"><div class="dataname">Method</div><div class="dataval">levmar</div><div class="dataname">Statistic</div><div class="dataval">chi2</div><div class="dataname">Final statistic</div><div class="dataval">73159.8</div><div class="dataname">Number of evaluations</div><div class="dataval">902</div><div class="dataname">Reduced statistic</div><div class="dataval">29.2522</div><div class="dataname">Probability (Q-value)</div><div class="dataval">0</div><div class="dataname">Initial statistic</div><div class="dataval">74433.1</div><div class="dataname">&#916; statistic</div><div class="dataval">1273.34</div><div class="dataname">Number of data points</div><div class="dataval">2546</div><div class="dataname">Degrees of freedom</div><div class="dataval">2501</div></div></details></div></div>
+</div>
+<ol class="arabic simple" start="8">
+<li><p>Simple analysis</p></li>
+</ol>
+<p>Here we demonstrate how to measure the fluxes of a model component.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[24]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">flux_feII</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">fe</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">))</span>
+<span class="n">flux_Ha_broad</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">flux_feII</span><span class="p">)</span>
+<br/></pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+22742.078
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Example.html" class="btn btn-neutral float-left" title="Example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, N. Rakic, D. Ilic and L. C. Popovic.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

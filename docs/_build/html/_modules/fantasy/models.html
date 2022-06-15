@@ -38,8 +38,8 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../Example.html">Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../modules.html">Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Tutorial.html">FANTASY Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Documentation.html">Fantasy package</a></li>
 </ul>
 
         </div>
@@ -86,8 +86,6 @@
     <span class="s2">&quot;create_tied_model&quot;</span><span class="p">,</span>
     <span class="s2">&quot;create_model&quot;</span><span class="p">,</span>
     <span class="s2">&quot;create_fixed_model&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;FeII&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;Bal_Lines&quot;</span><span class="p">,</span>
     <span class="s2">&quot;create_feii_model&quot;</span>
     <span class="p">)</span>
 <span class="n">script_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span>
@@ -100,14 +98,15 @@
 <span class="sd">    The function takes three arguments:</span>
 <span class="sd">        1) xmin - the minimum value of the range to be used for creating input files, default is 4000</span>
 <span class="sd">        2) xmax - the maximum value of the range to be used for creating input files, default is 7000</span>
-<span class="sd">        3) path_to_folder - The full path where you want your new folder created.  If no argument is given then it will create a new folder in current directory</span>
+<span class="sd">        3) path_to_folder - The path where you want your new folder created. Default is current directory</span>
 <span class="sd">    </span>
-<span class="sd">    :param xmin=4000: Used to Set the minimum value of the x-axis.</span>
-<span class="sd">    :param xmax=7000: Used to Specify the maximum value of the x-axis.</span>
-<span class="sd">    :param path_to_folder=&#39;&#39;: Used to Specify the path to the folder where you want to save your files.</span>
-<span class="sd">    :return: The path to the folder that was created.</span>
-<span class="sd">    </span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    :param xmin=4000: Used to Set the minimum value of the x-axis (position or wavelength).</span>
+<span class="sd">    :param xmax=7000: Used to Limit the maximum value of the x-axis.</span>
+<span class="sd">    :param path_to_folder=&#39;&#39;: Used to Specify the path to the folder where you want to save your file.</span>
+<span class="sd">    :param overwrite=True: Used to Overwrite the files in the input folder.</span>
+<span class="sd">    :return: The path to the folder where the input files are stored.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+    
     <span class="k">try</span><span class="p">:</span>
         <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">path_to_folder</span><span class="p">)</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Directory &quot;</span><span class="p">,</span> <span class="n">path_to_folder</span><span class="p">,</span> <span class="s2">&quot; Created &quot;</span><span class="p">)</span>
@@ -130,12 +129,13 @@
 
 <div class="viewcode-block" id="automatic_path"><a class="viewcode-back" href="../../fantasy.html#fantasy.models.automatic_path">[docs]</a><span class="k">def</span> <span class="nf">automatic_path</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">path_to_models</span><span class="o">=</span><span class="n">input_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    The make_path function creates a directory for each line set in the list of line sets.</span>
-<span class="sd">    It then creates a csv file for each model spectrum in the path_to_models folder.</span>
-
-<span class="sd">    :param path_to_models: Used to Find the file path of the models.</span>
+<span class="sd">    The automatic_path function takes a spectrum object and creates a directory with the name of the spectrum.</span>
+<span class="sd">    It then saves all models within the input path that fall within the wavelength range of your data to this directory.</span>
+<span class="sd">    </span>
 <span class="sd">    :param s: Used to Define the spectrum object.</span>
-<span class="sd">    :return: The path to the directory that will be created.</span>
+<span class="sd">    :param path_to_models=input_path: Used to Specify the path to the models.</span>
+<span class="sd">    :param overwrite=True: Used to Overwrite a model if it already exists.</span>
+<span class="sd">    :return: The path to the directory where the.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">dirName</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span>
     <span class="n">xmin</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
@@ -285,7 +285,7 @@
     <span class="k">return</span> <span class="n">f2</span>
 
 
-<div class="viewcode-block" id="FeII"><a class="viewcode-back" href="../../fantasy.html#fantasy.models.FeII">[docs]</a><span class="k">class</span> <span class="nc">FeII</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">RegriddableModel1D</span><span class="p">):</span>
+<span class="k">class</span> <span class="nc">FeII</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">RegriddableModel1D</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;feii&quot;</span><span class="p">):</span>
         <span class="n">dft</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">path1</span> <span class="o">+</span> <span class="s2">&quot;feII_model.csv&quot;</span><span class="p">)</span>
 
@@ -311,8 +311,8 @@
 
         <span class="n">model</span><span class="o">.</span><span class="n">RegriddableModel1D</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">pars</span><span class="p">)</span>
 
-<div class="viewcode-block" id="FeII.calc"><a class="viewcode-back" href="../../fantasy.html#fantasy.models.FeII.calc">[docs]</a>    <span class="k">def</span> <span class="nf">calc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_feii</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span></div></div>
+    <span class="k">def</span> <span class="nf">calc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_feii</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
 
 
 <span class="k">def</span> <span class="nf">_uv_feii</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
@@ -330,6 +330,7 @@
         <span class="n">df</span> <span class="o">=</span> <span class="n">dft</span><span class="p">[</span><span class="n">dft</span><span class="p">[</span><span class="s2">&quot;ime&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">uniq</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
 
         <span class="n">rxc</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">wav</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="n">Int</span><span class="o">=</span><span class="n">df</span><span class="o">.</span><span class="n">Int</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
 
         <span class="n">par</span> <span class="o">=</span> <span class="n">pars</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">rxc</span><span class="p">)):</span>
@@ -456,7 +457,42 @@
         <span class="sd">&quot;&quot;&quot;Evaluate the model&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">line</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
     
+<span class="k">class</span> <span class="nc">Absorption_Line</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">RegriddableModel1D</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;line&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ampl</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="s2">&quot;ampl&quot;</span><span class="p">,</span> <span class="o">-</span><span class="mi">10</span><span class="p">,</span> <span class="nb">min</span><span class="o">=-</span><span class="mi">10000</span><span class="p">,</span> <span class="n">hard_min</span><span class="o">=-</span><span class="mi">10000</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pos</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span>
+            <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;pos&quot;</span><span class="p">,</span> <span class="mi">4861</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">units</span><span class="o">=</span><span class="s2">&quot;angstroms&quot;</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">offs_kms</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span>
+            <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;offs_kms&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">min</span><span class="o">=-</span><span class="mi">10000</span><span class="p">,</span> <span class="n">hard_min</span><span class="o">=-</span><span class="mi">10000</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">10000</span><span class="p">,</span> <span class="n">units</span><span class="o">=</span><span class="s2">&quot;km/s&quot;</span>
+        <span class="p">)</span>
+        
 
+        <span class="bp">self</span><span class="o">.</span><span class="n">fwhm</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span>
+            <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;fwhm&quot;</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">hard_min</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">10000</span><span class="p">,</span> <span class="n">units</span><span class="o">=</span><span class="s2">&quot;km/s&quot;</span>
+        <span class="p">)</span>
+
+        <span class="n">model</span><span class="o">.</span><span class="n">RegriddableModel1D</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ampl</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">offs_kms</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fwhm</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">line</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+
+
+        <span class="p">(</span><span class="n">ampl</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">offs_kms</span><span class="p">,</span> <span class="n">fwhm</span><span class="p">)</span> <span class="o">=</span> <span class="n">pars</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mf">299792.458</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="n">pos</span> <span class="o">*</span> <span class="n">offs_kms</span> <span class="o">/</span> <span class="n">c</span>
+        <span class="n">sigma</span> <span class="o">=</span> <span class="p">(</span><span class="n">pos</span> <span class="o">+</span> <span class="n">offset</span><span class="p">)</span> <span class="o">*</span> <span class="n">fwhm</span> <span class="o">/</span> <span class="p">(</span><span class="n">c</span> <span class="o">*</span> <span class="mf">2.354</span><span class="p">)</span>
+
+        <span class="n">f1</span> <span class="o">=</span> <span class="n">ampl</span>  <span class="c1"># /(sigma*np.sqrt(2*np.pi))</span>
+        <span class="n">f2</span> <span class="o">=</span> <span class="o">-</span><span class="p">((</span><span class="n">x</span> <span class="o">-</span> <span class="n">pos</span> <span class="o">-</span> <span class="n">offset</span><span class="p">)</span> <span class="o">**</span> <span class="mf">2.0</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">sigma</span> <span class="o">**</span> <span class="mf">2.0</span><span class="p">)</span>
+        <span class="c1"># fwhm = sigma * 2.355</span>
+        <span class="c1"># flux = ampl * (sigma*np.sqrt(2*np.pi))</span>
+
+        <span class="k">return</span> <span class="n">f1</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">f2</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">calc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Evaluate the model&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">line</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
 
 <span class="k">def</span> <span class="nf">_lorentz</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
     <span class="p">(</span><span class="n">ampl</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">offs_kms</span><span class="p">,</span> <span class="n">fwhm</span><span class="p">)</span> <span class="o">=</span> <span class="n">pars</span>
@@ -746,6 +782,20 @@
 <span class="c1">#         &quot;&quot;&quot;Evaluate the model&quot;&quot;&quot;</span>
 <span class="c1">#         return _uv_fe(pars, x)</span>
 
+<span class="k">def</span> <span class="nf">_line</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+    
+
+    <span class="p">(</span><span class="n">ampl</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">offs_kms</span><span class="p">,</span> <span class="n">fwhm</span><span class="p">)</span> <span class="o">=</span> <span class="n">pars</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="mf">299792.458</span> 
+    <span class="n">offset</span> <span class="o">=</span> <span class="n">pos</span> <span class="o">*</span> <span class="n">offs_kms</span> <span class="o">/</span> <span class="n">c</span>
+    <span class="n">sigma</span> <span class="o">=</span> <span class="p">(</span><span class="n">pos</span> <span class="o">+</span> <span class="n">offset</span><span class="p">)</span> <span class="o">*</span> <span class="n">fwhm</span> <span class="o">/</span> <span class="p">(</span><span class="n">c</span> <span class="o">*</span> <span class="mf">2.354</span><span class="p">)</span>
+    
+    <span class="n">f1</span> <span class="o">=</span> <span class="n">ampl</span><span class="c1">#/(sigma*np.sqrt(2*np.pi))</span>
+    <span class="n">f2</span> <span class="o">=-</span> <span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">pos</span> <span class="o">-</span> <span class="n">offset</span><span class="p">)</span><span class="o">**</span><span class="mf">2.</span><span class="o">/</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">sigma</span><span class="o">**</span><span class="mf">2.</span><span class="p">)</span>
+    <span class="c1">#fwhm = sigma * 2.355</span>
+    <span class="c1">#flux = ampl * (sigma*np.sqrt(2*np.pi))</span>
+    
+    <span class="k">return</span> <span class="n">f1</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">f2</span><span class="p">)</span>
 
 <span class="k">def</span> <span class="nf">_balmer</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
     <span class="n">lambda_BE</span> <span class="o">=</span> <span class="mf">3646.0</span>
@@ -761,7 +811,7 @@
     <span class="k">return</span> <span class="n">f</span>
 
 
-<div class="viewcode-block" id="Bal_Lines"><a class="viewcode-back" href="../../fantasy.html#fantasy.models.Bal_Lines">[docs]</a><span class="k">class</span> <span class="nc">Bal_Lines</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">RegriddableModel1D</span><span class="p">):</span>
+<span class="k">class</span> <span class="nc">Bal_Lines</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">RegriddableModel1D</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Bal_lines&quot;</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ampl</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="s2">&quot;ampl&quot;</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">hard_min</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="c1"># self.pos = model.Parameter(name, &#39;pos&#39;, 4861, min = 0,frozen = True, units = &#39;angstroms&#39;)</span>
@@ -779,9 +829,9 @@
             <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ampl</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">offs_kms</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fwhm</span><span class="p">)</span>
         <span class="p">)</span>
 
-<div class="viewcode-block" id="Bal_Lines.calc"><a class="viewcode-back" href="../../fantasy.html#fantasy.models.Bal_Lines.calc">[docs]</a>    <span class="k">def</span> <span class="nf">calc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">calc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Evaluate the model&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="n">_balmer</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span></div></div>
+        <span class="k">return</span> <span class="n">_balmer</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
 
 
 <span class="k">def</span> <span class="nf">_ssp_host</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
@@ -944,6 +994,49 @@
     <span class="k">return</span> <span class="n">model</span></div>
 
 
+<span class="k">def</span> <span class="nf">create_absorption_model</span><span class="p">(</span>
+    <span class="n">files</span><span class="o">=</span><span class="p">[],</span>
+    <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+    <span class="n">amplitude</span><span class="o">=-</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">fwhm</span><span class="o">=</span><span class="mi">3000</span><span class="p">,</span>
+    <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+    <span class="n">min_offset</span><span class="o">=-</span><span class="mi">3000</span><span class="p">,</span>
+    <span class="n">max_offset</span><span class="o">=</span><span class="mi">3000</span><span class="p">,</span>
+    <span class="n">min_amplitude</span><span class="o">=-</span><span class="mi">1000</span><span class="p">,</span>
+    <span class="n">max_amplitude</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+    <span class="n">min_fwhm</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">max_fwhm</span><span class="o">=</span><span class="mi">7000</span><span class="p">,</span>
+<span class="p">):</span>
+
+  
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">files</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">F</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+            <span class="n">F</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">path1</span> <span class="o">+</span> <span class="n">file</span><span class="p">))</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">F</span><span class="p">)</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;List of csv files should be given to create model&quot;</span><span class="p">)</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">line</span><span class="p">)):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">Absorption_Line</span><span class="p">(</span><span class="n">prefix</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">df</span><span class="o">.</span><span class="n">line</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">+</span><span class="s1">&#39;_&#39;</span><span class="o">+</span><span class="n">df</span><span class="o">.</span><span class="n">position</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">),)</span>
+            
+        <span class="n">line</span><span class="o">.</span><span class="n">pos</span><span class="o">=</span><span class="n">df</span><span class="o">.</span><span class="n">position</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">ampl</span><span class="o">=</span><span class="n">amplitude</span><span class="p">,</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">fwhm</span><span class="o">=</span><span class="n">fwhm</span><span class="p">,</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">offs_kms</span><span class="o">=</span><span class="n">offset</span><span class="p">,</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">offs_kms</span><span class="o">.</span><span class="n">min</span><span class="o">=</span><span class="n">min_offset</span><span class="p">,</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">offs_kms</span><span class="o">.</span><span class="n">min</span><span class="o">=</span><span class="n">max_offset</span><span class="p">,</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">ampl</span><span class="o">.</span><span class="n">min</span><span class="o">=</span><span class="n">min_amplitude</span><span class="p">,</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">ampl</span><span class="o">.</span><span class="n">max</span><span class="o">=</span><span class="n">max_amplitude</span><span class="p">,</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">fwhm</span><span class="o">.</span><span class="n">min</span><span class="o">=</span><span class="n">min_fwhm</span><span class="p">,</span>
+        <span class="n">line</span><span class="o">.</span><span class="n">fwhm</span><span class="o">.</span><span class="n">max</span><span class="o">=</span><span class="n">max_fwhm</span><span class="p">,</span>
+        <span class="n">model</span><span class="o">+=</span><span class="n">line</span>
+    
+    <span class="k">return</span> <span class="n">model</span>
+
+
 <span class="n">OIII5007</span> <span class="o">=</span> <span class="n">create_line</span><span class="p">(</span>
     <span class="s2">&quot;OIII5007&quot;</span><span class="p">,</span>
     <span class="n">pos</span><span class="o">=</span><span class="mf">5006.803341</span><span class="p">,</span>
@@ -957,15 +1050,13 @@
 <span class="p">)</span>
 
 
-<span class="k">def</span> <span class="nf">OIII_NII</span><span class="p">(</span><span class="n">ref_line</span><span class="o">=</span><span class="n">OIII5007</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">OIII_NII</span><span class="p">(</span><span class="n">ref_line</span><span class="o">=</span><span class="n">OIII5007</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The narrow_basic function creates a narrow line profile for the OIII5007, NII6584, and NII6548 lines.</span>
 <span class="sd">    It takes in the position of each line as well as its FWHM and amplitude. It also takes in an offset value which is </span>
 <span class="sd">    the same for all three lines. The function returns a dictionary with each of these parameters.</span>
 
 <span class="sd">    :return: A list of the lines that are created.</span>
-
-<span class="sd">    :doc-author: Trelent</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">OIII4958</span> <span class="o">=</span> <span class="n">create_line</span><span class="p">(</span>
@@ -1097,10 +1188,9 @@
                        <span class="n">min_fwhm</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
                        <span class="n">max_fwhm</span><span class="o">=</span><span class="mi">7000</span><span class="p">,):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    The create_fixed_model function creates a model that is fixed to the input parameters.</span>
-<span class="sd">    The function takes as an argument a list of csv files, which contain the line information for each observation.</span>
+<span class="sd">    The create_fixed_model function creates a model that is fixed fwhm for all lines.</span>
+<span class="sd">    The function takes as an argument a list of csv files, which contain the information (name and position) of all lines included in the model.</span>
 <span class="sd">    It also takes as arguments: name, amplitude, fwhm (km/s), offset (km/s) and min_offset and max_offset (km/s). </span>
-<span class="sd">    The function returns a Fixed_Lines object.</span>
 <span class="sd">    </span>
 <span class="sd">    :param files=[]: Used to Pass a list of csv files to the model.</span>
 <span class="sd">    :param name=&#39;&#39;: Used to Give the model a name.</span>
@@ -1113,11 +1203,10 @@
 <span class="sd">    :param max_amplitude=600: Used to Limit the maximum amplitude of the lines.</span>
 <span class="sd">    :param min_fwhm=100: Used to Set a lower limit to the fwhm parameter.</span>
 <span class="sd">    :param max_fwhm=7000: Used to Set the maximum value of the fwhm parameter.</span>
-<span class="sd">    :param : Used to Create a model with a fixed number of lines.</span>
+<span class="sd">    :param : Used to Set the initial value of the amplitude parameter.</span>
 <span class="sd">    :return: A fixed_lines class object.</span>
-<span class="sd">    </span>
-<span class="sd">    :doc-author: Trelent</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">files</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
         <span class="n">F</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>

@@ -38,8 +38,8 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../Example.html">Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../modules.html">Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Tutorial.html">FANTASY Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Documentation.html">Fantasy package</a></li>
 </ul>
 
         </div>
@@ -166,8 +166,6 @@
 <span class="sd">        :param minw=3900: Used to Set the minimum wavelength of the new array.</span>
 <span class="sd">        :param maxw=6800: Used to Define the upper limit of the wavelength range to be used for fitting.</span>
 <span class="sd">        :return: The new wavelength and flux values for the spectrum.</span>
-<span class="sd">        </span>
-<span class="sd">        </span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">minw</span><span class="p">,</span> <span class="n">maxw</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
         <span class="n">flux</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">spectres</span><span class="p">(</span><span class="n">new</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="n">spec_errs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">err</span><span class="p">)</span>
@@ -189,8 +187,6 @@
 <span class="sd">        :param xmin=4050: Used to Set the lower wavelength limit of the cropped spectrum.</span>
 <span class="sd">        :param xmax=7300: Used to Select the wavelength range of interest.</span>
 <span class="sd">        :return: A new spectrum object with the cropped wavelength range.</span>
-<span class="sd">        </span>
-<span class="sd">    </span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="n">xmin</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="n">xmax</span><span class="p">)</span>
@@ -211,18 +207,25 @@
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Minimum of wavelength is &quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Maximum of wavelength is &quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span></div>
 
-<div class="viewcode-block" id="spectrum.fit_host"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.fit_host">[docs]</a>    <span class="k">def</span> <span class="nf">fit_host</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="spectrum.fit_host"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.fit_host">[docs]</a>    <span class="k">def</span> <span class="nf">fit_host</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mask_host</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">custom</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">mask_list</span><span class="o">=</span><span class="p">[]):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        The fit_host function fits the host galaxy and AGN components to the spectrum.</span>
-<span class="sd">        It takes a list of tuples as an input, which are combinations of number of </span>
-<span class="sd">        galaxy components and number of QSO components. The function fits each combination </span>
-<span class="sd">        of parameters with a linear model, then calculates reduced chi square for each fit. </span>
-<span class="sd">        The function returns the best fit combination based on reduced chi square value.</span>
+<span class="sd">        The fit_host function fits a host galaxy and an AGN to the observed spectrum.</span>
+<span class="sd">        It takes as input:</span>
+<span class="sd">            mask_host (bool): If True, it masks the host emission lines using _host_mask function. Default is False.</span>
+<span class="sd">            custom (bool): If True, it masks user defined emission lines using _custom_mask function. Default is False. </span>
+<span class="sd">            mask_list ([float]): A list of wavelengths in angstroms that will be masked if custom=True .Default is empty list [].</span>
+<span class="sd">        </span>
+<span class="sd">             Returns: </span>
+<span class="sd">        </span>
+<span class="sd">                self.(wave,flux,err) : The wavelength array , flux array and error array after fitting for host galaxy and AGN components respectively.</span>
 <span class="sd">        </span>
 <span class="sd">        :param self: Used to Access variables that belongs to the class.</span>
-<span class="sd">        :return: The number of components for the host galaxy and the agn.</span>
-<span class="sd">        </span>
+<span class="sd">        :param mask_host=False: Used to Mask the host.</span>
+<span class="sd">        :param custom=False: Used to Mask the host.</span>
+<span class="sd">        :param mask_list=[]: Used to Mask the data points that are not used in the fit.</span>
+<span class="sd">        :return: The host and the agn component.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        
 
         <span class="bp">self</span><span class="o">.</span><span class="n">wave_old</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">flux_old</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span>
@@ -242,6 +245,10 @@
             <span class="n">host</span> <span class="o">=</span> <span class="mi">0</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">gal</span><span class="p">):</span>
                 <span class="n">host</span> <span class="o">+=</span> <span class="n">k</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">mask_host</span> <span class="ow">and</span> <span class="n">custom</span><span class="o">==</span><span class="kc">False</span><span class="p">:</span>
+                <span class="n">host</span><span class="o">=</span> <span class="n">_host_mask</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">host</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">mask_host</span> <span class="ow">and</span> <span class="n">custom</span><span class="o">==</span><span class="kc">True</span><span class="p">:</span>
+                <span class="n">host</span><span class="o">=</span> <span class="n">_custom_mask</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">host</span><span class="p">,</span> <span class="n">mask_list</span><span class="p">)</span>
             <span class="n">ag_r</span> <span class="o">=</span> <span class="mi">0</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">qso</span><span class="p">):</span>
                 <span class="n">ag_r</span> <span class="o">+=</span> <span class="n">k</span><span class="p">[</span><span class="n">gal</span> <span class="o">+</span> <span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">a</span><span class="p">[</span><span class="mi">4</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
@@ -254,6 +261,7 @@
             <span class="nb">print</span><span class="p">(</span>
                 <span class="s2">&quot;Uuups... All of the combinations returned negative host.Better luck with other AGN&quot;</span>
             <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">host</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">idx</span> <span class="o">=</span> <span class="n">_find_nearest</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Number of galaxy components &quot;</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">lis</span><span class="p">[</span><span class="n">idx</span><span class="p">][</span><span class="mi">0</span><span class="p">]))</span>
@@ -265,15 +273,23 @@
             <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">HOST</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;host&quot;</span><span class="p">)</span>
             <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">AGN</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;AGN&quot;</span><span class="p">)</span>
             <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">FIT</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;FIT&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">host</span> <span class="o">=</span> <span class="n">HOST</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">HOST</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">agn</span><span class="o">=</span><span class="n">AGN</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+
 
             <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
-            <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">HOST</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">host</span> <span class="o">=</span> <span class="n">HOST</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span></div>
+            <span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="o">+</span><span class="s1">&#39;_host.pdf&#39;</span><span class="p">)</span> </div>
+        
+        
 
 <div class="viewcode-block" id="spectrum.restore"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.restore">[docs]</a>    <span class="k">def</span> <span class="nf">restore</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Restore the spectra (wave, flux and error) to the one before host removal</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
         <span class="bp">self</span><span class="o">.</span><span class="n">wave</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave_old</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">flux</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux_old</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">err_old</span></div>
@@ -282,21 +298,18 @@
         <span class="n">fig</span> <span class="o">=</span> <span class="n">px</span><span class="o">.</span><span class="n">line</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">)</span>
         <span class="n">fig</span><span class="o">.</span><span class="n">show</span><span class="p">()</span></div>
 
-<div class="viewcode-block" id="spectrum.fit"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">stat</span><span class="o">=</span><span class="n">Chi2</span><span class="p">(),</span> <span class="n">method</span><span class="o">=</span><span class="n">LevMar</span><span class="p">(),</span> <span class="n">ntrial</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<div class="viewcode-block" id="spectrum.fit"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">ntrial</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">       The fit function fits a model to the data. </span>
-<span class="sd">       The user can choose between several different statistics and methods.</span>
-<span class="sd">       The default is least squares with the LevMar method.</span>
-<span class="sd">       </span>
-<span class="sd">       :param self: Used to Reference the class itself.</span>
-<span class="sd">       :param model: Used to Define the model that is being fit to the data.</span>
-<span class="sd">       :param stat=LeastSq(): Used to Specify the statistic that is used to fit the data.</span>
-<span class="sd">       :param method=LevMar(): Used to Specify the type of fit to be used.</span>
-<span class="sd">       :return: The model and data objects.</span>
-<span class="sd">       </span>
-<span class="sd">       &quot;&quot;&quot;</span>
-        <span class="n">stat</span> <span class="o">=</span> <span class="n">stat</span>
-        <span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
+<span class="sd">        The fit function fits a model to the data. </span>
+<span class="sd">        It returns a tuple of (model, fit results).</span>
+<span class="sd">        </span>
+<span class="sd">        :param self: Used to Reference the class object.</span>
+<span class="sd">        :param model: Used to Define the model that is used in the fit.</span>
+<span class="sd">        :param ntrial=1: Used to Specify the number of times we want to repeat the fit.</span>
+<span class="sd">        :return: The results of the fit.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">stat</span><span class="o">=</span><span class="n">Chi2</span><span class="p">()</span>
+        <span class="n">method</span><span class="o">=</span><span class="n">LevMar</span><span class="p">()</span>
         <span class="n">d</span> <span class="o">=</span> <span class="n">Data1D</span><span class="p">(</span><span class="s2">&quot;AGN&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wave</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flux</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">err</span><span class="p">)</span>
         <span class="n">gfit</span> <span class="o">=</span> <span class="n">Fit</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">stat</span><span class="o">=</span><span class="n">stat</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
         <span class="n">gfit</span> <span class="o">=</span> <span class="n">Fit</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">stat</span><span class="o">=</span><span class="n">stat</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
@@ -346,10 +359,19 @@
         <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">gres</span><span class="o">.</span><span class="n">parvals</span><span class="p">)</span>
 
 <div class="viewcode-block" id="spectrum.bootstrap"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.spectrum.bootstrap">[docs]</a>    <span class="k">def</span> <span class="nf">bootstrap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ntrails</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The bootstrap function takes a data set and returns the best fit parameters for that dataset.</span>
+<span class="sd">        It does this by generating random datasets from the original dataset using a poisson distribution with mean equal to 1.</span>
+<span class="sd">        The function then fits these datasets and stores the resulting parameters in an array of dictionaries, which is returned.</span>
+<span class="sd">        </span>
+<span class="sd">        :param self: Used to Access variables that belongs to the class.</span>
+<span class="sd">        :param ntrails: Used to Specify the number of bootstrap trials.</span>
+<span class="sd">        :return: A pandas dataframe with the fitted parameters.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span>
         <span class="n">rande</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ntrails</span><span class="p">):</span>
-            <span class="n">rande</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">randomize</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+            <span class="n">rande</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_randomize</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
         <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="c1"># with concurrent.futures.ThreadPoolExecutor() as executor:</span>
         <span class="c1">#     #results=executor.map(self.__fitting,rande)</span>
@@ -627,11 +649,31 @@
         <span class="k">return</span> <span class="kc">True</span>
 
 
-<div class="viewcode-block" id="randomize"><a class="viewcode-back" href="../../fantasy.html#fantasy.tools.randomize">[docs]</a><span class="k">def</span> <span class="nf">randomize</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">_randomize</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
     <span class="n">flux</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">y</span><span class="p">))</span> <span class="o">*</span> <span class="n">d</span><span class="o">.</span><span class="n">staterror</span>
     <span class="n">d</span> <span class="o">=</span> <span class="n">Data1D</span><span class="p">(</span><span class="s2">&quot;AGN&quot;</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">flux</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">staterror</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">d</span></div>
+    <span class="k">return</span> <span class="n">d</span>
 
+
+<span class="k">def</span> <span class="nf">_host_mask</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="n">host</span><span class="p">):</span>
+    <span class="n">line_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="mf">4970.</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="mf">4950.</span><span class="p">)</span> <span class="o">|</span>
+    <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="mf">5020.</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="mf">5000.</span><span class="p">)</span> <span class="o">|</span> 
+    <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="mf">6590.</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="mf">6540.</span><span class="p">)</span> <span class="o">|</span>
+    <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="mf">3737.</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="mf">3717.</span><span class="p">)</span> <span class="o">|</span>
+    <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="mf">4872.</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="mf">4852.</span><span class="p">)</span> <span class="o">|</span>
+    <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="mf">4350.</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="mf">4330.</span><span class="p">)</span> <span class="o">|</span>
+    <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="mf">6750.</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="mf">6600.</span><span class="p">)</span> <span class="o">|</span>
+    <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="mf">4111.</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="mf">4091.</span><span class="p">),</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+                     
+    <span class="n">f</span> <span class="o">=</span> <span class="n">interpolate</span><span class="o">.</span><span class="n">interp1d</span><span class="p">(</span><span class="n">wave</span><span class="p">[</span><span class="o">~</span><span class="n">line_mask</span><span class="p">],</span><span class="n">host</span><span class="p">[</span><span class="o">~</span><span class="n">line_mask</span><span class="p">],</span> <span class="n">bounds_error</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">fill_value</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="n">wave</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">_custom_mask</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="n">host</span><span class="p">,</span> <span class="n">mask_list</span><span class="p">):</span>
+    <span class="n">line_mask</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">wave</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">mask_list</span><span class="p">:</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&lt;</span> <span class="n">m</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wave</span> <span class="o">&gt;</span> <span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="n">line_mask</span> <span class="o">+=</span> <span class="n">mask</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="n">interpolate</span><span class="o">.</span><span class="n">interp1d</span><span class="p">(</span><span class="n">wave</span><span class="p">[</span><span class="o">~</span><span class="n">line_mask</span><span class="p">],</span><span class="n">host</span><span class="p">[</span><span class="o">~</span><span class="n">line_mask</span><span class="p">],</span> <span class="n">bounds_error</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">fill_value</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="n">wave</span><span class="p">)</span>
 </pre></div>
 
            </div>

@@ -17,8 +17,6 @@ __all__ = (
     "create_tied_model",
     "create_model",
     "create_fixed_model",
-    "FeII",
-    "Bal_Lines",
     "create_feii_model"
     )
 script_dir = os.path.dirname(__file__)
@@ -392,7 +390,7 @@ class Emission_Line(model.RegriddableModel1D):
     
 class Absorption_Line(model.RegriddableModel1D):
     def __init__(self, name='line'):
-        self.ampl = model.Parameter(name, "ampl", -10, min=10000, hard_min=-10000, max=0)
+        self.ampl = model.Parameter(name, "ampl", -10, min=-10000, hard_min=-10000, max=0)
         self.pos = model.Parameter(
             name, "pos", 4861, min=0, frozen=True, units="angstroms"
         )
@@ -930,7 +928,6 @@ def create_model(
 def create_absorption_model(
     files=[],
     prefix="",
-    default_limits=True,
     amplitude=-2,
     fwhm=3000,
     offset=0,
@@ -941,36 +938,8 @@ def create_absorption_model(
     min_fwhm=100,
     max_fwhm=7000,
 ):
-    """
-    The create_broad_model function creates a model for the broad lines in the data.
-    It takes as input:
-        filename - The name of the file containing all of your line names and positions. 
-                This should be a csv file with columns named 'line', 'position'. 
-                The first row should contain column headers.
 
-        prefix - A string that will be added to each component name in your model, e.g., if you give it "broad_", all components will have names like "broad_[LINE NAME]".
-
-        default_limits - If True, limits on amplitudes, fwhms, offsets are set automatically based on what is reasonable for this dataset (see below). If False, no limits are set except such that min(amplitude) > 0 and max(amplitude) < 100 (this is because some models may not have any amplitude parameters at all).
-
-        amplitude - Initial value for amplitudes; see above documentation about how this value might change depending on whether default_limits=True or False.. Default = 2.0 .
-
-        fwhm - Initial value for FWHMs; see above documentation about how this value might change depending on whether default_limits=
-
-    :param filename='': Used to Specify the name of the file that contains all of the lines.
-    :param prefix='': Used to Give each line a unique name.
-    :param default_limits=True: Used to Set the limits of the parameters to a default value.
-    :param amplitude=2: Used to Set the default amplitude of the lines to 2.
-    :param fwhm=3000: Used to Set the default value for the fwhm of each line.
-    :param offset=0: Used to Indicate that the offset is not fixed.
-    :param min_offset=-3000: Used to Set the minimum value for the offset.
-    :param max_offset=3000: Used to Set the upper limit of the offset parameter.
-    :param min_amplitude=0: Used to Remove the baseline from the fit.
-    :param max_amplitude=100: Used to Set the upper limit of the amplitude to 100.
-    :param min_fwhm=100: Used to Remove the noise lines in the spectra.
-    :param max_fwhm=7000: Used to Avoid the model to go out of the data range.
-    :return: A model, which is a list of line objects.
-
-    """
+  
 
     if len(files) > 0:
         F = []
@@ -981,36 +950,21 @@ def create_absorption_model(
     else:
         print("List of csv files should be given to create model")
     model = 0
-    if default_limits:
-        for i in range(len(df.line)):
-            model += create_line(
-                prefix + "_" + df.line[i]+'_'+df.position[i].round(0).astype(int).astype(str),
-                pos=df.position[i],
-                ampl=amplitude,
-                fwhm=fwhm,
-                offset=offset,
-                min_offset=min_offset,
-                max_offset=max_offset,
-                min_ampl=min_amplitude,
-                max_ampl=max_amplitude,
-                min_fwhm=min_fwhm,
-                max_fwhm=max_fwhm,
-            )
-    else:
-        for i in range(len(df.line)):
-            model += create_line(
-                name=prefix + "_" + df.line[i]+'_'+df.position[i].round(0).astype(int).astype(str),
-                pos=df.position[i],
-                ampl=df.ampl[i],
-                fwhm=df.fwhm[i],
-                offset=df.offset[i],
-                max_offset=df.max_offset[i],
-                min_offset=df.min_offset[i],
-                min_ampl=df.min_amplitude[i],
-                max_ampl=df.max_amplitude[i],
-                min_fwhm=df.min_fwhm[i],
-                max_fwhm=df.max_fwhm[i],
-            )
+    for i in range(len(df.line)):
+        line = Absorption_Line(prefix + "_" + df.line[i]+'_'+df.position[i].round(0).astype(int).astype(str),)
+            
+        line.pos=df.position[i],
+        line.ampl=amplitude,
+        line.fwhm=fwhm,
+        line.offs_kms=offset,
+        line.offs_kms.min=min_offset,
+        line.offs_kms.min=max_offset,
+        line.ampl.min=min_amplitude,
+        line.ampl.max=max_amplitude,
+        line.fwhm.min=min_fwhm,
+        line.fwhm.max=max_fwhm,
+        model+=line
+    
     return model
 
 
@@ -1027,15 +981,13 @@ OIII5007 = create_line(
 )
 
 
-def OIII_NII(ref_line=OIII5007, prefix=""):
+def OIII_NII(ref_line=OIII5007, name=""):
     """
     The narrow_basic function creates a narrow line profile for the OIII5007, NII6584, and NII6548 lines.
     It takes in the position of each line as well as its FWHM and amplitude. It also takes in an offset value which is 
     the same for all three lines. The function returns a dictionary with each of these parameters.
 
     :return: A list of the lines that are created.
-
-    :doc-author: Trelent
     """
 
     OIII4958 = create_line(
@@ -1167,10 +1119,9 @@ def create_fixed_model(files=[],
                        min_fwhm=100,
                        max_fwhm=7000,):
     """
-    The create_fixed_model function creates a model that is fixed to the input parameters.
-    The function takes as an argument a list of csv files, which contain the line information for each observation.
+    The create_fixed_model function creates a model that is fixed fwhm for all lines.
+    The function takes as an argument a list of csv files, which contain the information (name and position) of all lines included in the model.
     It also takes as arguments: name, amplitude, fwhm (km/s), offset (km/s) and min_offset and max_offset (km/s). 
-    The function returns a Fixed_Lines object.
     
     :param files=[]: Used to Pass a list of csv files to the model.
     :param name='': Used to Give the model a name.
@@ -1183,11 +1134,10 @@ def create_fixed_model(files=[],
     :param max_amplitude=600: Used to Limit the maximum amplitude of the lines.
     :param min_fwhm=100: Used to Set a lower limit to the fwhm parameter.
     :param max_fwhm=7000: Used to Set the maximum value of the fwhm parameter.
-    :param : Used to Create a model with a fixed number of lines.
+    :param : Used to Set the initial value of the amplitude parameter.
     :return: A fixed_lines class object.
-    
-    :doc-author: Trelent
     """
+
     if len(files) > 0:
         F = []
         for file in files:

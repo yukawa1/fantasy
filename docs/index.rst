@@ -29,9 +29,8 @@ It is an open source, easy to use code, available for installation through pip i
    :maxdepth: 2
    :caption: Contents:
    
-   Example
-   
-   modules
+   Tutorial
+   Documentation
    
 
 
