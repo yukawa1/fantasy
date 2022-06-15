@@ -30,7 +30,7 @@ It is an open source, easy to use code, available for installation through pip i
    :caption: Contents:
    
    Tutorial
-   fantasy_agn
+   Documentation
    
 
 
