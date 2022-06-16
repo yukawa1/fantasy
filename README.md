@@ -1,3 +1,5 @@
+
+![Fantasy](docs/Fantasy.jpg)
 *Nemanja Rakić, Dragana Ilić and Luka Č. Popović*
 
 With the growing number of spectral surveys and monitoring campaigns (e.g. reverberation mapping) of active galactic nuclei (AGN), there is an indispensable need for all the more innovative and independent tools for AGN spectra analysis and measurement of spectral parameter.  Especially in case of AGN, whose UV, optical and NIR spectra can be very complex with numerous blended and satellite emission lines (e.g., contamination of strong Fe II emission to the H\beta line), there is a strong desire for complex and flexible spectral fitting tools, which would enable the reliable extraction of spectral parameters, such as the flux of pure AGN continuum, or emission line fluxes and widths of heavily blended lines.
