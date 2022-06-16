@@ -20,4 +20,4 @@ For installation:
 ```console
 foo@bar:~$ pip install fantasy_agn
 ```
-For complete documentation with examples of usage please cosult (read the docs)[www.fantasy-agn.readthedocs.io]
+For complete documentation with examples of usage please cosult [read the docs](www.fantasy-agn.readthedocs.io)
