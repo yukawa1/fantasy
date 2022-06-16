@@ -137,6 +137,63 @@ class spectrum(object):
     def show_range(self):
         print("Minimum of wavelength is ", self.wave[0])
         print("Maximum of wavelength is ", self.wave[-1])
+    def vac_to_air(self):
+        """
+        Convert vacuum to air wavelengths
+        :param lam_vac - Wavelength in Angstroms
+        :return: lam_air - Wavelength in Angstroms
+        """
+        self.wave=self.wave/_wave_convert(self.wave)
+        
+    def fit_host_sdss(self, mask_host=False, custom=False, mask_list=[]):
+        """
+        The fit_host_sdss function fits a 5 host galaxy eigenspectra and an 10 AGNs eigenspectra to the observed spectrum.
+        It takes as input:
+        mask_host (bool): If True, it masks the host emission lines using _host_mask function. Default is False.
+        custom (bool): If True, it masks user defined emission lines using _custom_mask function. Default is False. 
+        mask_list ([float]): A list of wavelengths in angstroms that will be masked if custom=True .Default is empty list [].
+        
+             Returns: 
+        
+                self.(wave,flux,err) : The wavelength array , flux array and error array after fitting for host galaxy and AGN components respectively.
+        
+        :param self: Used to Access variables that belongs to the class.
+        :param mask_host=False: Used to Mask the host.
+        :param custom=False: Used to Mask the host.
+        :param mask_list=[]: Used to Mask the data points that are not used in the fit.
+        :return: The host and the agn component.
+        """
+        
+
+        self.wave_old = self.wave
+        self.flux_old = self.flux
+        self.err_old = self.err
+        a = _prepare_host(self.wave, self.flux, self.err, 5, 10)
+        k = _fith(a[3], a[4], a[1])
+        host = 0
+        for i in range(5):
+            host += k[i] * a[3][i]
+        if mask_host and custom==False:
+            host= _host_mask(a[0], host)
+        if mask_host and custom==True:
+            host= _custom_mask(a[0], host, mask_list)
+        ag_r = 0
+        for i in range(10):
+            ag_r += k[5 + i] * a[4][i]
+        if _check_host(host) == True and _check_host(ag_r) == True:
+            self.host = host
+            self.flux = a[1] - host
+            self.agn=ag_r
+            self.wave = a[0]
+            self.err = a[2]
+            plt.figure(figsize=(18, 6))
+            plt.plot(a[0], a[1])
+            plt.plot(a[0], host, label="host")
+            plt.plot(a[0], ag_r, label="AGN")
+            plt.plot(a[0], host+ag_r, label="FIT")
+        else:
+            print('Host contribution is negliglable')
+            
 
     def fit_host(self, mask_host=False, custom=False, mask_list=[]):
         """
@@ -350,6 +407,7 @@ class read_sdss(spectrum):
             iv = data.IVAR
         super_threshold_indices = iv == 0
         iv[super_threshold_indices] = np.median(iv)
+        x=_vac_to_air(x)
         self.err = 1.0 / np.sqrt(iv)
         self.flux = y
         self.wave = x
@@ -417,6 +475,17 @@ class read_gama_fits(spectrum):
         velscale = np.log(frac) * c
         self.fwhm = fwhm
         self.velscale = velscale
+
+class make_spec(spectrum):
+    
+    def __init__(self, wav, fl, er, ra = None, dec = None, z = None):
+        super(make_spec,self).__init__()
+        self.wave = wav
+        self.flux = fl
+        self.err = er
+        self.ra = ra
+        self.dec = dec
+        self.z = z
 
 
 class read_text(spectrum):
@@ -505,11 +574,13 @@ def _prepare_host(wave, flux, err, galaxy=5, agns=10):
         glx = fits.open(pathEigen + "gal_eigenspec_Yip2004.fits")
         glx = glx[1].data
         gl_wave = glx["wave"].flatten()
+        gl_wave=_vac_to_air(gl_wave)
         gl_flux = glx["pca"].reshape(glx["pca"].shape[1], glx["pca"].shape[2])
 
         qso = fits.open(pathEigen + "qso_eigenspec_Yip2004_global.fits")
         qso = qso[1].data
         qso_wave = qso["wave"].flatten()
+        qso_wave=_vac_to_air(qso_wave)
         qso_flux = qso["pca"].reshape(qso["pca"].shape[1], qso["pca"].shape[2])
 
         mask = _maskingEigen(wave)
@@ -563,7 +634,10 @@ def _calculate_chi(data, er, func, coef):
 
 def _fith(hs, ags, data):
     A = np.vstack([hs, ags]).T
-    k = np.linalg.lstsq(A, data, rcond=None)[0]
+    W=1/data**2
+    Aw = A * np.sqrt(W[:,np.newaxis])
+    dataw=data * np.sqrt(W)
+    k = np.linalg.lstsq(Aw, dataw, rcond=None)[0]
     return k
 
 
@@ -605,3 +679,27 @@ def _custom_mask(wave, host, mask_list):
         line_mask += mask
     f = interpolate.interp1d(wave[~line_mask],host[~line_mask], bounds_error = False, fill_value = 0)
     return f(wave)
+
+def _wave_convert(lam):
+    """
+    Convert between vacuum and air wavelengths using
+    equation (1) of Ciddor 1996, Applied Optics 35, 1566
+        http://doi.org/10.1364/AO.35.001566
+
+    :param lam - Wavelength in Angstroms
+    :return: conversion factor
+
+    """
+    lam = np.asarray(lam)
+    sigma2 = (1e4/lam)**2
+    fact = 1 + 5.792105e-2/(238.0185 - sigma2) + 1.67917e-3/(57.362 - sigma2)
+    return fact
+def _vac_to_air(lam_vac):
+    """
+    Convert vacuum to air wavelengths
+
+    :param lam_vac - Wavelength in Angstroms
+    :return: lam_air - Wavelength in Angstroms
+
+    """
+    return lam_vac/_wave_convert(lam_vac)
