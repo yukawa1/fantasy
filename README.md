@@ -14,5 +14,7 @@ It is an open source, easy to use code, available for installation through pip i
 
 
 **If you are using this code in your research, please cite the following papers Ilic et al. 2020, Rakic et al. 2022, submitted, Ilic et al. 2022, in prep.**
-
-
+For installation:
+```console
+foo@bar:~$ pip install fantasy_agn
+```
