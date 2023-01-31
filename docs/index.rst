@@ -23,7 +23,7 @@ The code is flexible in the selection of different groups of lines, either alrea
 It is an open source, easy to use code, available for installation through pip install option. It is based on sherpa python package (Burke et al. 2019).
 
 
-**If you are using this code in your research, please cite the following papers Ilic et al. 2020, Rakic et al. 2022, submitted, Ilic et al. 2022, in prep.**
+**If you are using this code in your research, please cite the following papers `Ilic et al. (2020) <https://ui.adsabs.harvard.edu/abs/2020A%26A...638A..13I/abstract>`_, `Rakic (2022) <https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract>`_, Ilic et al. (2022), in prep.**
 
 .. toctree::
    :maxdepth: 2
