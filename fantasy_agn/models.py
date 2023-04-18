@@ -100,7 +100,7 @@ def continuum(spec,name='brokenpowerlaw', refer=5500, min_refer=5400, max_refer=
     The function is defined as:
     
         f(x) = ampl * (x / refer)^index1 for x > refer
-             = ampl * (refer / refer)^(index1+index2) for x < refer
+             = ampl * (x / refer)^(index1+index2) for x < refer
     
         where the amplitude, index, and reference wavelength are parameters of the model.  The default values are:
     
@@ -163,7 +163,7 @@ def continuum(spec,name='brokenpowerlaw', refer=5500, min_refer=5400, max_refer=
             x = np.asarray(x, dtype=SherpaFloat)
             arg = x / p[0]
             arg = p[1] * (
-                np.where(arg > 1.0, np.power(
+                np.where(arg < 1.0, np.power(
                     arg, p[2] + p[3]), np.power(arg, p[2]))
             )
             return arg
