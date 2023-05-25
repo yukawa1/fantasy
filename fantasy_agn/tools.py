@@ -346,41 +346,40 @@ class spectrum(object):
         gres = gfit.fit()
         return list(gres.parvals)
 
-    def bootstrap(self, ntrails):
+    def monte_carlo(self, nsample=10, save_files=True):
         """
-        The bootstrap function takes a data set and returns the best fit parameters for that dataset.
-        It does this by generating random datasets from the original dataset using a poisson distribution with mean equal to 1.
-        The function then fits these datasets and stores the resulting parameters in an array of dictionaries, which is returned.
+        The monte_carlo function performs Monte Carlo resampling of the data by perturbing
+        the flux based on the input error. It returns a dictionary containing the fit
+        parameters and their uncertainties.
         
-        :param self: Used to Access variables that belongs to the class.
-        :param ntrails: Used to Specify the number of bootstrap trials.
-        :return: A pandas dataframe with the fitted parameters.
+        :param self: Used to Reference the class object.
+        :param model: Used to Define the model that is used in the fit.
+        :param nsample=100: Used to Specify the number of Monte Carlo samples to generate.
+        :return: A dictionary containing the fit parameters and their uncertainties.
         """
-        d = self.d
-        rande = []
-        for i in range(ntrails):
-            rande.append(_randomize(d))
-        results = []
-        # with concurrent.futures.ThreadPoolExecutor() as executor:
-        #     #results=executor.map(self.__fitting,rande)
-        #      for da in rande:
-        #          f= executor.submit(self.__fitting, da)
-        #          print((f.result)
-
-        # #dicte=zip(name, reuslts)
-        # #res=dict(dicte)
-        # print(results)
-        pool = multiprocessing.pool.ThreadPool(processes=7)
-        warnings.filterwarnings("ignore")
-
-        return_list = pool.map(self.__fitting, rande, chunksize=1)
-        pool.close()
-        # dicte=zip(self.gres.parnames, return_list)
-        # res=dict(dicte)
-        # print(res)
-        df = pd.DataFrame(return_list, columns=self.gres.parnames)
-        print(df)
-        self.df = df
+       
+        dict_list = []
+        
+        
+        for i in range(nsample):
+            # Perturb the flux based on the input error
+            flux_perturbed = np.random.normal(loc=self.flux, scale=self.err)
+            
+            # Fit the model to the perturbed data
+            d_perturbed = Data1D("AGN", self.wave, flux_perturbed, self.err)
+            gfit_perturbed = Fit(d_perturbed, self.model, stat=Chi2(), method=LevMar())
+            gres_perturbed = gfit_perturbed.fit()
+            if save_files == True:
+                dicte = zip(gres_perturbed.parnames, gres_perturbed.parvals)
+                res = dict(dicte)
+                dict_list.append(res)
+                
+            else:
+                pass 
+            
+            df=pd.DataFrame(dict_list)
+            
+            df.to_csv(self.name+'_pars'+'.csv')
 
 
 class read_sdss(spectrum):
