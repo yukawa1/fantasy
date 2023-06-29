@@ -20,6 +20,6 @@ Requirements
 
 Fantasy has the following requirements:
 
-* Python 3.7, 3.8, 3.9
+* Python > 3.9
 * Linux or OS-X
 
