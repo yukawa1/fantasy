@@ -1,4 +1,3 @@
-.. hide the title (based on astropy)
 .. raw:: html
 
    <style media="screen" type="text/css">h1 { display: none; }</style>
@@ -6,8 +5,13 @@
 FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis
 =============================================================
 
-.. image:: fantasy.png
-   :width: 500px
+.. |ilic_2020| raw:: html
+
+   <a href="https://ui.adsabs.harvard.edu/abs/2020A%26A...638A..13I/abstract">Ilic et al. (2020)</a>
+
+.. |rakic_2022| raw:: html
+
+   <a href="https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract">Rakic (2022)</a>
 
 *Nemanja Rakić, Dragana Ilić and Luka Č. Popović*
 
@@ -25,7 +29,7 @@ The code is flexible in the selection of different groups of lines, either from 
 
 It is an open-source, easy-to-use code, available for installation through the pip install option. It is based on the sherpa Python package (Burke et al., 2019).
 
-If you are using this code in your research, please cite the following papers: :ref:`Ilic et al. (2020) <https://ui.adsabs.harvard.edu/abs/2020A%26A...638A..13I/abstract>`_, :ref:`Rakic (2022) <https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract>`, Ilic, D., Rakic, N., Popovic, L. C., 2023, ApJS, accepted
+If you are using this code in your research, please cite the following papers: :ref:`|ilic_2020|`, :ref:`|rakic_2022|`, Ilic, D., Rakic, N., Popovic, L. C., 2023, ApJS, accepted
 
 
 .. toctree::
@@ -46,3 +50,4 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
