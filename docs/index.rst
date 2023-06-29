@@ -4,7 +4,7 @@
    <style media="screen" type="text/css">h1 { display: none; }</style>
 
 FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis
-=============================================================
+==============================================================
 
 .. image:: fantasy.png
    :width: 500px
