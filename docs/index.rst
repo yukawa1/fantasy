@@ -28,7 +28,7 @@ It is an open-source, easy-to-use code, available for installation through the p
 If you are using this code in your research, please cite the following papers:
 
 - `Ilic et al. (2020) <https://ui.adsabs.harvard.edu/abs/2020A%26A...638A..13I/abstract>`_
-- `Rakic (2022) <https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract>`
+- `Rakic (2022) <https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract>`_
 - Ilic, D., Rakic, N., Popovic, L. C., 2023, ApJS, accepted
 
 .. toctree::
