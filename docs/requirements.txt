@@ -10,6 +10,6 @@ PyAstronomy==0.17.1
 RegscorePy==1.1
 scikit-learn==1.0.2
 scipy>=1.8.0
-sfdmap==0.1.1
-sherpa==4.14.0
+sfdmap2==0.2.2
+sherpa>=4.14.0
 spectres==2.1.1
