@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "fantasy_agn"
-version = "0.7.0"
+version = "0.7.2"
 description = " FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis, a python based code for simultaneous multi-component fitting of AGN spectra, optimized for the optical rest-frame band (3600-8000A), but also applicable to the UV range (2000-3600A) and NIR range (8000-11000A)."
 authors = ["Nemanja <rakinemanja@gmail.com>"]
 
 [tool.poetry.dependencies]
-python = ">=3.7,<3.11"
+python = ">=3.9,<3.11"
 astropy = ">4.3.1"
 matplotlib = "3.4.3"
 natsort = "8.1.0"

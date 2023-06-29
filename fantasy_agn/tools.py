@@ -1,7 +1,7 @@
 from astropy.io import fits
 from itertools import product
 from numpy.testing._private.utils import KnownFailureException
-import sfdmap2
+from sfdmap2 import sfdmap
 import numpy as np
 from PyAstronomy import pyasl
 from copy import deepcopy
@@ -65,7 +65,7 @@ class spectrum(object):
         if ebv != 0:
             self.flux = pyasl.unred(self.wave, self.flux, ebv)
         else:
-            m = sfdmap2.SFDMap(sfdpath)
+            m = sfdmap.SFDMap(sfdpath)
             self.flux = pyasl.unred(self.wave, self.flux, m.ebv(self.ra, self.dec))
 
     def CorRed(self, redshift=0):
