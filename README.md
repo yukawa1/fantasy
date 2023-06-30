@@ -15,11 +15,11 @@ The code is flexible in the selection of different groups of lines, either alrea
 It is an open source, easy to use code, available for installation through pip install option. It is based on sherpa python package (Burke et al. 2019).
 
 
-**If you are using this code in your research, please cite the following papers Ilic et al. 2020, Rakic et al. 2022, submitted, Ilic et al. 2022, in prep.**
+**If you are using this code in your research, please cite the following papers Ilic et al. 2020, Rakic et al. 2022, Ilic et al. 2023, ApJS, accepted.**
 
 
 For installation:
 ```console
 foo@bar:~$ pip install fantasy_agn
 ```
-For complete documentation with examples of usage please cosult [read the docs](www.fantasy-agn.readthedocs.io)
+For complete documentation with examples of usage please cosult [read the docs](https://fantasy-agn.readthedocs.io/en/latest/)
