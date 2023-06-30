@@ -486,6 +486,7 @@ class make_spec(spectrum):
         self.dec = dec
         self.z = z
         self.name =name
+        c = 299792.458
         frac = self.wave[1] / self.wave[0]
         dlam = (frac - 1) * self.wave
         fwhm = 2.355 * dlam
