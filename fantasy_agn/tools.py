@@ -477,7 +477,7 @@ class read_gama_fits(spectrum):
 
 class make_spec(spectrum):
     
-    def __init__(self, wav, fl, er, ra = None, dec = None, z = None):
+    def __init__(self, wav, fl, er, ra = None, dec = None, z = None, name='spectrum'):
         super(make_spec,self).__init__()
         self.wave = wav
         self.flux = fl
@@ -485,6 +485,12 @@ class make_spec(spectrum):
         self.ra = ra
         self.dec = dec
         self.z = z
+        self.name =name
+        frac = self.wave[1] / self.wave[0]
+        dlam = (frac - 1) * self.wave
+        fwhm = 2.355 * dlam
+        velscale = np.log(frac) * c
+        self.fwhm = fwhm
 
 
 class read_text(spectrum):

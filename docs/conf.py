@@ -22,7 +22,7 @@ copyright = '2022, N. Rakic, D. Ilic and L. C. Popovic'
 author = 'N. Rakic, D. Ilic and L. C. Popovic'
 
 # The full version, including alpha/beta/rc tags
-release = '0.7.2'
+release = '0.7.3'
 
 
 # -- General configuration ---------------------------------------------------
