@@ -8,7 +8,8 @@ import pandas as pd
 from astropy.modeling.models import BlackBody
 from sherpa.models import model
 from sherpa.models.parameter import Parameter, tinyval
-from sherpa.utils import SherpaFloat, sao_fcmp
+from sherpa.utils.numeric_types import SherpaFloat
+from sherpa.utils import sao_fcmp
 
 __all__ = (
     "create_input_folder",
