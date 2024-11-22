@@ -13,3 +13,4 @@ scipy>=1.8.0
 sfdmap2==0.2.2
 sherpa>=4.14.0
 spectres==2.1.1
+sphinx_rtd_theme
