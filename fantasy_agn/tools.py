@@ -8,7 +8,6 @@ from copy import deepcopy
 import pylab as plt
 from spectres import spectres
 from scipy import interpolate, linalg
-from scipy.integrate import simps
 from sherpa.data import Data1D
 from sherpa.fit import Fit
 from sherpa.optmethods import LevMar, NelderMead, MonCar, GridSearch
@@ -304,14 +303,14 @@ class spectrum(object):
 
         gres = gfit.fit()
         statistic=gres.dstatval
-        print('stati', statistic)
+        #print('stati', statistic)
         if ntrial > 1:
             
             i=0
             while i < ntrial:
                 gfit = Fit(d, model, stat=stat, method=method)
                 gres = gfit.fit()
-                print(i+1, "iter stat: ", gres.dstatval)
+                print("iteration: ",i+1)
                 if gres.dstatval==statistic:
                     break
                 i+=1
@@ -379,7 +378,7 @@ class spectrum(object):
             
             df=pd.DataFrame(dict_list)
             
-            df.to_csv(self.name+'_pars'+'.csv')
+            df.to_csv(self.name+'_mc_pars'+'.csv')
 
 
 class read_sdss(spectrum):
@@ -418,6 +417,7 @@ class read_sdss(spectrum):
         velscale = np.log(frac) * c
         self.fwhm = fwhm
         self.velscale = velscale
+        hdulist.close()
 
 
 class read_gama_fits(spectrum):
@@ -474,6 +474,7 @@ class read_gama_fits(spectrum):
         velscale = np.log(frac) * c
         self.fwhm = fwhm
         self.velscale = velscale
+        hdu.close()
 
 class make_spec(spectrum):
     
@@ -673,7 +674,7 @@ def _host_mask(wave, host):
     (wave < 3737.) & (wave > 3717.) |
     (wave < 4872.) & (wave > 4852.) |
     (wave < 4350.) & (wave > 4330.) |
-    (wave < 6750.) & (wave > 6600.) |
+    (wave < 6750.) & (wave > 6680.) |
     (wave < 4111.) & (wave > 4091.), True, False)
                      
     f = interpolate.interp1d(wave[~line_mask],host[~line_mask], bounds_error = False, fill_value = 0)
