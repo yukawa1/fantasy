@@ -380,10 +380,60 @@ class spectrum(object):
             
             df.to_csv(self.name+'_mc_pars'+'.csv')
 
-
 class read_sdss(spectrum):
-    def __init__(self, filename):
+    """
+    A class for reading SDSS (Sloan Digital Sky Survey) FITS files and extracting relevant spectral data.
 
+    Parameters
+    ----------
+    filename : str
+        The path to the FITS file containing the SDSS spectrum data.
+
+    Attributes
+    ----------
+    z : float
+        The redshift of the object from the FITS file.
+    ra : float
+        The right ascension of the object from the FITS file header.
+    dec : float
+        The declination of the object from the FITS file header.
+    mjd : int
+        The Modified Julian Date of the observation from the FITS file header.
+    plate : int
+        The plate ID of the observation from the FITS file header.
+    fiber : int
+        The fiber ID of the observation from the FITS file header.
+    name : str
+        The name of the file (excluding the extension) from which the data was read.
+    wave : numpy.ndarray
+        The wavelength values (in Ångstroms) of the spectrum, converted from vacuum to air.
+    flux : numpy.ndarray
+        The flux values of the spectrum.
+    err : numpy.ndarray
+        The flux uncertainties derived from the inverse variance.
+    fwhm : numpy.ndarray
+        The full-width at half-maximum (FWHM) of the spectral lines, calculated from wavelength dispersion.
+    velscale : float
+        The velocity scale (km/s) derived from the logarithmic dispersion.
+
+    Methods
+    -------
+    None
+        This class relies on its parent class `spectrum` for additional functionality.
+
+    Notes
+    -----
+    This class handles both lowercase and uppercase column names in the FITS data, ensuring compatibility
+    with variations in SDSS data formats. It also adjusts the inverse variance (`ivar`) values to avoid
+    division by zero when calculating uncertainties.
+
+    References
+    ----------
+    SDSS FITS file format documentation:
+    https://www.sdss.org/dr16/spectro/spectro_basics/
+    """
+
+    def __init__(self, filename):
         super(read_sdss, self).__init__()
         hdulist = fits.open(filename)
         hdu = hdulist[1]
@@ -405,7 +455,7 @@ class read_sdss(spectrum):
             iv = data.IVAR
         super_threshold_indices = iv == 0
         iv[super_threshold_indices] = np.median(iv)
-        x=_vac_to_air(x)
+        x = _vac_to_air(x)
         self.err = 1.0 / np.sqrt(iv)
         self.flux = y
         self.wave = x
@@ -418,6 +468,7 @@ class read_sdss(spectrum):
         self.fwhm = fwhm
         self.velscale = velscale
         hdulist.close()
+
 
 
 class read_gama_fits(spectrum):
