@@ -12,13 +12,23 @@ from sherpa.utils.numeric_types import SherpaFloat
 from sherpa.utils import sao_fcmp
 
 __all__ = (
+    # Original exports (maintained)
     "create_input_folder",
     "automatic_path",
     "create_line",
     "create_tied_model",
     "create_model",
     "create_fixed_model",
-    "create_feii_model"
+    "create_feii_model",
+    # New exports for v1.0 (Lorentz and Voigt profiles)
+    "create_lorentz_line",
+    "create_voigt_line",
+    "Lorentz",
+    "Voigt",
+    # Expose Gaussian line classes for direct instantiation
+    "Emission_Line",
+    "Absorption_Line",
+    
     )
 script_dir = os.path.dirname(__file__)
 input_path = os.path.join(script_dir, "input")
@@ -306,82 +316,236 @@ class UV_FeII(model.RegriddableModel1D):
         return _uv_feii(pars, x)
 
 
+def _resolve_legacy_line_kwargs(kwargs, amplitude, min_amplitude, max_amplitude, offset):
+    """Map legacy line keyword names onto the refactored API."""
+    if "ampl" in kwargs:
+        amplitude = kwargs.pop("ampl")
+    if "min_ampl" in kwargs:
+        min_amplitude = kwargs.pop("min_ampl")
+    if "max_ampl" in kwargs:
+        max_amplitude = kwargs.pop("max_ampl")
+    if "offs_kms" in kwargs:
+        offset = kwargs.pop("offs_kms")
+    if kwargs:
+        unexpected = ", ".join(sorted(kwargs))
+        raise TypeError(f"Unexpected keyword argument(s): {unexpected}")
+    return amplitude, min_amplitude, max_amplitude, offset
 
-def create_line(name='line', pos=4861, ampl=5, min_ampl=0, max_ampl=500, fwhm= 1000, min_fwhm=5, max_fwhm=10000, offset=0, min_offset=-3000, max_offset=3000):
+
+
+def create_line(name='line', pos=4861, amplitude=5, min_amplitude=0, max_amplitude=500, 
+                fwhm=1000, min_fwhm=5, max_fwhm=10000, offset=0, min_offset=-3000, max_offset=3000,
+                **kwargs):
     """
-    The create_line function creates a line with the specified parameters.
+    Create a Gaussian emission line with the specified parameters.
     
-    Parameters:
+    Parameters
+    ----------
+    name : str
+        The name of the emission line (default: 'line')
+    pos : float
+        The central wavelength of the emission line in Angstroms (default: 4861)
+    amplitude : float
+        The amplitude of the emission line (default: 5)
+    min_amplitude : float
+        Lower limit for amplitude (default: 0)
+    max_amplitude : float
+        Upper limit for amplitude (default: 500)
+    fwhm : float
+        Full width at half maximum in km/s (default: 1000)
+    min_fwhm : float
+        Lower limit for FWHM (default: 5)
+    max_fwhm : float
+        Upper limit for FWHM (default: 10000)
+    offset : float
+        Velocity offset in km/s (default: 0)
+    min_offset : float
+        Lower limit for velocity offset (default: -3000)
+    max_offset : float
+        Upper limit for velocity offset (default: 3000)
     
-        name (str): The name of the emission line.
-    
-        pos (float): The central wavelength of the emission line in Angstroms.
-    
-        ampl (float): The amplitude of the emission line in units of flux density at 
-            position x=0, i.e., F(x=0) = ampl * continuum_level + offset .  Note that this is not an absolute value but depends on how you normalize your spectrum!  
-            Default is 5, which means that if your spectrum has a continuum level equal to 1 then F(x=0)=5 and if it's 0 then F(x=0)=5+offset .  
-            If you want to set an absolute flux density rather than relative values, use hard_min and hard_max instead!
-    
-        min_ampl (float): A lower limit for amplitude above which no lines will be created by create_line().  This can be useful when creating multiple lines from one input parameter because sometimes there are "bumps" or other features in a single spectrum where it makes sense to have multiple lines with different centroids but similar amplitudes so they don't overlap each other
-    
-    :param name='line': Used to Name the line in the model.
-    :param pos=4861: Used to Specify the central wavelength of the line.
-    :param ampl=5: Used to Set the amplitude of the emission line.
-    :param min_ampl=0: Used to Set the lower limit of the amplitude parameter.
-    :param max_ampl=500: Used to Set the maximum value that ampl can take.
-    :param fwhm=1000: Used to Set the width of the line.
-    :param min_fwhm=5: Used to Set the minimum value of the fwhm.
-    :param max_fwhm=10000: Used to Set a hard limit on the fwhm.
-    :param offset=0: Used to Shift the line center to a different position.
-    :param min_offset=-3000: Used to Set the minimum value of the offset.
-    :param max_offset=3000: Used to Set the maximum offset of the line.
-    :return: An instance of the emission_line class.
+    Returns
+    -------
+    line : Emission_Line
+        An instance of the Emission_Line class with specified parameters
+        
+    Notes
+    -----
+    This function provides backward compatibility with the original API.
+    You can also directly instantiate Emission_Line, Lorentz, or Voigt classes.
     """
-    line=Emission_Line(name=name)
-    line.pos =pos
+    amplitude, min_amplitude, max_amplitude, offset = _resolve_legacy_line_kwargs(
+        kwargs, amplitude, min_amplitude, max_amplitude, offset
+    )
+    line = Emission_Line(name=name, amplitude=amplitude, pos=pos, offset=offset, fwhm=fwhm,
+                         min_amplitude=min_amplitude, max_amplitude=max_amplitude,
+                         min_offset=min_offset, max_offset=max_offset,
+                         min_fwhm=min_fwhm, max_fwhm=max_fwhm)
+    return line
+
+
+def create_lorentz_line(name='lorentz', pos=4861, amplitude=5, min_amplitude=0, max_amplitude=500,
+                        fwhm=100, min_fwhm=5, max_fwhm=10000, offset=0, min_offset=-3000, max_offset=3000,
+                        **kwargs):
+    """
+    Create a Lorentzian line with the specified parameters.
     
-    line.ampl=ampl
-    line.ampl.min=min_ampl
-    line.ampl.max=max_ampl
-    line.fwhm=fwhm
-    line.fwhm.min=min_fwhm
-    line.fwhm.max=max_fwhm
-    line.offs_kms=offset
-    line.offs_kms.min=min_offset
-    line.offs_kms.max=max_offset
+    Parameters
+    ----------
+    name : str
+        The name of the line (default: 'lorentz')
+    pos : float
+        The central wavelength in Angstroms (default: 4861)
+    amplitude : float
+        The amplitude of the line (default: 5)
+    min_amplitude : float
+        Lower limit for amplitude (default: 0)
+    max_amplitude : float
+        Upper limit for amplitude (default: 500)
+    fwhm : float
+        Full width at half maximum in km/s (default: 100)
+    min_fwhm : float
+        Lower limit for FWHM (default: 5)
+    max_fwhm : float
+        Upper limit for FWHM (default: 10000)
+    offset : float
+        Velocity offset in km/s (default: 0)
+    min_offset : float
+        Lower limit for velocity offset (default: -3000)
+    max_offset : float
+        Upper limit for velocity offset (default: 3000)
     
+    Returns
+    -------
+    line : Lorentz
+        An instance of the Lorentz class with specified parameters
+    """
+    amplitude, min_amplitude, max_amplitude, offset = _resolve_legacy_line_kwargs(
+        kwargs, amplitude, min_amplitude, max_amplitude, offset
+    )
+    line = Lorentz(name=name, amplitude=amplitude, pos=pos, offset=offset, fwhm=fwhm,
+                   min_amplitude=min_amplitude, max_amplitude=max_amplitude,
+                   min_offset=min_offset, max_offset=max_offset,
+                   min_fwhm=min_fwhm, max_fwhm=max_fwhm)
+    return line
+
+
+def create_voigt_line(name='voigt', pos=4861, amplitude=5, min_amplitude=0, max_amplitude=500,
+                      fwhm_g=100, fwhm_l=100, min_fwhm_g=5, max_fwhm_g=10000,
+                      min_fwhm_l=5, max_fwhm_l=10000, offset=0, min_offset=-3000, max_offset=3000,
+                      normalize_peak=False, **kwargs):
+    """
+    Create a Voigt line profile with the specified parameters.
+    
+    Parameters
+    ----------
+    name : str
+        The name of the line (default: 'voigt')
+    pos : float
+        The central wavelength in Angstroms (default: 4861)
+    amplitude : float
+        The amplitude of the line (default: 5)
+    min_amplitude : float
+        Lower limit for amplitude (default: 0)
+    max_amplitude : float
+        Upper limit for amplitude (default: 500)
+    fwhm_g : float
+        Gaussian FWHM in km/s (default: 100)
+    fwhm_l : float
+        Lorentzian FWHM in km/s (default: 100)
+    min_fwhm_g : float
+        Lower limit for Gaussian FWHM (default: 5)
+    max_fwhm_g : float
+        Upper limit for Gaussian FWHM (default: 10000)
+    min_fwhm_l : float
+        Lower limit for Lorentzian FWHM (default: 5)
+    max_fwhm_l : float
+        Upper limit for Lorentzian FWHM (default: 10000)
+    offset : float
+        Velocity offset in km/s (default: 0)
+    min_offset : float
+        Lower limit for velocity offset (default: -3000)
+    max_offset : float
+        Upper limit for velocity offset (default: 3000)
+    normalize_peak : bool
+        If True, normalize the profile so `amplitude` matches the peak value.
+        Defaults to False for backward compatibility.
+    
+    Returns
+    -------
+    line : Voigt
+        An instance of the Voigt class with specified parameters
+    """
+    amplitude, min_amplitude, max_amplitude, offset = _resolve_legacy_line_kwargs(
+        kwargs, amplitude, min_amplitude, max_amplitude, offset
+    )
+    line = Voigt(name=name, amplitude=amplitude, pos=pos, offset=offset,
+                 fwhm_g=fwhm_g, fwhm_l=fwhm_l,
+                 min_amplitude=min_amplitude, max_amplitude=max_amplitude,
+                 min_offset=min_offset, max_offset=max_offset,
+                 min_fwhm_g=min_fwhm_g, max_fwhm_g=max_fwhm_g,
+                 min_fwhm_l=min_fwhm_l, max_fwhm_l=max_fwhm_l)
+    line.normalize_peak = normalize_peak
     return line
     
 class Emission_Line(model.RegriddableModel1D):
-    def __init__(self, name='line'):
-        self.ampl = model.Parameter(name, "ampl", 10, min=0, hard_min=0, max=10000)
+    """Gaussian emission line profile with unified parameter names.
+    
+    Parameters
+    ----------
+    name : str
+        Name of the line component
+    amplitude : float
+        Line amplitude (default: 10)
+    pos : float
+        Line position in Angstroms (default: 4861)
+    offset : float
+        Velocity offset in km/s (default: 0)
+    fwhm : float
+        Full width at half maximum in km/s (default: 1000)
+    min_amplitude, max_amplitude : float
+        Bounds for amplitude
+    min_offset, max_offset : float
+        Bounds for velocity offset in km/s
+    min_fwhm, max_fwhm : float
+        Bounds for FWHM in km/s
+    """
+    def __init__(self, name='line', amplitude=10, pos=4861, offset=0, fwhm=1000,
+                 min_amplitude=0, max_amplitude=10000,
+                 min_offset=-10000, max_offset=10000,
+                 min_fwhm=0, max_fwhm=10000, **kwargs):
+        amplitude, min_amplitude, max_amplitude, offset = _resolve_legacy_line_kwargs(
+            kwargs, amplitude, min_amplitude, max_amplitude, offset
+        )
+        self.amplitude = model.Parameter(name, "amplitude", amplitude, 
+                                         min=min_amplitude, hard_min=0, max=max_amplitude)
         self.pos = model.Parameter(
-            name, "pos", 4861, min=0, frozen=True, units="angstroms"
+            name, "pos", pos, min=0, frozen=True, units="angstroms"
         )
-        self.offs_kms = model.Parameter(
-            name, "offs_kms", 0, min=-10000, hard_min=-10000, max=10000, units="km/s"
+        self.offset = model.Parameter(
+            name, "offset", offset, min=min_offset, hard_min=-30000, max=max_offset, units="km/s"
         )
-        
-
         self.fwhm = model.Parameter(
-            name, "fwhm", 1000, min=0, hard_min=0, max=10000, units="km/s"
+            name, "fwhm", fwhm, min=min_fwhm, hard_min=0, max=max_fwhm, units="km/s"
         )
+
+        # Backward compatibility aliases
+        self.ampl = self.amplitude
+        self.offs_kms = self.offset
 
         model.RegriddableModel1D.__init__(
-            self, name, (self.ampl, self.pos, self.offs_kms, self.fwhm)
+            self, name, (self.amplitude, self.pos, self.offset, self.fwhm)
         )
+    
     def line(self, pars, x):
-
-
-        (ampl, pos, offs_kms, fwhm) = pars
+        """Calculate Gaussian line profile."""
+        (amplitude, pos, offset, fwhm) = pars
         c = 299792.458
-        offset = pos * offs_kms / c
-        sigma = (pos + offset) * fwhm / (c * 2.354)
+        shift = pos * offset / c
+        sigma = (pos + shift) * fwhm / (c * 2.354)
 
-        f1 = ampl  # /(sigma*np.sqrt(2*np.pi))
-        f2 = -((x - pos - offset) ** 2.0) / (2 * sigma ** 2.0)
-        # fwhm = sigma * 2.355
-        # flux = ampl * (sigma*np.sqrt(2*np.pi))
+        f1 = amplitude
+        f2 = -((x - pos - shift) ** 2.0) / (2 * sigma ** 2.0)
 
         return f1 * np.exp(f2)
 
@@ -390,35 +554,57 @@ class Emission_Line(model.RegriddableModel1D):
         return self.line(pars, x)
     
 class Absorption_Line(model.RegriddableModel1D):
-    def __init__(self, name='line'):
-        self.ampl = model.Parameter(name, "ampl", -10, min=-10000, hard_min=-10000, max=0)
+    """Gaussian absorption line profile with unified parameter names.
+    
+    Parameters
+    ----------
+    name : str
+        Name of the line component
+    amplitude : float
+        Line amplitude (negative for absorption, default: -10)
+    pos : float
+        Line position in Angstroms (default: 4861)
+    offset : float
+        Velocity offset in km/s (default: 0)
+    fwhm : float
+        Full width at half maximum in km/s (default: 1000)
+    """
+    def __init__(self, name='line', amplitude=-10, pos=4861, offset=0, fwhm=1000,
+                 min_amplitude=-10000, max_amplitude=0,
+                 min_offset=-10000, max_offset=10000,
+                 min_fwhm=0, max_fwhm=10000, **kwargs):
+        amplitude, min_amplitude, max_amplitude, offset = _resolve_legacy_line_kwargs(
+            kwargs, amplitude, min_amplitude, max_amplitude, offset
+        )
+        self.amplitude = model.Parameter(name, "amplitude", amplitude, 
+                                         min=min_amplitude, hard_min=-10000, max=max_amplitude)
         self.pos = model.Parameter(
-            name, "pos", 4861, min=0, frozen=True, units="angstroms"
+            name, "pos", pos, min=0, frozen=True, units="angstroms"
         )
-        self.offs_kms = model.Parameter(
-            name, "offs_kms", 0, min=-10000, hard_min=-10000, max=10000, units="km/s"
+        self.offset = model.Parameter(
+            name, "offset", offset, min=min_offset, hard_min=-30000, max=max_offset, units="km/s"
         )
-        
-
         self.fwhm = model.Parameter(
-            name, "fwhm", 1000, min=0, hard_min=0, max=10000, units="km/s"
+            name, "fwhm", fwhm, min=min_fwhm, hard_min=0, max=max_fwhm, units="km/s"
         )
+
+        # Backward compatibility aliases
+        self.ampl = self.amplitude
+        self.offs_kms = self.offset
 
         model.RegriddableModel1D.__init__(
-            self, name, (self.ampl, self.pos, self.offs_kms, self.fwhm)
+            self, name, (self.amplitude, self.pos, self.offset, self.fwhm)
         )
+    
     def line(self, pars, x):
-
-
-        (ampl, pos, offs_kms, fwhm) = pars
+        """Calculate Gaussian absorption line profile."""
+        (amplitude, pos, offset, fwhm) = pars
         c = 299792.458
-        offset = pos * offs_kms / c
-        sigma = (pos + offset) * fwhm / (c * 2.354)
+        shift = pos * offset / c
+        sigma = (pos + shift) * fwhm / (c * 2.354)
 
-        f1 = ampl  # /(sigma*np.sqrt(2*np.pi))
-        f2 = -((x - pos - offset) ** 2.0) / (2 * sigma ** 2.0)
-        # fwhm = sigma * 2.355
-        # flux = ampl * (sigma*np.sqrt(2*np.pi))
+        f1 = amplitude
+        f2 = -((x - pos - shift) ** 2.0) / (2 * sigma ** 2.0)
 
         return f1 * np.exp(f2)
 
@@ -426,39 +612,181 @@ class Absorption_Line(model.RegriddableModel1D):
         """Evaluate the model"""
         return self.line(pars, x)
 
-def _lorentz(pars, x):
-    (ampl, pos, offs_kms, fwhm) = pars
-    c = 299792.458
-
-    offset = pos * offs_kms / c
-    sigma = (pos + offset) * fwhm / (c * 2)
-    f = (ampl / np.pi) * (sigma / ((x - pos - offset) ** 2.0 + sigma ** 2))
-    return f
-
-
 class Lorentz(model.RegriddableModel1D):
-    def __init__(self, name="lorentz"):
-        self.ampl = model.Parameter(name, "ampl", 5, min=0, hard_min=0)
+    """Lorentzian line profile with unified parameter names.
+    
+    Parameters
+    ----------
+    name : str
+        Name of the line component
+    amplitude : float
+        Line amplitude (default: 5)
+    pos : float
+        Line position in Angstroms (default: 4861)
+    offset : float
+        Velocity offset in km/s (default: 0)
+    fwhm : float
+        Full width at half maximum in km/s (default: 100)
+    min_amplitude, max_amplitude : float
+        Bounds for amplitude
+    min_offset, max_offset : float
+        Bounds for velocity offset in km/s
+    min_fwhm, max_fwhm : float
+        Bounds for FWHM in km/s
+    """
+    def __init__(self, name="lorentz", amplitude=5, pos=4861, offset=0, fwhm=100,
+                 min_amplitude=0, max_amplitude=10000,
+                 min_offset=-3000, max_offset=3000,
+                 min_fwhm=0, max_fwhm=10000, **kwargs):
+        amplitude, min_amplitude, max_amplitude, offset = _resolve_legacy_line_kwargs(
+            kwargs, amplitude, min_amplitude, max_amplitude, offset
+        )
+        self.amplitude = model.Parameter(name, "amplitude", amplitude, 
+                                         min=min_amplitude, hard_min=0, max=max_amplitude)
         self.pos = model.Parameter(
-            name, "pos", 4861, min=0, frozen=True, units="angstroms"
+            name, "pos", pos, min=0, frozen=True, units="angstroms"
         )
-        self.offs_kms = model.Parameter(
-            name, "offs_kms", 1, min=-3000, hard_min=-3000, max=3000, units="km/s"
+        self.offset = model.Parameter(
+            name, "offset", offset, min=min_offset, hard_min=-30000, max=max_offset, units="km/s"
         )
-        # self.sigma = model.Parameter(name, 'sigma', 1, min = 0, hard_min = 0, max = 200, units = 'angstroms')
-        # self.flux = model.Parameter(name, 'flux', 10,  min = 0)
-
         self.fwhm = model.Parameter(
-            name, "fwhm", 100, min=0, hard_min=0, max=1000, units="km/s"
+            name, "fwhm", fwhm, min=min_fwhm, hard_min=0, max=max_fwhm, units="km/s"
         )
+
+        # Backward compatibility aliases
+        self.ampl = self.amplitude
+        self.offs_kms = self.offset
 
         model.RegriddableModel1D.__init__(
-            self, name, (self.ampl, self.pos, self.offs_kms, self.fwhm)
+            self, name, (self.amplitude, self.pos, self.offset, self.fwhm)
         )
 
     def calc(self, pars, x, *args, **kwargs):
-        """Evaluate the model"""
-        return _lorentz(pars, x)
+        """Evaluate the Lorentzian model"""
+        (amplitude, pos, offset, fwhm) = pars
+        c = 299792.458
+
+        shift = pos * offset / c
+        gamma = (pos + shift) * fwhm / (c * 2)
+        f = (amplitude / np.pi) * (gamma / ((x - pos - shift) ** 2.0 + gamma ** 2))
+        return f
+
+
+class Voigt(model.RegriddableModel1D):
+    """Voigt line profile (convolution of Gaussian and Lorentzian) with unified parameter names.
+    
+    The Voigt profile is a convolution of Gaussian and Lorentzian profiles, useful for
+    modeling lines with both thermal and natural broadening.
+    
+    Parameters
+    ----------
+    name : str
+        Name of the line component
+    amplitude : float
+        Line amplitude (default: 5)
+    pos : float
+        Line position in Angstroms (default: 4861)
+    offset : float
+        Velocity offset in km/s (default: 0)
+    fwhm_g : float
+        Gaussian FWHM in km/s (default: 100)
+    fwhm_l : float
+        Lorentzian FWHM in km/s (default: 100)
+    min_amplitude, max_amplitude : float
+        Bounds for amplitude
+    min_offset, max_offset : float
+        Bounds for velocity offset in km/s
+    min_fwhm_g, max_fwhm_g : float
+        Bounds for Gaussian FWHM in km/s
+    min_fwhm_l, max_fwhm_l : float
+        Bounds for Lorentzian FWHM in km/s
+    
+    Notes
+    -----
+    By default, `amplitude` acts as a multiplicative scaling factor on the
+    Voigt profile, so it is not equal to the peak value. Set
+    `normalize_peak = True` to force `amplitude` to represent the peak height.
+    """
+    def __init__(self, name="voigt", amplitude=5, pos=4861, offset=0,
+                 fwhm_g=100, fwhm_l=100,
+                 min_amplitude=0, max_amplitude=10000,
+                 min_offset=-3000, max_offset=3000,
+                 min_fwhm_g=0, max_fwhm_g=10000,
+                 min_fwhm_l=0, max_fwhm_l=10000, **kwargs):
+        amplitude, min_amplitude, max_amplitude, offset = _resolve_legacy_line_kwargs(
+            kwargs, amplitude, min_amplitude, max_amplitude, offset
+        )
+        self.amplitude = model.Parameter(name, "amplitude", amplitude, 
+                                         min=min_amplitude, hard_min=0, max=max_amplitude)
+        self.pos = model.Parameter(
+            name, "pos", pos, min=0, frozen=True, units="angstroms"
+        )
+        self.offset = model.Parameter(
+            name, "offset", offset, min=min_offset, hard_min=-30000, max=max_offset, units="km/s"
+        )
+        self.fwhm_g = model.Parameter(
+            name, "fwhm_g", fwhm_g, min=min_fwhm_g, hard_min=0, max=max_fwhm_g, units="km/s"
+        )
+        self.fwhm_l = model.Parameter(
+            name, "fwhm_l", fwhm_l, min=min_fwhm_l, hard_min=0, max=max_fwhm_l, units="km/s"
+        )
+
+        # Backward compatibility aliases
+        self.ampl = self.amplitude
+        self.offs_kms = self.offset
+
+        # Option to interpret `amplitude` as the peak value of the Voigt
+        # profile (True) instead of a multiplicative scaling factor (False).
+        # Default is False to preserve the historical multiplicative scaling
+        # behavior.
+        self.normalize_peak = False
+
+        # Import wofz once per instance to avoid repeated imports inside
+        # `calc()` during tight fitting loops. If scipy isn't available at
+        # construction time we allow `calc()` to perform the import lazily.
+        try:
+            from scipy.special import wofz as _wofz
+        except Exception:
+            _wofz = None
+        self._wofz = _wofz
+
+        model.RegriddableModel1D.__init__(
+            self, name, (self.amplitude, self.pos, self.offset, self.fwhm_g, self.fwhm_l)
+        )
+
+    def calc(self, pars, x, *args, **kwargs):
+        """Evaluate the Voigt model using Faddeeva function"""
+        # reuse per-instance import if available, otherwise import lazily
+        _wofz = getattr(self, "_wofz", None)
+        if _wofz is None:
+            from scipy.special import wofz as _wofz
+            self._wofz = _wofz
+
+        (amplitude, pos, offset, fwhm_g, fwhm_l) = pars
+        c = 299792.458
+
+        shift = pos * offset / c
+        center = pos + shift
+        
+        # Convert FWHM to standard parameters
+        sigma_g = (center * fwhm_g) / (c * 2.354)  # Gaussian sigma
+        gamma_l = (center * fwhm_l) / (c * 2.0)    # Lorentzian gamma (HWHM)
+        
+        # Voigt profile using Faddeeva function
+        z = ((x - center) + 1j * gamma_l) / (sigma_g * np.sqrt(2))
+        voigt = np.real(_wofz(z)) / (sigma_g * np.sqrt(2 * np.pi))
+        # If requested, scale the profile so that `amplitude` equals the
+        # peak (maximum) value of the Voigt profile. This keeps the
+        # historical behavior (amplitude as multiplicative factor) by default.
+        if getattr(self, "normalize_peak", False):
+            # compute analytic peak at x == center
+            z0 = (1j * gamma_l) / (sigma_g * np.sqrt(2))
+            peak = np.real(_wofz(z0)) / (sigma_g * np.sqrt(2 * np.pi))
+            if peak == 0 or not np.isfinite(peak):
+                return amplitude * voigt
+            return amplitude * (voigt / peak)
+
+        return amplitude * voigt
 
 
 def _narrow_gaussian(pars, x):
@@ -483,7 +811,9 @@ class Narrow_Line(model.RegriddableModel1D):
         self.fwhm = model.Parameter(
             name, "fwhm", 5, min=0, hard_min=0, max=100)
 
-        model.RegriddableModel1D.__init__(self, name, pars)
+        model.RegriddableModel1D.__init__(
+            self, name, (self.ampl, self.pos, self.offset, self.fwhm)
+        )
 
     def calc(self, pars, x, *args, **kwargs):
         """Evaluate the model"""
@@ -854,34 +1184,47 @@ def create_model(
     max_fwhm=7000,
 ):
     """
-    The create_broad_model function creates a model for the broad lines in the data.
-    It takes as input:
-        filename - The name of the file containing all of your line names and positions. 
-                This should be a csv file with columns named 'line', 'position'. 
-                The first row should contain column headers.
-
-        prefix - A string that will be added to each component name in your model, e.g., if you give it "broad_", all components will have names like "broad_[LINE NAME]".
-
-        default_limits - If True, limits on amplitudes, fwhms, offsets are set automatically based on what is reasonable for this dataset (see below). If False, no limits are set except such that min(amplitude) > 0 and max(amplitude) < 100 (this is because some models may not have any amplitude parameters at all).
-
-        amplitude - Initial value for amplitudes; see above documentation about how this value might change depending on whether default_limits=True or False.. Default = 2.0 .
-
-        fwhm - Initial value for FWHMs; see above documentation about how this value might change depending on whether default_limits=
-
-    :param filename='': Used to Specify the name of the file that contains all of the lines.
-    :param prefix='': Used to Give each line a unique name.
-    :param default_limits=True: Used to Set the limits of the parameters to a default value.
-    :param amplitude=2: Used to Set the default amplitude of the lines to 2.
-    :param fwhm=3000: Used to Set the default value for the fwhm of each line.
-    :param offset=0: Used to Indicate that the offset is not fixed.
-    :param min_offset=-3000: Used to Set the minimum value for the offset.
-    :param max_offset=3000: Used to Set the upper limit of the offset parameter.
-    :param min_amplitude=0: Used to Remove the baseline from the fit.
-    :param max_amplitude=100: Used to Set the upper limit of the amplitude to 100.
-    :param min_fwhm=100: Used to Remove the noise lines in the spectra.
-    :param max_fwhm=7000: Used to Avoid the model to go out of the data range.
-    :return: A model, which is a list of line objects.
-
+    Create a composite model from multiple emission lines defined in CSV files.
+    
+    Parameters
+    ----------
+    files : list
+        List of CSV filenames containing line information. Each CSV should have columns:
+        'line' (line name), 'position' (wavelength in Angstroms), and optionally
+        'amplitude', 'fwhm', 'offset', and their min/max values
+    prefix : str
+        Prefix to add to each line name (default: '')
+    default_limits : bool
+        If True, use the default parameter values and limits provided.
+        If False, use values from the CSV files (default: True)
+    amplitude : float
+        Default amplitude for all lines (default: 2)
+    fwhm : float
+        Default FWHM in km/s for all lines (default: 3000)
+    offset : float
+        Default velocity offset in km/s (default: 0)
+    min_offset : float
+        Lower limit for velocity offset (default: -3000)
+    max_offset : float
+        Upper limit for velocity offset (default: 3000)
+    min_amplitude : float
+        Lower limit for amplitude (default: 0)
+    max_amplitude : float
+        Upper limit for amplitude (default: 600)
+    min_fwhm : float
+        Lower limit for FWHM (default: 100)
+    max_fwhm : float
+        Upper limit for FWHM (default: 7000)
+    
+    Returns
+    -------
+    model : composite model
+        Sum of all emission lines from the specified files
+        
+    Examples
+    --------
+    >>> model = create_model(files=['narrow_basic.csv', 'broad.csv'], 
+    ...                      prefix='agn', amplitude=10, fwhm=2000)
     """
 
     if len(files) > 0:
@@ -898,28 +1241,37 @@ def create_model(
             model += create_line(
                 prefix + "_" + df.line[i]+'_'+df.position[i].round(0).astype(int).astype(str),
                 pos=df.position[i],
-                ampl=amplitude,
+                amplitude=amplitude,
                 fwhm=fwhm,
                 offset=offset,
                 min_offset=min_offset,
                 max_offset=max_offset,
-                min_ampl=min_amplitude,
-                max_ampl=max_amplitude,
+                min_amplitude=min_amplitude,
+                max_amplitude=max_amplitude,
                 min_fwhm=min_fwhm,
                 max_fwhm=max_fwhm,
             )
     else:
+        # backward-compatible handling: some CSVs use 'ampl' instead of 'amplitude'
+        if "amplitude" in df.columns:
+            amp_col = "amplitude"
+        elif "ampl" in df.columns:
+            amp_col = "ampl"
+        else:
+            amp_col = None
+
         for i in range(len(df.line)):
+            amp_val = df[amp_col][i] if amp_col is not None else amplitude
             model += create_line(
                 name=prefix + "_" + df.line[i]+'_'+df.position[i].round(0).astype(int).astype(str),
                 pos=df.position[i],
-                ampl=df.ampl[i],
+                amplitude=amp_val,
                 fwhm=df.fwhm[i],
                 offset=df.offset[i],
                 max_offset=df.max_offset[i],
                 min_offset=df.min_offset[i],
-                min_ampl=df.min_amplitude[i],
-                max_ampl=df.max_amplitude[i],
+                min_amplitude=df.min_amplitude[i],
+                max_amplitude=df.max_amplitude[i],
                 min_fwhm=df.min_fwhm[i],
                 max_fwhm=df.max_fwhm[i],
             )
@@ -939,8 +1291,39 @@ def create_absorption_model(
     min_fwhm=100,
     max_fwhm=7000,
 ):
-
-  
+    """
+    Create a composite absorption model from multiple lines defined in CSV files.
+    
+    Parameters
+    ----------
+    files : list
+        List of CSV filenames containing line information
+    prefix : str
+        Prefix to add to each line name (default: '')
+    amplitude : float
+        Default amplitude for all lines (negative for absorption, default: -2)
+    fwhm : float
+        Default FWHM in km/s for all lines (default: 3000)
+    offset : float
+        Default velocity offset in km/s (default: 0)
+    min_offset : float
+        Lower limit for velocity offset (default: -3000)
+    max_offset : float
+        Upper limit for velocity offset (default: 3000)
+    min_amplitude : float
+        Lower limit for amplitude (default: -1000)
+    max_amplitude : float
+        Upper limit for amplitude (default: 0)
+    min_fwhm : float
+        Lower limit for FWHM (default: 100)
+    max_fwhm : float
+        Upper limit for FWHM (default: 7000)
+    
+    Returns
+    -------
+    model : composite model
+        Sum of all absorption lines from the specified files
+    """
 
     if len(files) > 0:
         F = []
@@ -952,19 +1335,20 @@ def create_absorption_model(
         print("List of csv files should be given to create model")
     model = 0
     for i in range(len(df.line)):
-        line = Absorption_Line(prefix + "_" + df.line[i]+'_'+df.position[i].round(0).astype(int).astype(str),)
-            
-        line.pos=df.position[i],
-        line.ampl=amplitude,
-        line.fwhm=fwhm,
-        line.offs_kms=offset,
-        line.offs_kms.min=min_offset,
-        line.offs_kms.min=max_offset,
-        line.ampl.min=min_amplitude,
-        line.ampl.max=max_amplitude,
-        line.fwhm.min=min_fwhm,
-        line.fwhm.max=max_fwhm,
-        model+=line
+        line = Absorption_Line(
+            name=prefix + "_" + df.line[i]+'_'+df.position[i].round(0).astype(int).astype(str),
+            amplitude=amplitude,
+            pos=df.position[i],
+            offset=offset,
+            fwhm=fwhm,
+            min_amplitude=min_amplitude,
+            max_amplitude=max_amplitude,
+            min_offset=min_offset,
+            max_offset=max_offset,
+            min_fwhm=min_fwhm,
+            max_fwhm=max_fwhm
+        )
+        model += line
     
     return model
 
@@ -973,7 +1357,7 @@ OIII5007 = create_line(
     "OIII5007",
     pos=5006.803341,
     fwhm=100,
-    ampl=10,
+    amplitude=10,
     min_fwhm=0,
     max_fwhm=10000,
     offset=0,
@@ -982,32 +1366,67 @@ OIII5007 = create_line(
 )
 
 
-def OIII_NII(ref_line=OIII5007, prefix =""):
+def OIII_NII(ref_line=OIII5007, prefix=""):
     """
-    The narrow_basic function creates a narrow line profile for the OIII5007, NII6584, and NII6548 lines.
-    It takes in the position of each line as well as its FWHM and amplitude. It also takes in an offset value which is 
-    the same for all three lines. The function returns a dictionary with each of these parameters.
-
-    :return: A list of the lines that are created.
+    Create a tied model for [OIII] and [NII] lines with fixed flux ratios.
+    
+    The function creates the following lines tied to the reference line:
+    - [OIII]4959: amplitude = ref_line.amplitude / 3.0
+    - [NII]6584: tied FWHM and offset
+    - [NII]6548: amplitude = [NII]6584.amplitude / 3.0
+    
+    Parameters
+    ----------
+    ref_line : Emission_Line
+        Reference emission line (typically [OIII]5007) to which other lines are tied
+    prefix : str
+        Prefix to add to line names (default: '')
+    
+    Returns
+    -------
+    model : composite model
+        Sum of all tied lines including the reference line
+    
+    Examples
+    --------
+    >>> ref = create_line('OIII5007', pos=5006.803341, amplitude=10, fwhm=100)
+    >>> model = OIII_NII(ref_line=ref, prefix='narrow')
     """
 
     OIII4958 = create_line(
         name=prefix + "_" + "OIII4958",
         pos=4958.896072,
-        fwhm=ref_line.fwhm,
-        ampl=ref_line.ampl / 3.0,
-        offset=ref_line.offs_kms,
+        fwhm=ref_line.fwhm.val,
+        amplitude=ref_line.amplitude.val / 3.0,
+        offset=ref_line.offset.val,
     )
+    # Tie parameters
+    OIII4958.fwhm = ref_line.fwhm
+    OIII4958.offset = ref_line.offset
+    OIII4958.amplitude = ref_line.amplitude / 3.0
+    
     NII6584 = create_line(
-        name=prefix + "_" + "NII6584", pos=6583.46, fwhm=ref_line.fwhm, offset=ref_line.offs_kms
+        name=prefix + "_" + "NII6584", 
+        pos=6583.46, 
+        fwhm=ref_line.fwhm.val, 
+        offset=ref_line.offset.val
     )
+    # Tie parameters
+    NII6584.fwhm = ref_line.fwhm
+    NII6584.offset = ref_line.offset
+    
     NII6548 = create_line(
-        name=prefix + "_" + "NIII6548",
+        name=prefix + "_" + "NII6548",
         pos=6548.05,
-        fwhm=ref_line.fwhm,
-        offset=ref_line.offs_kms,
-        ampl=NII6584.ampl / 3.0,
+        fwhm=ref_line.fwhm.val,
+        offset=ref_line.offset.val,
+        amplitude=NII6584.amplitude.val / 3.0,
     )
+    # Tie parameters
+    NII6548.fwhm = ref_line.fwhm
+    NII6548.offset = ref_line.offset
+    NII6548.amplitude = NII6584.amplitude / 3.0
+    
     return ref_line + OIII4958 + NII6584 + NII6548
 
 
