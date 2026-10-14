@@ -44,6 +44,8 @@ OUTFLOW = dict(fwhm=(900, 300, 2500), shift=(-300, -2000, 200))
 OIII_RATIO = 1 / 2.98   # Storey & Zeippen 2000
 NII_RATIO = 1 / 3.05
 OI_RATIO = 1 / 3.0
+NII_HA_MAX = 3.0            # upper limit of [NII]6583/H-alpha in an outflow wing
+HA_OUTFLOW_FWHM = (900, 300, 2000)
 
 
 def _continuum(kind, pivot, break_wave):
@@ -144,8 +146,12 @@ def halpha(broad_components=2, outflow=False, host=False, continuum="powerlaw",
     m.add(Lines("narrow", narrow, role="narrow", ratios={"[NII]6548": ("[NII]6583", NII_RATIO),
                                           "[OI]6364": ("[OI]6300", OI_RATIO)}, **NARROW))
     if outflow:
+        # The wing would otherwise be free to put the broad H-alpha wing into
+        # [NII]: keep [NII]6583/H-alpha <= 3 (the AGN/LINER range) and FWHM <= 2000.
         m.add(Lines("outflow", ["[NII]6548", "Ha", "[NII]6583"], role="outflow",
-                    ratios={"[NII]6548": ("[NII]6583", NII_RATIO)}, **OUTFLOW))
+                    ratios={"[NII]6548": ("[NII]6583", NII_RATIO)},
+                    max_ratios={"[NII]6583": ("Ha", NII_HA_MAX)},
+                    **{**OUTFLOW, "fwhm": HA_OUTFLOW_FWHM}))
     _broad(m, "broad", ["Ha"], broad_components, broad_profile)
     if extinction:
         m.add(Extinction(law=extinction if isinstance(extinction, str) else "F99"))

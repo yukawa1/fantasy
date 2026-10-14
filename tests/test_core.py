@@ -589,3 +589,33 @@ def test_compare_models():
         assert row.sys_err > 0 and row.total_err >= row.stat_err
     else:
         assert np.isnan(row.sys_err)
+
+
+def test_max_ratios():
+    comp = fa.Lines("outflow", ["[NII]6548", "Ha", "[NII]6583"], fwhm=(900, 300, 2000),
+                    ratios={"[NII]6548": ("[NII]6583", 1 / 3.05)},
+                    max_ratios={"[NII]6583": ("Ha", 3.0)})
+    assert any(q.name.endswith("Ha.excess") for q in comp.params)
+    x = np.arange(6450.0, 6680.0, 0.5)
+    ctx = {"medium": "vacuum", "resolution": 100.0}
+    p = np.array([10.0, 5.0, 30.0, -100.0, 900.0])
+    f, J = comp.evaluate(x, p, ctx)
+    assert np.allclose(comp.line_fluxes(p), [10.0, 15.0, 30.0])     # Ha = 30/3 + 5
+    for i in range(p.size):
+        d = 1e-5 * max(abs(p[i]), 1.0)
+        a, b = p.copy(), p.copy()
+        a[i] += d
+        b[i] -= d
+        num = (comp.evaluate(x, a, ctx)[0] - comp.evaluate(x, b, ctx)[0]) / (2 * d)
+        assert np.max(np.abs(num - J[:, i])) < 1e-6 * np.max(np.abs(num)) + 1e-12
+    # Data with [NII]/Ha = 6 in the wing: the fit stops at the limit of 3.
+    m = fa.Model(fa.PowerLaw(), comp)
+    truth = fa.Lines("t", ["[NII]6548", "Ha", "[NII]6583"])
+    y = 1.0 + truth.evaluate(x, np.array([60 / 3.05, 10.0, 60.0, -100.0, 900.0]), ctx)[0]
+    rng = np.random.default_rng(1)
+    err = np.full_like(x, 0.02)
+    spec = fa.Spectrum(x, y + rng.normal(0, 0.02, x.size), err, medium="vacuum", resolution=100.0)
+    r = fa.fit(spec, m, verbose=False)
+    t = r.lines.set_index("line")
+    assert t.loc["[NII]6583", "flux"] <= 3.0 * t.loc["Ha", "flux"] * (1 + 1e-6)
+    assert np.isclose(r.measure("Ha")["flux"], t.loc["Ha", "flux"], rtol=1e-3)

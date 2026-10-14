@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- `Lines(max_ratios={line: (reference, r)})`: upper limits on flux ratios
+  (kept linear: the reference line is fitted as an excess above flux/r). The
+  `halpha` preset uses it for the outflow wing: [NII]6583/Hα ≤ 3 and FWHM ≤ 2000 km/s,
+  so the wing can no longer absorb the broad Hα flux as [NII].
 - Fits are 10–20× faster (Hβ region with FeII: ~1.5 s instead of ~15–35 s).
 - Data-driven initial guess: amplitudes are solved exactly, widths and shifts are
   grid-searched within the limits, and a post-fit check escapes local minima.

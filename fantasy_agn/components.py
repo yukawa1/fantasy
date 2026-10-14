@@ -142,7 +142,7 @@ class _GaussianSet(Component):
     def evaluate(self, x, p, ctx):
         amp, kin = self._split(p)
         P, derivs = self._profiles(x, kin, ctx)
-        line_amp = amp[self._amp_index] * self._weight
+        line_amp = self._W @ amp
         f = P @ line_amp
         K = np.zeros((len(self._wave), self._n_kin))
         K[np.arange(len(self._wave)), self._kin_index] = line_amp
@@ -161,7 +161,18 @@ class _GaussianSet(Component):
             P = np.exp(-0.5 * u * u) / (SQRT_2PI * sig_lam)
         else:
             P, _ = evaluate_profile(self.profile, x, lam0, per_line, sig_inst)
-        return P @ (amp[self._amp_index] * self._weight)
+        return P @ (self._W @ amp)
+
+    def line_fluxes(self, p):
+        """Integrated flux of every line (amplitude parameters mixed by W)."""
+        return self._W @ np.asarray(p, float)[:self._n_amp]
+
+    def line_profile(self, x, p, ctx, line):
+        """Profile of one line only."""
+        amp, kin = self._split(p)
+        P, _ = self._profiles(x, kin, ctx)
+        k = self.line_names.index(line)
+        return P[:, k] * (self._W[k] @ amp)
 
     def basis(self, x, p, ctx):
         """Profile of each amplitude parameter at unit amplitude."""
@@ -186,6 +197,11 @@ class Lines(_GaussianSet):
     :param shift: initial shift or (min, max) or (initial, min, max), km/s.
     :param ratios: dict {line: (reference line, flux ratio)} fixing flux ratios,
         e.g. {'[OIII]4959': ('[OIII]5007', 1/2.98)}.
+    :param max_ratios: dict {line: (reference line, maximum ratio)} keeping
+        flux(line) <= ratio * flux(reference), e.g. {'[NII]6583': ('Ha', 3)}.
+        The reference line is then parametrised by its flux in excess of
+        flux(line) / ratio (``<name>.<reference>.excess``, >= 0), which keeps
+        the problem linear in the fluxes with simple bounds.
     :param absorption: if True, fluxes are negative (absorption lines).
     :param role: 'narrow', 'broad', 'outflow' or None (guessed from the name,
         else from the initial FWHM). Used to pick components for black-hole
@@ -208,7 +224,7 @@ class Lines(_GaussianSet):
     def __init__(self, name, lines, fwhm=(500, 50, 2000), shift=(0, -1000, 1000),
                  ratios=None, tie_kinematics=True, absorption=False, flux_max=np.inf,
                  role=None, profile="gaussian", h3=(0, -0.3, 0.3), h4=(0, -0.3, 0.3),
-                 fwhm_l=None):
+                 fwhm_l=None, max_ratios=None):
         super().__init__(name)
         if profile not in PROFILES:
             raise ValueError(f"profile must be one of {sorted(PROFILES)}")
@@ -230,9 +246,21 @@ class Lines(_GaussianSet):
                         "broad" if fwhm[0] > 1500 else "narrow")
         self.role = role
         lo, hi = (-flux_max, 0.0) if absorption else (0.0, flux_max)
+        self.max_ratios = dict(max_ratios or {})
+        refs = {b: a for a, (b, _) in self.max_ratios.items()}
+        for a, (b, r) in self.max_ratios.items():
+            if a not in self.line_names or b not in self.line_names or r <= 0 or a == b:
+                raise ValueError(f"max_ratios: bad entry {a!r}: ({b!r}, {r!r})")
+            if a in refs or len([x for x in refs if x == b]) > 1:
+                raise ValueError("max_ratios: a line cannot be both bounded and a reference")
         for ln in self.line_names:
-            self._par(f"{ln}.flux", -1.0 if absorption else 1.0, lo, hi, linear=True,
-                      unit="flux*A", description="integrated line flux")
+            if ln in refs:
+                self._par(f"{ln}.excess", -1.0 if absorption else 1.0, lo, hi, linear=True,
+                          unit="flux*A",
+                          description=f"flux above {refs[ln]} / {self.max_ratios[refs[ln]][1]:g}")
+            else:
+                self._par(f"{ln}.flux", -1.0 if absorption else 1.0, lo, hi, linear=True,
+                          unit="flux*A", description="integrated line flux")
         kin_names = self.line_names if not tie_kinematics else [None]
         fwhm_l = _limits(fwhm_l, (fwhm[0], max(fwhm[1], 1.0), fwhm[2]))
         specs = {"shift": (shift, "km/s", "velocity shift"),
@@ -249,6 +277,8 @@ class Lines(_GaussianSet):
         self._setup([w for _, w in entries], np.ones(n), np.arange(n),
                     np.arange(n) if not tie_kinematics else np.zeros(n, int),
                     n, n if not tie_kinematics else 1)
+        for a, (b, r) in self.max_ratios.items():
+            self._W[self.line_names.index(b), self.line_names.index(a)] = 1.0 / r
         self.ratios = dict(ratios or {})
 
     def default_ties(self):

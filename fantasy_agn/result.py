@@ -119,22 +119,31 @@ class FitResult:
         sig = self._sigma()
         rows = []
         for comp in self._line_components():
+            sl = dict(zip([c.name for c in self.model.components], self.model._slices()))[comp.name]
             for k, ln in enumerate(comp.line_names):
-                fi = self._index(f"{comp.name}.{ln}.flux")
                 kin = "" if f"{comp.name}.fwhm" in self.model.params else f"{ln}."
                 wi = self._index(f"{comp.name}.{kin}fwhm")
                 si = self._index(f"{comp.name}.{kin}shift")
                 lam = comp._wave[k]
 
-                def ew(full, fi=fi, si=si, lam=lam):
+                def flux(full, k=k, comp=comp, sl=sl):
+                    return comp.line_fluxes(full[sl])[k]
+
+                def ew(full, flux=flux, si=si, lam=lam):
                     centre = lam * (1 + full[si] / C_KMS)
                     cont = self._agn_continuum(centre, full)[0]
-                    return full[fi] / cont if cont > 0 else np.nan
+                    return flux(full) / cont if cont > 0 else np.nan
 
+                name = f"{comp.name}.{ln}.flux"
+                if name in self.model.params:     # a flux parameter: its own error/status
+                    fi = self._index(name)
+                    f_val, f_err = self.full[fi], self._param_error(fi, sig)
+                else:                             # mixed (max_ratios): propagate
+                    f_val, f_err = (float(v) for v in self.propagate(flux))
                 ew_val, ew_err = self.propagate(ew)
-                errs = [self._param_error(i, sig) for i in (fi, wi, si)]
-                rows.append((comp.name, ln, lam, self.full[fi], errs[0], self.full[wi],
-                             errs[1], self.full[si], errs[2], float(ew_val), float(ew_err)))
+                errs = [self._param_error(i, sig) for i in (wi, si)]
+                rows.append((comp.name, ln, lam, f_val, f_err, self.full[wi],
+                             errs[0], self.full[si], errs[1], float(ew_val), float(ew_err)))
         return pd.DataFrame(rows, columns=[
             "component", "line", "wavelength", "flux", "flux_err", "fwhm", "fwhm_err",
             "shift", "shift_err", "ew", "ew_err"])
@@ -163,10 +172,7 @@ class FitResult:
         def profile(full):
             total = np.zeros_like(lam)
             for c in sel:
-                p = full[slices[c.name]].copy()
-                keep = c.line_names.index(line)
-                p[:len(c.line_names)][np.arange(len(c.line_names)) != keep] = 0.0
-                total += c.evaluate(lam, p, ctx)[0]
+                total += c.line_profile(lam, full[slices[c.name]], ctx, line)
             return total
 
         return lam0, v, lam, profile, components
