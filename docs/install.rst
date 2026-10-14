@@ -2,24 +2,18 @@
 Installation
 ************
 
+::
 
-Install Fantasy using pip
+    pip install fantasy_agn
 
-   ::
+FANTASY needs only numpy, scipy, astropy, pandas and matplotlib, and works on Linux,
+macOS and Windows with Python 3.10 or newer.
 
-     pip install fantasy_agn
+Optional extras::
 
+    pip install "fantasy_agn[gui]"    # point-and-click interface for Jupyter (ipywidgets)
+    pip install "fantasy_agn[dust]"   # E(B-V) lookup in the SFD98 dust maps (sfdmap2)
 
-However it is advisable to create new enviroment. For conda users `follow the instructions here <https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html>`_.
-
-
-
-
-Requirements
-============
-
-Fantasy has the following requirements:
-
-* Python >= 3.10, <= 3.12 
-* Linux or OS-X
-
+For the dust-map lookup, also download the SFD map files and point the environment
+variable ``SFD_DIR`` to them. Alternatively, pass ``ebv=...`` to
+``Spectrum.deredden``.

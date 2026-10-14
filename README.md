@@ -1,25 +1,202 @@
-
 ![Fantasy](docs/Fantasy.jpg)
+
+# FANTASY: Fully Automated pythoN tool for AGN Spectra analYsis
+
 *Nemanja Rakić, Dragana Ilić and Luka Č. Popović*
 
-With the growing number of spectral surveys and monitoring campaigns (e.g. reverberation mapping) of active galactic nuclei (AGN), there is an indispensable need for all the more innovative and independent tools for AGN spectra analysis and measurement of spectral parameter.  Especially in case of AGN, whose UV, optical and NIR spectra can be very complex with numerous blended and satellite emission lines (e.g., contamination of strong Fe II emission to the H\beta line), there is a strong desire for complex and flexible spectral fitting tools, which would enable the reliable extraction of spectral parameters, such as the flux of pure AGN continuum, or emission line fluxes and widths of heavily blended lines.
-We present here the open source code FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis, a python based code for simultaneous multi-component fitting of AGN spectra, optimized for the optical rest-frame band (3600-8000A), but also applicable to the UV range (2000-3600A) and NIR range (8000-11000A).
-The code fits simultaneously the underlying broken power-law continuum and sets of defined emission line lists. There is an option to import and fit together the Fe II model, to fully account for the rich emission of complex Fe II ion which can produce thousands of line transitions, both in the range of Hg and Hb, but also Ha line (Ilic et al, 2022). The model is based on the atomic parameters of Fe II, and builds upon the models presented in Kovacevic et al. 2010, Shapovalova et al. 2012, and assumes that different Fe II lines are grouped according to the same lower energy level in the transition with line ratios connected through the line transition oscillatory strengths.
-Before performing the fittings, the FANTASY code provide several preprocessing options to prepare the spectrum, namely:
-Galactic extinction correction
-redshift correction
-host-galaxy fitting and subtraction
+FANTASY fits AGN spectra with many components at once: power-law continuum, Balmer
+continuum, FeII templates, host galaxy, and any number of narrow, broad and outflow
+line components with tied kinematics and fixed line ratios. It works in the optical
+(3600–8000 Å), UV (1400–3600 Å) and NIR (8000–11000 Å) rest frame.
 
+Version 2 is a rewrite with these features:
 
-The code is flexible in the selection of different groups of lines, either already predefined lists (e.g., standard narrow lines, Hydrogen lines, Helium lines, other broad lines, forbidden Fe II lines, coronal lines, etc.), but gives full flexibility to the user to merge predefined line lists, create customized line list, etc. The code can be used either for fitting a single spectrum, as well as for the sample of spectra, which is illustrated in several given examples.
-It is an open source, easy to use code, available for installation through pip install option. It is based on sherpa python package (Burke et al. 2019).
+- **Fast.** Exact analytic derivatives and a pure NumPy/SciPy engine. An Hβ-region fit
+  of an SDSS quasar with FeII and two broad components takes about 1.5 s.
+- **Robust starting values.** The initial guess solves every amplitude exactly
+  (bounded linear least squares) and grid-searches widths and shifts within your
+  limits, so the result does not depend on the values you start from.
+- **Reliable uncertainties.** You can choose covariance errors (fast) or Monte Carlo
+  errors (slower, better for weak or blended lines), and errors are propagated to
+  derived quantities: total broad-line flux, FWHM, line dispersion, EW, luminosity and
+  black-hole mass. Simulations show the errors are calibrated (see `tests/`).
+- **Ready-made models** for Hβ, Hα, the full optical range, MgII and CIV.
+- **Joint multi-epoch fitting.** Narrow lines are shared across epochs and calibrate
+  the flux scale, for reverberation-mapping light curves.
+- **Point-and-click GUI** in Jupyter for beginners.
+- **Easy to install.** It needs only numpy, scipy, astropy, pandas and matplotlib.
 
+## Installation
 
-**If you are using this code in your research, please cite the following papers Ilic et al. 2020, Rakic et al. 2022, Ilic et al. 2023, ApJS, accepted.**
-
-
-For installation:
 ```console
-foo@bar:~$ pip install fantasy_agn
+pip install fantasy_agn            # core
+pip install "fantasy_agn[gui]"     # + Jupyter GUI
 ```
-For complete documentation with examples of usage please cosult [read the docs](https://fantasy-agn.readthedocs.io/en/latest/)
+
+## Quick start
+
+```python
+import fantasy_agn as fa
+
+spec = fa.read("spec-1059-52618-0453.fits")          # SDSS, DESI, 1D FITS or text columns
+spec = spec.deredden(ebv=0.03).to_rest_frame()      # redshift read from the file
+
+result = fa.fit(spec, fa.presets.hbeta())
+result.plot()
+result.lines                 # flux, FWHM, shift, EW of every line, with errors
+result.measure("Hb")         # total broad Hβ: flux, FWHM, sigma, shift, EW
+result.bh_mass()             # single-epoch virial mass (Vestergaard & Peterson 2006)
+result.save("my_quasar")     # CSV tables + model spectrum
+```
+
+For Monte Carlo errors use `fa.fit(spec, model, errors="mc", n_mc=100)`.
+
+### Figures for papers
+
+Plots use a journal style (serif STIX fonts, inward ticks, colour-blind-safe colours,
+physical units on the axes) and are saved with embedded fonts:
+
+```python
+result.savefig("fit.pdf")                                  # or .eps, .svg, .png (300 dpi)
+result.savefig("hb.eps", width="single", xlim=(4600, 5150)) # one journal column, zoomed
+result.savefig("fit.pdf", label_lines=True)                 # annotate the strongest lines
+result.savefig("fit.pdf", group=False)                      # every component separately
+res.plot_light_curves(save="light_curves.pdf")              # multi-epoch light curves
+```
+
+`result.plot(...)` takes the same options and returns the matplotlib figure for
+further editing. The GUI offers the figure as PDF, EPS and PNG downloads.
+
+### DESI spectra
+
+```python
+fa.desi.targets("coadd-main-dark-10032.fits", redrock="redrock-main-dark-10032.fits")
+spec = fa.read("coadd-main-dark-10032.fits", targetid=39627640566453451,
+               redrock="redrock-main-dark-10032.fits").to_rest_frame()
+quasars = fa.desi.read_all("coadd-main-dark-10032.fits", redrock="redrock-main-dark-10032.fits",
+                           spectype="QSO", zmax=0.8)
+spec = fa.desi.from_sparcl(record)   # a record retrieved with NOIRLab's SPARCL client
+```
+
+DESI coadd files hold many targets; the B, R and Z arms are merged with inverse-variance
+weights in their overlaps, masked pixels are skipped, and the instrumental resolution is
+taken from each target's resolution matrix. Because it changes by about a factor of two
+from blue to red, every line is corrected with the resolution at its own wavelength.
+
+### Ready-made models
+
+| preset | range [Å] | components |
+|---|---|---|
+| `fa.presets.hbeta()` | 4150–5550 | power law, FeII, narrow Hγ/[OIII]4363/Hβ/[OIII]4959,5007, broad Hγ+Hβ (1, 2, 3 … components), broad HeII |
+| `fa.presets.halpha()` | 6200–6900 | power law, narrow [OI], [NII], Hα, [SII], broad Hα (1, 2, 3 … components) |
+| `fa.presets.optical()` | 3700–6900 | broken power law, high-order Balmer lines, and all of the above plus [OII], [NeIII], Hδ, HeI |
+| `fa.presets.mgii()` | 2650–3050 | power law, Balmer continuum, UV FeII, broad + narrow MgII |
+| `fa.presets.civ()` | 1450–1720 | power law, broad CIV, HeII1640, OIII]1663 |
+
+Options include `broad_components=1, 2, 3, …` (compare `result.bic` to choose), `outflow=True` (blueshifted [OIII] wing),
+`host=True` (host galaxy fitted together with the AGN) and `feii=False`.
+`fa.presets.available(spec)` lists the presets your spectrum covers.
+
+### Your own model
+
+```python
+model = fa.Model(
+    fa.PowerLaw(pivot=5100),
+    fa.FeII(fwhm=(2000, 1000, 6000)),
+    fa.Lines("narrow", ["Hb", "[OIII]4959", "[OIII]5007"], fwhm=(400, 100, 1200),
+             ratios={"[OIII]4959": ("[OIII]5007", 1 / 2.98)}),
+    fa.Lines("broad", ["Hg", "Hb"], fwhm=(4000, 1000, 15000)),   # shared kinematics
+    wave_range=(4200, 5500),
+)
+model.set("broad.shift", min=-1000, max=1000)   # change limits
+model.fix("feii.shift", 0)                      # fix a parameter
+model.tie("feii.fwhm", "broad.fwhm")            # tie: feii.fwhm = broad.fwhm
+model.tie("narrow.Hb.flux", "narrow.[OIII]5007.flux", factor=0.1)   # fixed ratio
+result = fa.fit(spec, model)
+```
+
+Lines are given by name from the built-in list (`fa.LINES`) or as
+`(name, vacuum wavelength)` pairs. Every line group has its own velocity shift and
+FWHM in km/s. The instrumental resolution is removed automatically; for SDSS it is
+read from the file.
+
+### Host galaxy, line shapes, reddening
+
+```python
+fa.templates.download("emiles")        # once: E-MILES stellar populations, 13 MB
+
+model = fa.presets.hbeta(host=True)    # non-negative stellar templates, fits sigma* and v*
+result = fa.fit(spec, model)
+result.host_properties()               # sigma*, v*, host fraction, age, [M/H] with errors
+
+fa.presets.hbeta(broad_profile="gauss-hermite")   # or "lorentzian", "voigt"
+fa.presets.optical(extinction=True)               # intrinsic E(B-V); fluxes dereddened
+```
+
+The stellar host cannot become negative (unlike the PCA eigenspectra of version 1,
+still available as `host="pca"`). Its velocity dispersion is reliable down to the
+resolution limit of the templates (about 40–50 km/s for E-MILES on SDSS spectra),
+which `host_properties()` reports. If no stellar absorption features are detected,
+it warns that the "host" only describes a continuum shape. The templates are
+the files that pPXF distributes; please cite Vazdekis et al. (2016) when you use them.
+
+### How much does the answer depend on the model?
+
+Broad-line widths depend on the decomposition (number of broad components, outflow
+wings) much more than on the noise. `fa.compare` fits several variants and adds a
+systematic error from the spread over the acceptable ones:
+
+```python
+cmp = fa.compare(spec, fa.presets.variants("hbeta"))   # 1-3 broad components, +/- outflow
+cmp.table        # chi2, reduced chi2, BIC and the quantities for every model
+cmp.summary()    # best-model value, statistical, systematic and total error
+```
+
+Models with several overlapping components are also fitted by adding them one at a time,
+which avoids local minima; the better of the two solutions is kept (`result.start`).
+
+### Bayesian errors
+
+```python
+result = fa.fit(spec, model, errors="mcmc")   # Hamiltonian Monte Carlo, built in
+result.mcmc_info                              # acceptance, R-hat, effective samples
+```
+
+Hamiltonian Monte Carlo uses the exact gradient and the fit covariance as a
+preconditioner, so it needs no extra packages and samples a 30-parameter Hβ model in
+about a minute.
+
+### Several epochs
+
+```python
+spectra = [fa.read(f).to_rest_frame() for f in files]
+res = fa.fit_epochs(spectra, fa.presets.hbeta(), shared=["narrow.*"])
+res.scales           # flux intercalibration factors
+res.light_curve()    # broad-line fluxes, FWHMs and continuum per epoch, with errors
+res.plot_light_curves()
+```
+
+### GUI
+
+```python
+import fantasy_agn as fa
+app = fa.gui()       # in a Jupyter notebook
+```
+
+Upload a spectrum, check the redshift, pick a model, and press **Fit**. You get a
+plot, tables with uncertainties, a black-hole mass and download links. Afterwards the
+results are also available in code as `app.result`.
+
+## Upgrading from 1.x
+
+Version 2 no longer uses Sherpa. See [CHANGELOG.md](CHANGELOG.md) for how to move
+1.x scripts over. The 1.x tutorials are kept in `docs/legacy_v1/`.
+
+## Citation
+
+If you use FANTASY in your research, please cite
+[Ilić et al. (2020)](https://ui.adsabs.harvard.edu/abs/2020A%26A...638A..13I/abstract),
+[Rakić (2022)](https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract) and
+[Ilić, Rakić & Popović (2023)](https://ui.adsabs.harvard.edu/abs/2023ApJS..267...19I/abstract).
+
+Documentation: <https://fantasy-agn.readthedocs.io>

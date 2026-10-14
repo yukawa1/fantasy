@@ -1,26 +1,41 @@
-[tool.poetry]
-name = "fantasy_agn"
-version = "1.0.0"
-description = " FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis, a python based code for simultaneous multi-component fitting of AGN spectra, optimized for the optical rest-frame band (3600-8000A), but also applicable to the UV range (2000-3600A) and NIR range (8000-11000A)."
-authors = ["Nemanja <rakinemanja@gmail.com>"]
-
-[tool.poetry.dependencies]
-python = ">=3.10, <=3.12"
-astropy = ">4.3.1"
-matplotlib = "3.4.3"
-natsort = "8.1.0"
-numpy = ">1.21"
-pandas = "1.3.4"
-PyAstronomy = "0.17.1"
-RegscorePy = "1.1"
-scikit-learn = ">1.0.2"
-scipy = "^1.8.0"
-sfdmap2 = "0.2.2"
-sherpa = ">4.14.0"
-spectres = "2.1.1"
-[tool.poetry.dev-dependencies]
-pytest = "^5.2"
-
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fantasy_agn"
+version = "2.0.0"
+description = "FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis: fast multi-component fitting of AGN spectra with reliable uncertainties, single- and multi-epoch."
+readme = "README.md"
+authors = [{ name = "Nemanja Rakić", email = "rakinemanja@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.21",
+    "scipy>=1.8",
+    "astropy>=5.0",
+    "pandas>=1.3",
+    "matplotlib>=3.5",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Intended Audience :: Science/Research",
+]
+
+[project.optional-dependencies]
+gui = ["ipywidgets>=8", "ipython"]
+dust = ["sfdmap2"]
+dev = ["pytest"]
+
+[project.urls]
+Documentation = "https://fantasy-agn.readthedocs.io"
+Source = "https://github.com/yukawa1/fantasy"
+
+[tool.setuptools]
+packages = ["fantasy_agn"]
+
+[tool.setuptools.package-data]
+fantasy_agn = ["data/*.csv", "data/*.fits"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

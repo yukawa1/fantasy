@@ -18,11 +18,12 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'Fantasy'
-copyright = '2022, N. Rakic, D. Ilic and L. C. Popovic'
+copyright = '2022-2026, N. Rakic, D. Ilic and L. C. Popovic'
 author = 'N. Rakic, D. Ilic and L. C. Popovic'
 
 # The full version, including alpha/beta/rc tags
-release = '1.0.0'
+import fantasy_agn
+release = fantasy_agn.__version__
 
 
 # -- General configuration ---------------------------------------------------
@@ -38,7 +39,10 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'legacy_v1']
+
+# Notebooks are stored with their outputs; do not execute them on Read the Docs.
+nbsphinx_execute = 'never'
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -50,10 +54,9 @@ html_theme = "sphinx_rtd_theme"
 html_logo = "fantasy.png"
 html_theme_options = {
     'logo_only': True,
-    'display_version': False,
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = []
