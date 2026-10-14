@@ -10,6 +10,9 @@ derivatives.
   (kept linear: the reference line is fitted as an excess above flux/r). The
   `halpha` preset uses it for the outflow wing: [NII]6583/Hα ≤ 3 and FWHM ≤ 2000 km/s,
   so the wing can no longer absorb the broad Hα flux as [NII].
+- `halpha(outflow=hbeta_result)` (or `{'shift':, 'fwhm':}`) fixes the [NII]/Hα wing to the
+  kinematics of the [OIII] outflow (`presets.outflow_kinematics`). The preset now has
+  narrow and broad HeI 6678 (broad tied to the main broad Hα; `hei=False` to drop).
 - Fits are 10–20× faster (Hβ region with FeII: ~1.5 s instead of ~15–35 s).
 - Data-driven initial guess: amplitudes are solved exactly, widths and shifts are
   grid-searched within the limits, and a post-fit check escapes local minima.

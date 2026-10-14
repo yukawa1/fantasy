@@ -15,6 +15,7 @@ from .model import Model
 import numpy as np
 
 __all__ = ("hbeta", "halpha", "optical", "mgii", "civ", "available", "auto", "variants",
+           "outflow_kinematics",
            "PRESETS")
 
 NARROW = dict(fwhm=(400, 50, 1200), shift=(0, -600, 600))
@@ -133,30 +134,79 @@ def hbeta(broad_components=2, feii=True, outflow=False, host=False, heii=True,
 
 
 def halpha(broad_components=2, outflow=False, host=False, continuum="powerlaw",
-           extinction=False,
+           extinction=False, hei=True,
           broad_profile="gaussian", wave_range=(6200, 6900)):
     """
     H-alpha region (6200-6900 A): power law, narrow [OI]6300,6364,
-    [NII]6548,6583 (1:3.05), H-alpha, [SII]6716,6731, and broad H-alpha.
+    [NII]6548,6583 (1:3.05), H-alpha, HeI6678, [SII]6716,6731, broad H-alpha
+    and broad HeI6678.
+
+    :param outflow: add an outflow wing to [NII] and H-alpha:
+
+        - True: free kinematics (FWHM <= 2000 km/s) and [NII]6583/H-alpha <= 3.
+          In this window nothing else constrains the wing, which can then
+          mimic structure in the broad line.
+        - a FitResult of a fit with an [OIII] outflow (e.g. the hbeta preset
+          with outflow=True), or a dict {'shift': km/s, 'fwhm': km/s}: the wing
+          has the shift and FWHM of the [OIII] outflow, so it can only be the
+          gas seen in [OIII]. Recommended.
+
+    :param hei: add HeI6678, narrow (narrow-line kinematics) and broad
+        (kinematics of the main broad H-alpha component, so it cannot absorb
+        the red wing of H-alpha).
     """
     m = Model(_continuum(continuum, 6500, 6500))
     if host:
         m.add(_host(host))
     narrow = ["[OI]6300", "[OI]6364", "[NII]6548", "Ha", "[NII]6583", "[SII]6716", "[SII]6731"]
+    if hei:
+        narrow.insert(5, "HeI6678")
     m.add(Lines("narrow", narrow, role="narrow", ratios={"[NII]6548": ("[NII]6583", NII_RATIO),
                                           "[OI]6364": ("[OI]6300", OI_RATIO)}, **NARROW))
-    if outflow:
-        # The wing would otherwise be free to put the broad H-alpha wing into
-        # [NII]: keep [NII]6583/H-alpha <= 3 (the AGN/LINER range) and FWHM <= 2000.
+    if outflow is not False and outflow is not None:
+        kin = None if outflow is True else outflow_kinematics(outflow)
+        fwhm = HA_OUTFLOW_FWHM if kin is None else (kin["fwhm"], min(300, kin["fwhm"]),
+                                                     max(2000, kin["fwhm"]))
+        shift = OUTFLOW["shift"] if kin is None else (kin["shift"], min(-2000, kin["shift"]),
+                                                      max(200, kin["shift"]))
+        # Without a limit the wing can put the broad H-alpha wing into [NII]:
+        # keep [NII]6583/H-alpha <= 3 (the AGN/LINER range).
         m.add(Lines("outflow", ["[NII]6548", "Ha", "[NII]6583"], role="outflow",
                     ratios={"[NII]6548": ("[NII]6583", NII_RATIO)},
-                    max_ratios={"[NII]6583": ("Ha", NII_HA_MAX)},
-                    **{**OUTFLOW, "fwhm": HA_OUTFLOW_FWHM}))
+                    max_ratios={"[NII]6583": ("Ha", NII_HA_MAX)}, fwhm=fwhm, shift=shift))
+        if kin is not None:
+            m.fix("outflow.shift")
+            m.fix("outflow.fwhm")
     _broad(m, "broad", ["Ha"], broad_components, broad_profile)
+    if hei:
+        m.add(Lines("broad_hei", ["HeI6678"], role="broad", **BROAD))
+        m.tie("broad_hei.fwhm", "broad.fwhm")
+        m.tie("broad_hei.shift", "broad.shift")
     if extinction:
         m.add(Extinction(law=extinction if isinstance(extinction, str) else "F99"))
     m.wave_range = wave_range
     return m
+
+
+def outflow_kinematics(source):
+    """
+    Shift and FWHM (km/s) of an outflow wing: from a FitResult with an
+    'outflow' component (e.g. [OIII] in an H-beta fit) or a dict
+    {'shift': ..., 'fwhm': ...}. Returns {'shift', 'fwhm', 'shift_err', 'fwhm_err'}.
+    """
+    if isinstance(source, dict):
+        return {"shift": float(source["shift"]), "fwhm": float(source["fwhm"]),
+                "shift_err": float(source.get("shift_err", np.nan)),
+                "fwhm_err": float(source.get("fwhm_err", np.nan))}
+    names = source.model.params.names
+    if "outflow.shift" not in names or "outflow.fwhm" not in names:
+        raise ValueError("the fit has no 'outflow' component with shared kinematics")
+    sig = source._sigma()
+    out = {}
+    for k in ("shift", "fwhm"):
+        i = source._index(f"outflow.{k}")
+        out[k], out[k + "_err"] = float(source.full[i]), float(source._param_error(i, sig))
+    return out
 
 
 def optical(broad_components=2, feii=True, outflow=False, host=False, continuum="broken",
@@ -261,7 +311,8 @@ def variants(name="hbeta", broad_components=(1, 2, 3), outflow=(False, True), **
     """
     Several decompositions of one preset for fa.compare(): every combination of
     the number of broad components and with/without an outflow wing (where the
-    preset has one). Other options (e.g. host=True) apply to all.
+    preset has one). Other options (e.g. host=True) apply to all. For H-alpha,
+    ``outflow=(False, hbeta_result)`` ties the wing to the [OIII] outflow.
     """
     import inspect
     func = PRESETS[name]
@@ -272,6 +323,7 @@ def variants(name="hbeta", broad_components=(1, 2, 3), outflow=(False, True), **
             kw = dict(options, broad_components=n)
             if "outflow" in params:
                 kw["outflow"] = o
-            label = f"{n} broad" + (" + outflow" if o else "")
+            label = f"{n} broad" + ("" if o is False or o is None
+                                     else " + outflow" if o is True else " + [OIII]-tied outflow")
             out[label] = func(**kw)
     return out

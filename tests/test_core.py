@@ -619,3 +619,14 @@ def test_max_ratios():
     t = r.lines.set_index("line")
     assert t.loc["[NII]6583", "flux"] <= 3.0 * t.loc["Ha", "flux"] * (1 + 1e-6)
     assert np.isclose(r.measure("Ha")["flux"], t.loc["Ha", "flux"], rtol=1e-3)
+
+
+def test_halpha_tied_outflow_and_hei():
+    m = fa.presets.halpha(broad_components=2, outflow={"shift": -450.0, "fwhm": 950.0})
+    assert m.params["outflow.shift"].fixed and m.params["outflow.shift"].value == -450.0
+    assert m.params["outflow.fwhm"].fixed and m.params["outflow.fwhm"].value == 950.0
+    assert "narrow.HeI6678.flux" in m.params.names and "broad_hei.HeI6678.flux" in m.params.names
+    assert "outflow" not in " ".join(fa.presets.halpha(outflow=False).params.names)
+    labels = list(fa.presets.variants("halpha", broad_components=(1,),
+                                      outflow=(False, True, {"shift": 0, "fwhm": 900})))
+    assert labels == ["1 broad", "1 broad + outflow", "1 broad + [OIII]-tied outflow"]
