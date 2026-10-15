@@ -87,6 +87,15 @@ class Component:
         """The model alone, without derivatives (overridden where that is cheaper)."""
         return self.evaluate(x, p, ctx)[0]
 
+    def evaluate_basis(self, x, p, ctx):
+        """
+        The model and the columns of the Jacobian for the linear (amplitude)
+        parameters; the other columns may be zero. Used by the linear solves of
+        the initial guess, which do not need the nonlinear derivatives.
+        Subclasses override this where it saves work.
+        """
+        return self.evaluate_with_derivatives(x, p, ctx)
+
     def evaluate_with_derivatives(self, x, p, ctx):
         """Like evaluate, with finite differences for ``numeric_derivatives``."""
         f, J = self.evaluate(x, p, ctx)
@@ -173,6 +182,23 @@ class _GaussianSet(Component):
         P, _ = self._profiles(x, kin, ctx)
         k = self.line_names.index(line)
         return P[:, k] * (self._W[k] @ amp)
+
+    def evaluate_basis(self, x, p, ctx):
+        amp, kin = self._split(p)
+        lam0 = _in_medium(self._wave, ctx)
+        per_line = [k[self._kin_index] for k in kin]
+        sig_inst = instrumental_fwhm(lam0, ctx) / FWHM_PER_SIGMA
+        if self.profile == "gaussian":            # values only: no derivative arrays
+            centre = lam0 * (1 + per_line[0] / C_KMS)
+            sig_lam = centre * np.sqrt((per_line[1] / FWHM_PER_SIGMA) ** 2 + sig_inst ** 2) / C_KMS
+            u = (x[:, None] - centre) / sig_lam
+            P = np.exp(-0.5 * u * u) / (SQRT_2PI * sig_lam)
+        else:
+            P, _ = evaluate_profile(self.profile, x, lam0, per_line, sig_inst)
+        A = P @ self._W
+        J = np.zeros((x.size, len(p)))
+        J[:, :self._n_amp] = A
+        return A @ amp, J
 
     def basis(self, x, p, ctx):
         """Profile of each amplitude parameter at unit amplitude."""

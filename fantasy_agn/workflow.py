@@ -391,7 +391,7 @@ class WorkflowApp:
                 rows.append(("broad Hα/Hβ", f"{dec[0]:.2f} ± {dec[1]:.2f}"))
         if not broad:
             # narrow-line object: the main narrow lines and the BPT ratios from the full fit
-            t = r.lines[r.lines.component.isin(["narrow", "outflow"])]
+            t = r.lines[r.lines.component.isin(["narrow", "narrow_hi", "outflow"])]
             tot = t.groupby("line").flux.sum()
             code.append('r.lines')
             if "[OIII]5007" in tot:

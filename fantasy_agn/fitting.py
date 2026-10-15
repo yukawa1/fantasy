@@ -11,7 +11,7 @@ from itertools import product
 
 import numpy as np
 from scipy.linalg import solve_triangular
-from scipy.optimize import least_squares, lsq_linear
+from scipy.optimize import least_squares, lsq_linear, nnls
 
 from .result import FitResult
 
@@ -28,6 +28,10 @@ class Problem:
         self.lb = np.array([p.min for p in self.free])
         self.ub = np.array([p.max for p in self.free])
         self.linear = np.array([p.linear for p in self.free], bool)
+        # the amplitude columns of T, restricted to the rows that feed them
+        TL = self.T[:, self.linear]
+        self._rows_lin = np.nonzero(np.any(TL != 0, axis=1))[0]
+        self._TL = TL[self._rows_lin]
         self._cache = {}
 
     def full(self, theta):
@@ -51,6 +55,24 @@ class Problem:
         f, Jfull = self.model.combine(self.x, results)
         return f, Jfull @ self.T
 
+    def evaluate_basis(self, theta):
+        """Model and amplitude columns of the Jacobian (cheaper; for linear solves)."""
+        full = self.full(theta)
+        results = []
+        cache = self.__dict__.setdefault("_bcache", {})
+        for comp, s in zip(self.model.components, self.model._slices()):
+            key = full[s].tobytes()
+            hit = self._cache.get(comp.name)            # a full evaluation is as good
+            if hit is None or hit[0] != key:
+                hit = cache.get(comp.name)
+                if hit is None or hit[0] != key:
+                    fc, Jc = comp.evaluate_basis(self.x, full[s], self.ctx)
+                    hit = (key, fc, Jc)
+                    cache[comp.name] = hit
+            results.append((hit[1], hit[2]))
+        f, Jfull = self.model.combine(self.x, results)
+        return f, Jfull[:, self._rows_lin] @ self._TL       # amplitude columns only
+
     def residuals(self, theta):
         f, _ = self.evaluate(theta)
         return (f - self.y) / self.err
@@ -61,10 +83,10 @@ class Problem:
 
     def solve_linear(self, theta):
         """Exact best amplitudes for the current nonlinear parameters."""
-        f, J = self.evaluate(theta)
+        f, JL = self.evaluate_basis(theta)
         L = self.linear
-        A = J[:, L] / self.err[:, None]
-        rhs = (self.y - (f - J[:, L] @ theta[L])) / self.err
+        A = JL / self.err[:, None]
+        rhs = (self.y - (f - JL @ theta[L])) / self.err
         norm = np.sqrt((A ** 2).sum(axis=0))
         norm[norm == 0] = 1.0
         lb, ub = self.lb[L] * norm, self.ub[L] * norm
@@ -75,13 +97,33 @@ class Problem:
         G = An.T @ An
         G[np.diag_indices_from(G)] += 1e-10
         Lc = np.linalg.cholesky(G)
-        res = lsq_linear(Lc.T, solve_triangular(Lc, An.T @ rhs, lower=True),
-                         bounds=(lb, ub), method="bvls")
-        amps = res.x / norm
+        amps = _bounded_lsq(Lc.T, solve_triangular(Lc, An.T @ rhs, lower=True), lb, ub) / norm
         chi2 = float(np.sum((A @ amps - rhs) ** 2))
         out = theta.copy()
         out[L] = amps
         return chi2, out
+
+
+def _bounded_lsq(A, b, lb, ub):
+    """
+    min ||A x - b|| with lb <= x <= ub. One-sided bounds (the usual case:
+    amplitudes >= 0, absorption <= 0) go to the fast Lawson-Hanson NNLS after
+    shifting/flipping the variables; two-sided or no bounds use BVLS.
+    """
+    lo_ok, hi_inf = np.isfinite(lb), ~np.isfinite(ub)
+    hi_ok, lo_inf = np.isfinite(ub), ~np.isfinite(lb)
+    up = lo_ok & hi_inf                       # x >= lb
+    down = hi_ok & lo_inf                     # x <= ub
+    if np.all(up | down):
+        sign = np.where(up, 1.0, -1.0)
+        shift = np.where(up, lb, ub)
+        As = A * sign
+        try:
+            y, _ = nnls(As, b - A @ shift, maxiter=50 * A.shape[1])
+            return shift + sign * y
+        except RuntimeError:                  # no convergence: fall back
+            pass
+    return lsq_linear(A, b, bounds=(lb, ub), method="bvls").x
 
 
 # ------------------------------------------------------------- initial guess
@@ -151,6 +193,7 @@ def _initial_guess(prob, ngrid=9, nrefine=5, npass=3, verbose=False):
     order = sorted(groups, key=lambda n: -weight[n])
 
     steps = {}
+    pass_start = chi2
     for ipass in range(npass):
         for name in order:
             ks = groups[name]
@@ -173,17 +216,24 @@ def _initial_guess(prob, ngrid=9, nrefine=5, npass=3, verbose=False):
             chi2, theta = prob.solve_linear(theta)
         if verbose:
             print(f"  guess: pass {ipass + 1} chi2 = {chi2:.1f}")
+        if ipass >= 1 and chi2 > pass_start * (1 - 1e-3):
+            break                          # a refinement pass that hardly helps: done
+        pass_start = chi2
     return theta, chi2
 
 
-def _escape_local_minimum(prob, theta, chi2, ngrid=9):
+def _escape_local_minimum(prob, theta, chi2, ngrid=9, only=None):
     """
     After a fit, re-scan each component's nonlinear parameters on a coarse grid
     (amplitudes solved exactly, everything else at the fitted values). Return
-    a better starting point if one is found, else None.
+    a better starting point if one is found, else None. ``only``: scan just
+    the groups of this component.
     """
     best = (chi2, None)
-    for ks in _groups(prob).values():
+    groups = _groups(prob)
+    if only is not None:
+        groups = {k: v for k, v in groups.items() if k == only or k.startswith(only + ".")}
+    for ks in groups.values():
         trial = theta.copy()
         for vals in product(*[_grid(prob.free[k], ngrid) for k in ks]):
             trial[ks] = vals
@@ -220,7 +270,7 @@ def _extra_components(model):
     return outflows + broad
 
 
-def _fit_stage(model, x, y, err, ctx, values, new_component=None):
+def _fit_stage(model, x, y, err, ctx, values, new_component=None, full_escape=True):
     """
     Fit ``model`` (whose inactive components are fixed) starting from
     ``values``. A newly activated component is first placed by a grid search
@@ -251,8 +301,9 @@ def _fit_stage(model, x, y, err, ctx, values, new_component=None):
                 theta[ks] = best[1]
                 chi2, theta = prob.solve_linear(theta)
     res = _least_squares(prob, theta)
+    only = None if full_escape else new_component
     for _ in range(3):
-        start = _escape_local_minimum(prob, res.x, float(res.fun @ res.fun))
+        start = _escape_local_minimum(prob, res.x, float(res.fun @ res.fun), only=only)
         if start is None:
             break
         new = _least_squares(prob, start)
@@ -287,7 +338,8 @@ def _staged_fit(model, x, y, err, ctx):
                 p.value = values[p.name] if p.free or p.tie else p.value
         for p in stage.params.match(f"{c.name}.*"):
             p.fixed = original[p.name][1]
-        values, _ = _fit_stage(stage, x, y, err, ctx, values, new_component=c.name)
+        values, _ = _fit_stage(stage, x, y, err, ctx, values, new_component=c.name,
+                               full_escape=c is extras[-1])   # full re-scan at the end
         for p in stage.params:
             p.value = values[p.name]
     return values

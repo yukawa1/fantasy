@@ -228,6 +228,29 @@ class StellarPopulation(Component):
         stars = self._interp(Y)[:, 0]
         return stars * 10 ** (-0.4 * p[n + 2] * self._k_ext) if self.reddening else stars
 
+    def evaluate_basis(self, x, p, ctx):
+        """The broadened templates only (one inverse FFT instead of three)."""
+        x = np.asarray(x, float)
+        self._setup(x, ctx)
+        n = self.n_templates
+        w, v, s = p[:n], p[n], p[n + 1]
+        key = (self._setup_key, float(v), float(s))
+        if self._eval_cache[0] == key:
+            B = self._eval_cache[1][0]
+        elif getattr(self, "_basis_cache", (None,))[0] == key:
+            B = self._basis_cache[1]
+        else:
+            f = self._freq
+            sk2 = max(s * s - self._floor2, 0.0)
+            kernel = np.exp(-2j * np.pi * f * v - 2 * np.pi ** 2 * f ** 2 * sk2)
+            B = self._interp(fft.irfft(self._T_hat * kernel, n=self._n_fft, axis=1))
+            self._basis_cache = (key, B)
+        att = 10 ** (-0.4 * p[n + 2] * self._k_ext) if self.reddening else 1.0
+        Batt = B * np.atleast_1d(att)[:, None] if self.reddening else B
+        J = np.zeros((x.size, len(p)))
+        J[:, :n] = Batt
+        return Batt @ w, J
+
     def evaluate(self, x, p, ctx):
         x = np.asarray(x, float)
         self._setup(x, ctx)

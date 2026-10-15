@@ -243,10 +243,11 @@ class FitResult:
             if dec:
                 rows.append(("broad Ha/Hb", dec[0], dec[1], ""))
         else:
-            t = self.lines[self.lines.component.isin(["narrow", "outflow"])]
+            t = self.lines[self.lines.component.isin(["narrow", "narrow_hi", "outflow"])]
             tot = t.groupby("line").flux.sum()
             if "[OIII]5007" in tot:
-                n = t[(t.component == "narrow") & (t.line == "[OIII]5007")].iloc[0]
+                core = t[t.component.isin(["narrow", "narrow_hi"]) & (t.line == "[OIII]5007")]
+                n = core.iloc[0]
                 rows += [("[OIII]5007 flux", tot["[OIII]5007"], np.nan, ""),
                          ("[OIII]5007 FWHM (narrow)", n.fwhm, n.fwhm_err, "km/s")]
             for a, b, lab in (("[NII]6583", "Ha", "log [NII]/Ha"), ("[OIII]5007", "Hb", "log [OIII]/Hb")):
