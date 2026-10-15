@@ -6,6 +6,11 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Variable projection: the least-squares iterations move only the nonlinear parameters
+  (shifts, widths, E(B-V)); the amplitudes are solved exactly at every step. Same results,
+  2-5x fewer iterations; a Seyfert 2 + BC03 host fit of a GAMA spectrum that crawled through
+  5000 evaluations (624 s) now converges in 13 (4.5 s). `FANTASY_VARPRO=0` restores the
+  joint iterations.
 - Single fits use several cores: the start-value and local-minimum grid searches run in
   threads (`FANTASY_THREADS`, default min(8, cores)) and the stellar-template FFTs use all
   cores.

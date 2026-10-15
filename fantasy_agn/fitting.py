@@ -404,10 +404,64 @@ def _interior(theta, lb, ub, linear):
 
 
 def _least_squares(prob, theta0, max_nfev=None):
+    if prob.linear.any() and (~prob.linear).any() and os.environ.get("FANTASY_VARPRO", "1") != "0":
+        return _projected_least_squares(prob, theta0, max_nfev)
     return least_squares(prob.residuals, _interior(theta0, prob.lb, prob.ub, prob.linear),
                          jac=prob.jacobian, bounds=(prob.lb, prob.ub), method="trf",
                          x_scale="jac", ftol=1e-10, xtol=1e-10, gtol=1e-10,
                          max_nfev=max_nfev)
+
+
+class _Solution:
+    """What the fit needs from a least_squares result."""
+
+    def __init__(self, x, fun, jac, nfev, success, message):
+        self.x, self.fun, self.jac = x, fun, jac
+        self.nfev, self.success, self.message = nfev, success, message
+
+
+def _projected_least_squares(prob, theta0, max_nfev=None):
+    """
+    Variable projection: the trust-region iterations run over the nonlinear
+    parameters only (shifts, widths, slopes, E(B-V)); at every step the
+    amplitudes are the exact bounded linear least-squares solution. With
+    tens of template and line amplitudes this needs far fewer iterations
+    than moving all parameters together, and each iteration is cheaper.
+    The Jacobian of the projected residuals is Kaufman's approximation:
+    the nonlinear columns projected onto the complement of the amplitude
+    columns that are not on a bound.
+    """
+    L = prob.linear
+    N = ~L
+    base = theta0.copy()
+    memo = {}
+
+    def solve(z):
+        key = z.tobytes()
+        if key not in memo:
+            t = base.copy()
+            t[N] = z
+            _, t = prob.solve_linear(t)
+            f, J = prob.evaluate(t)
+            r = (f - prob.y) / prob.err
+            J = J / prob.err[:, None]
+            span = np.where(np.isfinite(prob.ub - prob.lb), prob.ub - prob.lb, 0.0)
+            tiny = 1e-10 * np.maximum(np.abs(t), span)
+            free = L & (t - prob.lb > tiny) & (prob.ub - t > tiny)
+            Jn = J[:, N]
+            if free.any():
+                Q, _ = np.linalg.qr(J[:, free])
+                Jn = Jn - Q @ (Q.T @ Jn)
+            memo.clear()
+            memo[key] = (t, r, Jn, J)
+        return memo[key]
+
+    z0 = _interior(theta0, prob.lb, prob.ub, L)[N]
+    res = least_squares(lambda z: solve(z)[1], z0, jac=lambda z: solve(z)[2],
+                        bounds=(prob.lb[N], prob.ub[N]), method="trf", x_scale="jac",
+                        ftol=1e-10, xtol=1e-10, gtol=1e-10, max_nfev=max_nfev)
+    t, r, _, J = solve(res.x)
+    return _Solution(t, r, J, res.nfev, res.success, res.message)
 
 
 def guess(spectrum, model, wave_range=None, verbose=False):
