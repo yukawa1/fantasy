@@ -104,8 +104,18 @@
           <label>Start from <select id="preset"></select></label>
           <label>Broad components <input id="ncomp" type="number" min="1" max="4" value="2"></label>
           <label class="check"><input id="outflow" type="checkbox" checked> outflow wing</label>
+        </div>
+        <div class="form opts">
+          <span class="hint">Also include:</span>
+          <label class="check" title="[FeVII] 3759, 5159, 5721, 6087, [FeX] 6375, [FeXIV] 5303 with their own kinematics">
+            <input id="opt-coronal" type="checkbox"> coronal lines</label>
+          <label class="check" title="broad O I 6046 (strong in objects with strong Fe II)">
+            <input id="opt-oi" type="checkbox"> O I 6046</label>
+          <label class="check" title="extend the optical model to 7500 Å: He I 7065, [Ar III] 7136, [O II] 7320, 7330">
+            <input id="opt-red" type="checkbox"> red side to 7500 Å</label>
           <button id="btn-preset" class="btn teal" disabled><i data-icon="sliders"></i>Create model</button>
         </div>
+        <p class="hint small" id="opts-hint"></p>
         <div id="model-summary" class="hidden">
           <div id="model-chips"></div>
           <a href="#model" data-view-link="model" class="more">Edit components and parameters →</a>

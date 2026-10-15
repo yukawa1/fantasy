@@ -341,29 +341,29 @@ class Session:
     def classify_code():
         return "c = fa.classify(spec)\nc"
 
-    def fit_code(self, model="optical", broad_components=2, outflow=True, errors="covariance"):
+    def fit_code(self, model="optical", broad_components=2, outflow=True, errors="covariance", **extra):
         self._need_rest_frame()
-        name, kw = MODELS[model]
-        kw = dict(kw)
-        params = inspect.signature(getattr(presets, name)).parameters
-        if "broad_components" in params:
-            kw["broad_components"] = int(broad_components)
-        if "outflow" in params:
-            kw["outflow"] = bool(outflow)
+        name, kw = self._preset_args(model, broad_components, outflow, **extra)
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
         err = f', errors="{errors}"' if errors != "covariance" else ""
         return f"model = fa.presets.{name}({args})\nr = fa.fit(spec, model{err})\nr.key_results()"
 
     # ------------------------------------------------- code for the model editor
     @staticmethod
-    def preset_code(model="optical", broad_components=2, outflow=True):
+    def _preset_args(model, broad_components=2, outflow=True, **extra):
+        """Preset name and keyword arguments; options the preset lacks are left out."""
         name, kw = MODELS[model]
         kw = dict(kw)
         params = inspect.signature(getattr(presets, name)).parameters
-        if "broad_components" in params:
-            kw["broad_components"] = int(broad_components)
-        if "outflow" in params:
-            kw["outflow"] = bool(outflow)
+        opts = dict(broad_components=int(broad_components), outflow=bool(outflow))
+        opts.update({k: bool(v) for k, v in extra.items() if v is not None})
+        for k, v in opts.items():
+            if k in params and (k in ("broad_components", "outflow") or v):
+                kw[k] = v
+        return name, kw
+
+    def preset_code(self, model="optical", broad_components=2, outflow=True, **extra):
+        name, kw = self._preset_args(model, broad_components, outflow, **extra)
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
         return f"model = fa.presets.{name}({args})\nmodel"
 

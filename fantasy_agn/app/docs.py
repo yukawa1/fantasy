@@ -116,6 +116,11 @@ model</pre>
 <tr><td><code>halpha</code></td><td>6200–6900 Å: Hα, [N II], [S II], [O I], HeI; outflow can follow [O III]</td></tr>
 <tr><td><code>optical</code></td><td>3700–6900 Å: everything above, Balmer continuum, high-order Balmer lines;
 <code>physical=True</code>: one power law (α<sub>λ</sub> = −1.7), stellar host, broad FWHM ≤ 15000 km/s</td></tr>
+<tr><td>options</td><td><code>coronal=True</code>: [Fe VII] 3759, 5159, 5721, 6087, [Fe X] 6375, [Fe XIV] 5303 (also
+<code>hbeta</code>, <code>halpha</code>, <code>type2</code>); <code>oi6046=True</code>: broad O I 6046;
+<code>red=True</code>: fit to 7500 Å with He I 7065, [Ar III] 7136, [O II] 7320, 7330. In the app these are the
+<i>Also include</i> boxes of step 3. Look at the residuals: strong positive residuals at 3759, 5721, 6087 Å mean
+coronal lines.</td></tr>
 <tr><td><code>mgii</code>, <code>civ</code></td><td>UV lines with UV FeII</td></tr>
 <tr><td><code>type2</code></td><td>stellar host, weak featureless continuum, narrow lines, outflow wing</td></tr>
 <tr><td><code>galaxy</code></td><td>stellar populations and narrow lines</td></tr>

@@ -982,3 +982,25 @@ def test_app_read_options():
     assert s.spec.meta["ebv"] == 0.03 and not s.spec.rest_frame
     with pytest.raises(ValueError, match="rest frame"):
         s.fit_code("hbeta")
+
+
+def test_optical_line_options():
+    m = fa.presets.optical(outflow=True, red=True)
+    names = m.params.names
+    assert m.wave_range == (3700, 7500.0)
+    for ln in ("HeII4686", "HeI7065", "[ArIII]7136", "[OII]7320", "[OII]7330"):
+        assert f"narrow.{ln}.flux" in names
+    assert "outflow.[NeIII]3869.flux" in names and "broad_he.HeI7065.flux" in names
+    plain = fa.presets.optical()
+    assert plain.wave_range == (3700, 6900) and "narrow.[ArIII]7136.flux" not in plain.params.names
+    assert "narrow.HeII4686.flux" in plain.params.names
+
+
+def test_app_preset_options():
+    from fantasy_agn.app.session import Session
+    s = Session()
+    assert s.preset_code("optical", 2, True, coronal=True, red=True, oi6046=False).startswith(
+        "model = fa.presets.optical(broad_components=2, outflow=True, coronal=True, red=True)")
+    assert "red" not in s.preset_code("hbeta", 1, False, coronal=True, red=True)      # hbeta has no red side
+    assert "coronal" not in s.preset_code("galaxy", 1, False, coronal=True)
+    assert "physical=True" in s.preset_code("optical (physical)", 2, True, coronal=True)

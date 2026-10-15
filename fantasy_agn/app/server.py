@@ -35,6 +35,11 @@ from .session import Session
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 
+def _options(opts):
+    """Optional line groups of the presets that the interface can switch on."""
+    return {k: bool(opts.get(k)) for k in ("coronal", "oi6046", "red") if k in opts}
+
+
 def _finite(obj):
     """JSON has no inf/nan: replace them with None (null)."""
     if isinstance(obj, float):
@@ -177,13 +182,14 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     s.run_cell(s.fit_code(model=opts.get("model", "optical"),
                                           broad_components=opts.get("broad_components", 2),
-                                          outflow=opts.get("outflow", True), errors=errors))
+                                          outflow=opts.get("outflow", True), errors=errors,
+                                          **_options(opts)))
             elif url.path == "/api/model":
                 opts = json.loads(self._body() or b"{}")
                 action = opts.get("action")
                 if action == "preset":
                     code = s.preset_code(opts.get("model", "optical"), opts.get("broad_components", 2),
-                                         opts.get("outflow", True))
+                                         opts.get("outflow", True), **_options(opts))
                 elif action == "add":
                     code = s.add_code(opts.get("component") or {})
                 elif action == "remove":

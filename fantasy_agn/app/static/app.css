@@ -301,3 +301,6 @@ td .lines { color: var(--muted); font-size: 12.5px; }
 
 .form.prep { padding-top: 10px; border-top: 1px dashed var(--line); }
 .form.prep label.ebv input { width: 90px; }
+
+.form.opts { margin-top: 0; }
+.form.opts .hint { margin-right: 2px; }

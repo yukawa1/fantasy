@@ -675,6 +675,7 @@ function setState(s) {
   clockOffset = s.now - Date.now() / 1000;
   if (!$("preset").options.length) $("preset").innerHTML = s.models.map((m) => `<option>${esc(m)}</option>`).join("");
   if (newRecommendation) { $("preset").value = s.recommended.model; $("ncomp").value = s.recommended.broad_components; }
+  renderPresetOptions();
   $("pyver").innerHTML = `<span class="dotok"></span>Python ${esc(s.python)}`;
   $("pyver").title = `FANTASY ${s.version}, Python ${s.python}`;
   render();
@@ -738,10 +739,25 @@ $("btn-read").onclick = readJSON;
 $("path").addEventListener("keydown", (e) => { if (e.key === "Enter") readJSON(); });
 $("targetid").addEventListener("keydown", (e) => { if (e.key === "Enter") readJSON(); });
 $("btn-classify").onclick = () => post("/api/classify");
-$("btn-preset").onclick = () => modelAction({ action: "preset", model: $("preset").value,
-  broad_components: Number($("ncomp").value), outflow: $("outflow").checked });
-$("btn-fit").onclick = () => post("/api/fit", { errors: $("errors").value, model: $("preset").value,
-  broad_components: Number($("ncomp").value), outflow: $("outflow").checked });
+function presetOptions() {
+  return { model: $("preset").value, broad_components: Number($("ncomp").value), outflow: $("outflow").checked,
+           coronal: $("opt-coronal").checked, oi6046: $("opt-oi").checked, red: $("opt-red").checked };
+}
+// which options the chosen preset supports (optical has all three, hbeta/halpha only coronal lines)
+const PRESET_OPTS = { "optical": ["coronal", "oi6046", "red"], "optical (physical)": ["coronal", "oi6046", "red"],
+                      "hbeta": ["coronal"], "halpha": ["coronal"], "type2": ["coronal"], "galaxy": [] };
+function renderPresetOptions() {
+  const ok = PRESET_OPTS[$("preset").value] || [];
+  for (const [id, k] of [["opt-coronal", "coronal"], ["opt-oi", "oi6046"], ["opt-red", "red"]]) {
+    $(id).disabled = !ok.includes(k);
+    $(id).closest("label").style.opacity = ok.includes(k) ? 1 : 0.45;
+  }
+  $("opts-hint").textContent = ok.length < 3 ? `${$("preset").value}: ` +
+    (ok.length ? "only coronal lines can be added to this model" : "no optional line groups") : "";
+}
+$("preset").addEventListener("change", renderPresetOptions);
+$("btn-preset").onclick = () => modelAction(Object.assign({ action: "preset" }, presetOptions()));
+$("btn-fit").onclick = () => post("/api/fit", Object.assign({ errors: $("errors").value }, presetOptions()));
 $("reset").onclick = () => { lastFigure = -1; modelSig = null; view = null; post("/api/reset"); };
 const drop = $("drop");
 $("browse").onclick = (e) => { e.preventDefault(); e.stopPropagation(); $("file").click(); };

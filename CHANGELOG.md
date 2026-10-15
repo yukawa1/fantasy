@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- `optical`: narrow HeII 4686 by default; [NeIII] 3869 shares the [OIII] outflow wing;
+  `red=True` extends the fit to 7500 Å (HeI 7065, [ArIII] 7136, [OII] 7320, 7330). App:
+  "Also include" options for coronal lines, OI 6046 and the red side (found missing in
+  IC 1198, a coronal-line Seyfert: χ²/ν 1.21 → 0.89).
 - Galactic extinction: `spec.deredden()` looks up E(B-V) automatically (value in the file
   for DESI, local SFD98 maps, or the IRSA dust service), with the Schlafly & Finkbeiner
   (2011) recalibration; never applied twice; `spec.dereddened`. The fit summary and the

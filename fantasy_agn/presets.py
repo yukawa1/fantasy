@@ -56,6 +56,7 @@ NII_HA_MAX = 3.0            # upper limit of [NII]6583/H-alpha in an outflow win
 HA_OUTFLOW_FWHM = (900, 300, 2000)
 PHYSICAL_SLOPE = -1.7          # alpha_lambda, host-free quasar continuum (Selsing+2016)
 PHYSICAL_BROAD_FWHM_MAX = 15000.0
+RED_END = 7500.0              # end of the optical window with red=True
 
 
 def _continuum(kind, pivot, break_wave):
@@ -251,7 +252,7 @@ def outflow_kinematics(source):
 
 
 def optical(broad_components=2, feii=True, outflow=False, host=False, continuum="broken",
-            balmer=True, extinction=False, coronal=False, oi6046=False,
+            balmer=True, extinction=False, coronal=False, oi6046=False, red=False,
           broad_profile="gaussian", wave_range=None, physical=False, slope=PHYSICAL_SLOPE,
           broad_fwhm_max=None):
     """
@@ -265,6 +266,8 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
     :param coronal: add the coronal lines [FeVII]3759,5159,5721,6087, [FeXIV]5303
         and [FeX]6375 (shared kinematics of their own).
     :param oi6046: add broad OI6046 (strong in objects with strong FeII).
+    :param red: extend the fit to 7500 A (if the spectrum covers it) with narrow
+        HeI7065, [ArIII]7136 and [OII]7320,7330 and broad HeI7065.
     :param physical: physically motivated decomposition (after QSFit,
         Calderone et al. 2017, and the references in the documentation):
 
@@ -305,8 +308,8 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
         host = host or True
         balmer = True
         broad_fwhm_max = broad_fwhm_max or PHYSICAL_BROAD_FWHM_MAX
-        wave_range = wave_range or (3550, 6900)
-    wave_range = wave_range or (3700, 6900)
+        wave_range = wave_range or (3550, RED_END if red else 6900)
+    wave_range = wave_range or (3700, RED_END if red else 6900)
     m = Model(_continuum(continuum, 5100, 4600))
     if physical:
         if slope is None:
@@ -318,16 +321,19 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
     if feii:
         m.add(FeII(fwhm=(2500, 1000, 8000), shift=(0, -2000, 2000)))
     narrow = ["[OII]3726", "[OII]3729", "[NeIII]3869", "H8", "[NeIII]3968", "He",
-              "[SII]4069", "[SII]4076", "Hd", "Hg", "[OIII]4363", "Hb",
+              "[SII]4069", "[SII]4076", "Hd", "Hg", "[OIII]4363", "HeII4686", "Hb",
               "[OIII]4959", "[OIII]5007", "[NI]5198", "[NI]5200", "HeI5876", "[OI]6300",
               "[OI]6364", "[NII]6548", "Ha", "[NII]6583", "HeI6678", "[SII]6716", "[SII]6731"]
+    if red:
+        narrow += ["HeI7065", "[ArIII]7136", "[OII]7320", "[OII]7330"]
     m.add(Lines("narrow", narrow, role="narrow", ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO),
                                           "[NII]6548": ("[NII]6583", NII_RATIO),
                                           "[OI]6364": ("[OI]6300", OI_RATIO),
                                           "[NeIII]3968": ("[NeIII]3869", NEIII_RATIO)},
                 **NARROW))
     if outflow:
-        m.add(Lines("outflow", ["[OIII]4959", "[OIII]5007"], role="outflow",
+        # [NeIII] (ionisation potential 41 eV, like [OIII] 35 eV) shares the wing
+        m.add(Lines("outflow", ["[NeIII]3869", "[OIII]4959", "[OIII]5007"], role="outflow",
                     ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO)}, **OUTFLOW))
     if outflow and physical:
         m.add(Lines("outflow_ha", ["[NII]6548", "Ha", "[NII]6583"], role="outflow",
@@ -337,7 +343,8 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
         m.tie("outflow_ha.shift", "outflow.shift")
     _broad(m, "broad", ["Hd", "Hg", "Hb"], broad_components, broad_profile, broad_fwhm_max)
     _broad(m, "broad_ha", ["Ha"], broad_components, broad_profile, broad_fwhm_max)
-    m.add(Lines("broad_he", ["HeI4471", "HeII4686", "HeI5876", "HeI6678"], role="broad",
+    m.add(Lines("broad_he", ["HeI4471", "HeII4686", "HeI5876", "HeI6678"] + (["HeI7065"] if red else []),
+                role="broad",
                 fwhm=(4000, 1000, 15000),
                 shift=(0, -4000, 2000)))
     if oi6046:
