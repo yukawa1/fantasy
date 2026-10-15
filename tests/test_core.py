@@ -1095,3 +1095,25 @@ def test_app_multiepoch_code():
         s.multiepoch_code(paths=["a.fits", "b.fits"], model="current")
     with pytest.raises(ValueError, match="rest-frame"):
         s.multiepoch_code(paths=["a.fits"], model="hbeta", rest_frame=False)
+
+
+def test_host_thread_safe_on_different_grids():
+    """The app plots (all pixels) while a cell computes on the fitted pixels."""
+    import threading
+    m = fa.Model(fa.StellarPopulation(templates="miles"))
+    ctx = {"medium": "vacuum", "resolution": 150.0}
+    xa, xb = np.linspace(4000, 6800, 2500), np.linspace(4100, 6500, 1900)
+    ref = {xa.size: m.evaluate(xa, ctx), xb.size: m.evaluate(xb, ctx)}
+    bad = []
+
+    def work(x):
+        for _ in range(15):
+            try:
+                if not np.allclose(m.evaluate(x, ctx), ref[x.size]):
+                    bad.append(x.size)
+            except ValueError:
+                bad.append(x.size)
+    threads = [threading.Thread(target=work, args=(x,)) for x in (xa, xb) * 3]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert not bad

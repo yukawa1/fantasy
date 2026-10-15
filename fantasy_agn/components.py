@@ -476,7 +476,8 @@ class BalmerContinuum(Component):
                  * -np.expm1(-tau * (x / edge) ** 3) / -np.expm1(-tau))
             return np.where(x <= edge, s, 0.0)
         key = (float(T), float(tau), float(fwhm), x.size, float(x[0]), float(x[-1]))
-        if key not in self._cache:
+        hit = self._cache.get(key)          # (threads share the cache: no re-lookups)
+        if hit is None:
             sigma = fwhm / C_KMS / FWHM_PER_SIGMA            # in ln(lambda)
             step = 2e-5                                      # fixed: smooth in fwhm
             lo, hi = np.log(min(x.min(), edge) / (1 + 6 * sigma)), np.log(max(x.max(), edge) * (1 + 6 * sigma))
@@ -486,10 +487,11 @@ class BalmerContinuum(Component):
             u = np.arange(-half, half + 1) * step
             kern = np.exp(-0.5 * (u / sigma) ** 2)
             smooth = np.convolve(sharp, kern / kern.sum(), mode="same")
+            hit = np.interp(np.log(x), grid, smooth)
             if len(self._cache) > 8:
-                self._cache.clear()
-            self._cache[key] = np.interp(np.log(x), grid, smooth)
-        return self._cache[key]
+                self._cache = {}
+            self._cache[key] = hit
+        return hit
 
     def evaluate(self, x, p, ctx):
         amp, T, tau, fwhm = p
@@ -556,11 +558,12 @@ class HostGalaxy(Component):
 
     def _basis(self, x, ctx):
         key = (x.size, x[0], x[-1], ctx.get("medium"))
-        if key not in self._cache:
+        hit = self._cache.get(key)
+        if hit is None:
             wave = _in_medium(self._eig_wave, ctx)
-            self._cache = {key: np.column_stack(
-                [np.interp(x, wave, e, left=0.0, right=0.0) for e in self._eig])}
-        return self._cache[key]
+            hit = np.column_stack([np.interp(x, wave, e, left=0.0, right=0.0) for e in self._eig])
+            self._cache = {key: hit}
+        return hit
 
     def evaluate(self, x, p, ctx):
         B = self._basis(x, ctx)

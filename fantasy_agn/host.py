@@ -24,6 +24,8 @@ How it is computed:
 4. The template weights are linear, non-negative parameters, solved together
    with all other amplitudes.
 """
+from collections import namedtuple
+
 import numpy as np
 import pandas as pd
 from scipy import fft
@@ -37,6 +39,9 @@ __all__ = ("StellarPopulation",)
 
 DEFAULT_METALS = (-0.71, 0.0, 0.22)
 
+
+# A template grid prepared for one set of wavelengths (see StellarPopulation._setup)
+_Grid = namedtuple("_Grid", "key T_hat freq n_fft i0 frac k_ext floor2 sigma_floor norms")
 
 class StellarPopulation(Component):
     """
@@ -101,7 +106,7 @@ class StellarPopulation(Component):
 
     # Arrays that are never modified after creation; copies of the component
     # (models are deep-copied for every fit and every epoch) share them.
-    _SHARED = ("_lam_t", "_T", "_fwhm_t", "_reference") + (
+    _SHARED = ("_lam_t", "_T", "_fwhm_t", "_reference", "_grid") + (
         "_T_hat", "_freq", "_i0", "_frac", "_k_ext", "_norms")
 
     def __deepcopy__(self, memo):
@@ -127,14 +132,18 @@ class StellarPopulation(Component):
         curve = ctx.get("resolution_curve")
         key = (x.size, float(x[0]), float(x[-1]), ctx.get("medium"), ctx.get("resolution"),
                None if curve is None else float(np.median(curve[1])))
-        if key == self._setup_key:
-            return
+        # The prepared grid is returned (and used) as one immutable object:
+        # several threads may evaluate the component on different wavelengths
+        # at once (grid searches, the app's plots), so no method may rely on
+        # attributes that another call can replace in between.
+        gs = self.__dict__.get("_grid")
+        if gs is not None and gs.key == key:
+            return gs
         cache = self.__dict__.setdefault("_setups", {})
-        if key in cache:
-            for name, value in zip(self._STATE, cache[key]):
-                setattr(self, name, value)
-            self._setup_key = key
-            return
+        gs = cache.get(key)
+        if gs is not None:
+            self._publish(gs)
+            return gs
         lam_t = self._lam_t
         if ctx.get("medium", "vacuum") == "vacuum" and self._medium_t == "air":
             lam_t = np.where(lam_t > 2000, air_to_vac(lam_t), lam_t)
@@ -173,43 +182,48 @@ class StellarPopulation(Component):
             self._reference = (sig_c, norms, (float(x.min()), float(x.max())))
         sig_c, norms, _ = self._reference
         T = _variable_gaussian(T, np.sqrt(np.clip(sig_c ** 2 - sig_t ** 2, 0, None)) / self.dv)
-        self._floor2 = max(sig_c ** 2 - sig_d ** 2, 0.0)
-        self.sigma_floor = float(np.sqrt(self._floor2))
-        T /= norms[:, None]
-        self._norms = norms
+        T = T / norms[:, None]
 
         pad = int(np.ceil(reach / self.dv))
         n_fft = fft.next_fast_len(T.shape[1] + 2 * pad)
         Tp = np.zeros((T.shape[0], n_fft))
         Tp[:, pad:pad + T.shape[1]] = T
-        self._T_hat = fft.rfft(Tp, axis=1)
-        self._freq = fft.rfftfreq(n_fft, d=self.dv)              # cycles per km/s
-        self._n_fft = n_fft
         pos = (np.log(x) - ln_grid[0]) / step + pad
-        self._i0 = np.floor(pos).astype(int)
-        self._frac = pos - self._i0
-        self._k_ext = fitzpatrick99(x)
-        self._setup_key = key
+        i0 = np.floor(pos).astype(int)
+        floor2 = max(sig_c ** 2 - sig_d ** 2, 0.0)
+        gs = _Grid(key, fft.rfft(Tp, axis=1, workers=-1), fft.rfftfreq(n_fft, d=self.dv),
+                   n_fft, i0, pos - i0, fitzpatrick99(x), floor2, float(np.sqrt(floor2)), norms)
         if len(cache) >= 8:
-            cache.pop(next(iter(cache)))
-        cache[key] = tuple(getattr(self, name) for name in self._STATE)
+            cache.pop(next(iter(cache)), None)
+        cache[key] = gs
+        self._publish(gs)
+        return gs
 
-    def _interp(self, Y):
-        return (Y[:, self._i0] * (1 - self._frac) + Y[:, self._i0 + 1] * self._frac).T
+    def _publish(self, gs):
+        """Keep the attributes of the most recent grid (for inspection)."""
+        self._grid = gs
+        self._setup_key = gs.key
+        for name in self._STATE:
+            setattr(self, name, getattr(gs, name.lstrip("_")))
 
-    def _broadened(self, v, s):
-        key = (self._setup_key, float(v), float(s))
-        if self._eval_cache[0] == key:
-            return self._eval_cache[1]
-        f = self._freq
+    @staticmethod
+    def _interp(Y, gs):
+        return (Y[:, gs.i0] * (1 - gs.frac) + Y[:, gs.i0 + 1] * gs.frac).T
+
+    def _broadened(self, gs, v, s):
+        key = (gs.key, float(v), float(s))
+        hit = self._eval_cache                   # read once: other threads may replace it
+        if hit[0] == key:
+            return hit[1]
+        f = gs.freq
         # extra broadening sig_k^2 = sigma*^2 - floor^2 (zero below the floor)
-        sk2 = max(s * s - self._floor2, 0.0)
+        sk2 = max(s * s - gs.floor2, 0.0)
         kernel = np.exp(-2j * np.pi * f * v - 2 * np.pi ** 2 * f ** 2 * sk2)
-        base = self._T_hat * kernel
-        B = self._interp(fft.irfft(base, n=self._n_fft, axis=1))
-        dBv = self._interp(fft.irfft(base * (-2j * np.pi * f), n=self._n_fft, axis=1))
+        base = gs.T_hat * kernel
+        B = self._interp(fft.irfft(base, n=gs.n_fft, axis=1, workers=-1), gs)
+        dBv = self._interp(fft.irfft(base * (-2j * np.pi * f), n=gs.n_fft, axis=1, workers=-1), gs)
         ds = (-4 * np.pi ** 2 * f ** 2 * s) if sk2 > 0 else np.zeros_like(f)
-        dBs = self._interp(fft.irfft(base * ds, n=self._n_fft, axis=1))
+        dBs = self._interp(fft.irfft(base * ds, n=gs.n_fft, axis=1, workers=-1), gs)
         out = (B, dBv, dBs)
         self._eval_cache = (key, out)
         return out
@@ -217,35 +231,36 @@ class StellarPopulation(Component):
     # ------------------------------------------------------- evaluation
     def value(self, x, p, ctx):
         x = np.asarray(x, float)
-        self._setup(x, ctx)
+        gs = self._setup(x, ctx)
         n = self.n_templates
         v, s = p[n], p[n + 1]
-        sk2 = max(s * s - self._floor2, 0.0)
-        f = self._freq
-        Y = fft.irfft((p[:n] @ self._T_hat)[None, :]
+        sk2 = max(s * s - gs.floor2, 0.0)
+        f = gs.freq
+        Y = fft.irfft((p[:n] @ gs.T_hat)[None, :]
                       * np.exp(-2j * np.pi * f * v - 2 * np.pi ** 2 * f ** 2 * sk2),
-                      n=self._n_fft, axis=1)
-        stars = self._interp(Y)[:, 0]
-        return stars * 10 ** (-0.4 * p[n + 2] * self._k_ext) if self.reddening else stars
+                      n=gs.n_fft, axis=1, workers=-1)
+        stars = self._interp(Y, gs)[:, 0]
+        return stars * 10 ** (-0.4 * p[n + 2] * gs.k_ext) if self.reddening else stars
 
     def evaluate_basis(self, x, p, ctx):
         """The broadened templates only (one inverse FFT instead of three)."""
         x = np.asarray(x, float)
-        self._setup(x, ctx)
+        gs = self._setup(x, ctx)
         n = self.n_templates
         w, v, s = p[:n], p[n], p[n + 1]
-        key = (self._setup_key, float(v), float(s))
-        if self._eval_cache[0] == key:
-            B = self._eval_cache[1][0]
-        elif getattr(self, "_basis_cache", (None,))[0] == key:
-            B = self._basis_cache[1]
+        key = (gs.key, float(v), float(s))
+        full, basis = self._eval_cache, self.__dict__.get("_basis_cache", (None, None))
+        if full[0] == key:
+            B = full[1][0]
+        elif basis[0] == key:
+            B = basis[1]
         else:
-            f = self._freq
-            sk2 = max(s * s - self._floor2, 0.0)
+            f = gs.freq
+            sk2 = max(s * s - gs.floor2, 0.0)
             kernel = np.exp(-2j * np.pi * f * v - 2 * np.pi ** 2 * f ** 2 * sk2)
-            B = self._interp(fft.irfft(self._T_hat * kernel, n=self._n_fft, axis=1))
+            B = self._interp(fft.irfft(gs.T_hat * kernel, n=gs.n_fft, axis=1, workers=-1), gs)
             self._basis_cache = (key, B)
-        att = 10 ** (-0.4 * p[n + 2] * self._k_ext) if self.reddening else 1.0
+        att = 10 ** (-0.4 * p[n + 2] * gs.k_ext) if self.reddening else 1.0
         Batt = B * np.atleast_1d(att)[:, None] if self.reddening else B
         J = np.zeros((x.size, len(p)))
         J[:, :n] = Batt
@@ -253,17 +268,17 @@ class StellarPopulation(Component):
 
     def evaluate(self, x, p, ctx):
         x = np.asarray(x, float)
-        self._setup(x, ctx)
+        gs = self._setup(x, ctx)
         n = self.n_templates
         w, v, s = p[:n], p[n], p[n + 1]
-        B, dBv, dBs = self._broadened(v, s)
-        att = 10 ** (-0.4 * p[n + 2] * self._k_ext) if self.reddening else 1.0
+        B, dBv, dBs = self._broadened(gs, v, s)
+        att = 10 ** (-0.4 * p[n + 2] * gs.k_ext) if self.reddening else 1.0
         stars = B @ w
         f = att * stars
         cols = [B * np.atleast_1d(att)[:, None] if self.reddening else B,
                 (att * (dBv @ w))[:, None], (att * (dBs @ w))[:, None]]
         if self.reddening:
-            cols.append((-0.4 * np.log(10) * self._k_ext * f)[:, None])
+            cols.append((-0.4 * np.log(10) * gs.k_ext * f)[:, None])
         return f, np.hstack(cols)
 
 

@@ -5,7 +5,7 @@ exact Jacobians, and uncertainty estimation.
 import os
 import time
 import warnings
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from itertools import product
 
@@ -126,6 +126,32 @@ def _bounded_lsq(A, b, lb, ub):
     return lsq_linear(A, b, bounds=(lb, ub), method="bvls").x
 
 
+def _n_threads():
+    """Threads for the grid searches: FANTASY_THREADS, else the cores (at most 8)."""
+    env = os.environ.get("FANTASY_THREADS")
+    if env:
+        return max(1, int(env))
+    return max(1, min(8, os.cpu_count() or 1))
+
+
+_POOL = {}
+
+
+def _scan(prob, trials):
+    """
+    chi2 of the exact linear solution for each trial parameter vector. The
+    trials are independent, so they run in threads (the work is in NumPy,
+    SciPy and FFT code, which release the GIL).
+    """
+    n = _n_threads()
+    if n == 1 or len(trials) < 4:
+        return [prob.solve_linear(t)[0] for t in trials]
+    pool = _POOL.get(n)
+    if pool is None:
+        pool = _POOL[n] = ThreadPoolExecutor(n, thread_name_prefix="fantasy-grid")
+    return list(pool.map(lambda t: prob.solve_linear(t)[0], trials))
+
+
 # ------------------------------------------------------------- initial guess
 def _neutral(p):
     lo, hi = p.min, p.max
@@ -206,12 +232,15 @@ def _initial_guess(prob, ngrid=9, nrefine=5, npass=3, verbose=False):
                 grids = [_refine_grid(p, theta[k], s * 0.5 ** (ipass - 1), nrefine)
                          for p, k, s in zip(params, ks, steps[name])]
             best_chi2, best_vals = chi2, theta[ks].copy()
-            trial = theta.copy()
-            for vals in product(*grids):
-                trial[ks] = vals
-                c2, _ = prob.solve_linear(trial)
+            combos = [np.array(v) for v in product(*grids)]
+            trials = []
+            for vals in combos:
+                t = theta.copy()
+                t[ks] = vals
+                trials.append(t)
+            for vals, c2 in zip(combos, _scan(prob, trials)):
                 if c2 < best_chi2:
-                    best_chi2, best_vals = c2, np.array(vals)
+                    best_chi2, best_vals = c2, vals
             theta[ks] = best_vals
             chi2, theta = prob.solve_linear(theta)
         if verbose:
@@ -234,12 +263,15 @@ def _escape_local_minimum(prob, theta, chi2, ngrid=9, only=None):
     if only is not None:
         groups = {k: v for k, v in groups.items() if k == only or k.startswith(only + ".")}
     for ks in groups.values():
-        trial = theta.copy()
+        trials = []
         for vals in product(*[_grid(prob.free[k], ngrid) for k in ks]):
-            trial[ks] = vals
-            c2, th = prob.solve_linear(trial)
-            if c2 < best[0]:
-                best = (c2, th)
+            t = theta.copy()
+            t[ks] = vals
+            trials.append(t)
+        chis = _scan(prob, trials)
+        k = int(np.argmin(chis))
+        if chis[k] < best[0]:
+            best = (chis[k], prob.solve_linear(trials[k])[1])
     if best[1] is not None and best[0] < chi2 * 0.99 - 1.0:
         return best[1]
     return None
@@ -290,14 +322,16 @@ def _fit_stage(model, x, y, err, ctx, values, new_component=None, full_escape=Tr
             own = {k: ks for k, ks in _groups(prob).items()
                    if k == new_component or k.startswith(new_component + ".")}
             for ks in own.values():
-                grids = [_grid(prob.free[k], 9) for k in ks]
+                combos = [np.array(v) for v in product(*[_grid(prob.free[k], 9) for k in ks])]
+                trials = []
+                for vals in combos:
+                    t = theta.copy()
+                    t[ks] = vals
+                    trials.append(t)
                 best = (chi2, theta[ks].copy())
-                trial = theta.copy()
-                for vals in product(*grids):
-                    trial[ks] = vals
-                    c2, _ = prob.solve_linear(trial)
+                for vals, c2 in zip(combos, _scan(prob, trials)):
                     if c2 < best[0]:
-                        best = (c2, np.array(vals))
+                        best = (c2, vals)
                 theta[ks] = best[1]
                 chi2, theta = prob.solve_linear(theta)
     res = _least_squares(prob, theta)

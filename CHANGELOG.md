@@ -6,6 +6,9 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Single fits use several cores: the start-value and local-minimum grid searches run in
+  threads (`FANTASY_THREADS`, default min(8, cores)) and the stellar-template FFTs use all
+  cores.
 - `fa.fit_many(spectra, model, n_jobs=-1)`: one model, many spectra, in parallel processes.
   `fit_epochs(..., n_jobs=-1)` runs its independent starting fits in parallel (24 SDSS-RM
   epochs: 69 s -> 22 s on 10 cores).
@@ -23,6 +26,10 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- `host_properties()` / `key_results()` could fail with "operands could not be broadcast"
+  when the app drew a plot while a cell was running: the stellar component kept its
+  prepared grid in attributes that another thread could replace. Grids are now immutable
+  objects; component caches are thread-safe.
 - SDSS spectra: the instrumental resolution now follows the wavelength (from `wdisp`;
   ~170 km/s at 3800 Å, ~130 km/s at 8000 Å) instead of one median value.
 - BC03 (Bruzual & Charlot 2003, GALAXEV) stellar populations for the host: `host="bc03"`
