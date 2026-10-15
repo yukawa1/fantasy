@@ -179,6 +179,26 @@ to SDSS, ages no longer at the 15 Gyr limit</td><td>all</td></tr>
 absorb template mismatch. The sample was small (8 galaxies), so treat these as good defaults, not rules:
 look at the residuals and compare alternatives with <code>fa.compare</code>.</p>
 """),
+    ("multi", "Multi-epoch fitting", """
+<p>Several spectra of one object (reverberation mapping, monitoring, changing-look AGN) are fitted
+<b>jointly</b>: parameters matching the <i>shared</i> patterns (by default all narrow-line parameters,
+<code>narrow.*</code>) are the same in every epoch, the rest (continuum, Fe II, broad lines) vary. With
+<i>intercalibrate</i>, each epoch gets a flux scale that the shared narrow lines fix, which removes
+differences in flux calibration, seeing and aperture losses.</p>
+<pre>import glob
+files = sorted(glob.glob("/data/sdss_rm/*.fits"))
+spectra = [fa.read(f).deredden().to_rest_frame() for f in files]
+me = fa.fit_epochs(spectra, fa.presets.hbeta(broad_components=2), n_jobs=-1)
+me.light_curve()           # broad fluxes, widths, continuum per epoch
+me.plot_light_curves(); me.plot_baldwin()</pre>
+<p>First every epoch is fitted on its own (these fits run in parallel, <code>n_jobs</code> processes),
+which gives the starting values; then all epochs are fitted together with a sparse Jacobian. The
+reference epoch (flux scale 1) is the one with the highest S/N. For many unrelated spectra use
+<code>fa.fit_many(spectra, model, n_jobs=-1)</code>, which returns one fit per spectrum.</p>
+<p>In scripts on macOS and Windows, put the code under <code>if __name__ == "__main__":</code>, otherwise
+the parallel part falls back to serial. In the app, the <b>Multi-epoch</b> view does all of this:
+drop the files (or give a pattern), choose the model and press <i>Fit all epochs</i>.</p>
+"""),
     ("params", "Parameters, limits and ties", """
 <p>Every parameter has a value, limits and a status (free, fixed or tied). Names are
 <code>component.parameter</code>, e.g. <code>narrow.fwhm</code> or

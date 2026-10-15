@@ -134,6 +134,12 @@ class Session:
         return m if isinstance(m, Model) else None
 
     @property
+    def multi(self):
+        from ..multiepoch import MultiEpochResult
+        m = self.ns.get("me")
+        return m if isinstance(m, MultiEpochResult) else None
+
+    @property
     def result(self):
         from ..result import FitResult
         r = self.ns.get("r")
@@ -165,6 +171,8 @@ class Session:
                     "has_result": self.result is not None,
                     "model": self.model_state(),
                     "templates": _templates_state(),
+                    "multi": self.multi_state(),
+                    "cpus": os.cpu_count() or 1,
                     "python": platform.python_version(),
                     "version": __import__("fantasy_agn").__version__}
 
@@ -252,15 +260,20 @@ class Session:
         """Follow changes of spec, c and r (from buttons or edited cells)."""
         from matplotlib.axes import Axes
         from matplotlib.figure import Figure
-        spec, c, r = self.spec, self.classification, self.result
+        spec, c, r, me = self.spec, self.classification, self.result, self.multi
         seen = {"spec": id(spec) if spec is not None else None,
                 "c": id(c) if c is not None else None,
-                "r": id(r) if r is not None else None}
+                "r": id(r) if r is not None else None,
+                "me": id(me) if me is not None else None}
         changed = {k for k in seen if seen[k] != self._seen.get(k) and seen[k] is not None}
         self._seen = seen
         if isinstance(value, (Figure, Axes)):
             fig = value if isinstance(value, Figure) else value.figure
             self._show(fig, "figure")
+        elif "me" in changed:
+            self._show(me.plot_light_curves(fig=Figure()), "light_curves")
+            self.info = (f"Multi-epoch fit of {len(me.epochs)} spectra done. Light curves below; "
+                         "download the table or the session.")
         elif "r" in changed:
             self._show(r.plot(fig=Figure()), f"{spec.name if spec else 'fit'}_fit")
             self._results(r)
@@ -622,3 +635,64 @@ class Session:
         if name not in TEMPLATE_SETS:
             raise ValueError(f"unknown template set {name!r}")
         return f"fa.templates.download({name!r})"
+
+    # ------------------------------------------------------------ multi-epoch
+    def multi_state(self):
+        me = self.multi
+        if me is None:
+            return None
+        lc = me.light_curve()
+        mjd = [e.spectrum.mjd for e in me.epochs if e.spectrum.mjd is not None]
+        return {"n": len(me.epochs), "rchi2": float(me.chi2 / me.dof), "time": float(me.time),
+                "mjd": [min(mjd), max(mjd)] if mjd else None,
+                "columns": [str(c) for c in lc.columns],
+                "rows": [[(f"{v:.4g}" if isinstance(v, (float, np.floating)) else str(v)) for v in row]
+                         for row in lc.itertuples(index=False)]}
+
+    def light_curve_csv(self):
+        me = self.multi
+        return me.light_curve().to_csv(index=False) if me is not None else None
+
+    def save_upload(self, data, filename, batch):
+        """Keep an uploaded epoch so that the code (and the script) can read it."""
+        name = os.path.basename(filename or "spectrum.fits")
+        folder = os.path.join(UPLOADS, "".join(ch for ch in str(batch) if ch.isalnum() or ch in "-_")[:40] or "batch")
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, name)
+        with open(path, "wb") as fh:
+            fh.write(data)
+        return path
+
+    def multiepoch_code(self, paths=None, pattern=None, model="current", broad_components=2,
+                        outflow=True, shared="narrow.*", intercalibrate=True, n_jobs=-1,
+                        deredden=True, ebv=None, rest_frame=True, z=None, **extra):
+        """Code for a joint fit of several epochs (independent fits run in parallel)."""
+        lines = []
+        if pattern:
+            lines.append("import glob")
+            lines.append(f"files = sorted(glob.glob({os.path.expanduser(pattern.strip())!r}))")
+        elif paths:
+            lines.append("files = [" + ",\n         ".join(repr(p) for p in paths) + "]")
+        else:
+            raise ValueError("give the spectra: drop several files or a pattern such as /data/*.fits")
+        z = float(z) if z not in (None, "", 0, "0") else None
+        read = "fa.read(f)"
+        if deredden:
+            read += f".deredden(ebv={float(ebv):g})" if ebv not in (None, "") else ".deredden()"
+        if rest_frame:
+            read += f".to_rest_frame({'z=' + repr(z) if z else ''})"
+        else:
+            raise ValueError("the joint fit needs rest-frame spectra: tick 'Move to rest frame'")
+        lines.append(f"spectra = [{read} for f in files]")
+        if model == "current":
+            if self.model is None:
+                raise ValueError("there is no model yet: choose a preset here or create one in step 3")
+            mname = "model"
+        else:
+            lines.append(self.preset_code(model, broad_components, outflow, **extra).split("\n")[0])
+            mname = "model"
+        patterns = tuple(p.strip() for p in str(shared).split(",") if p.strip())
+        lines.append(f"me = fa.fit_epochs(spectra, {mname}, shared={patterns!r}, "
+                     f"intercalibrate={bool(intercalibrate)}, n_jobs={int(n_jobs)})")
+        lines.append("me.light_curve()")
+        return "\n".join(lines)

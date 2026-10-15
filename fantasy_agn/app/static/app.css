@@ -304,3 +304,13 @@ td .lines { color: var(--muted); font-size: 12.5px; }
 
 .form.opts { margin-top: 0; }
 .form.opts .hint { margin-right: 2px; }
+
+#mdrop { display: flex; align-items: center; gap: 16px; justify-content: center; border: 1.5px dashed #c6d0db;
+  border-radius: 12px; padding: 18px; color: var(--ink-2); cursor: pointer; background: #fbfcfd; }
+#mdrop small { display: block; color: var(--muted); margin-top: 2px; }
+#mdrop.over { border-color: var(--teal); background: var(--teal-soft); }
+input.wide { width: min(420px, 60vw) !important; }
+#mtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px; }
+#mresults figure img { border: 1px solid var(--line); }
+#mmessage { min-height: 20px; color: var(--muted); font-size: 13.5px; }
+#mmessage.error { color: #b42318; }

@@ -13,6 +13,9 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     GET  /api/lines                  the line list
     GET  /api/plotdata               arrays for the interactive plot
     GET  /api/data                   tables for the Data tab
+    POST /api/upload                 body = a file (?filename=&batch=): keep it, return its path
+    POST /api/multiepoch             JSON: joint fit of several epochs (code cell)
+    GET  /api/lightcurve.csv
     POST /api/templates              JSON {name}: download a stellar template set (as a code cell)
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
@@ -146,6 +149,11 @@ class Handler(BaseHTTPRequestHandler):
             if csv is None:
                 return self._error("no fit yet", 404)
             return self._send(csv, "text/csv", filename=f"{s.spec.name}_lines.csv")
+        if url.path == "/api/lightcurve.csv":
+            csv = s.light_curve_csv()
+            if csv is None:
+                return self._error("no multi-epoch fit yet", 404)
+            return self._send(csv, "text/csv", filename="light_curve.csv")
         if url.path == "/api/session.py":
             return self._send(s.script(), "text/x-python", filename="fantasy_session.py")
         return self._error("not found", 404)
@@ -203,6 +211,19 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     raise ValueError("unknown model action")
                 s.run_cell(code)
+            elif url.path == "/api/upload":
+                path = s.save_upload(self._body(), q.get("filename"), q.get("batch", "batch"))
+                return self._send({"path": path})
+            elif url.path == "/api/multiepoch":
+                opts = json.loads(self._body() or b"{}")
+                extra = _options(opts)
+                extra.pop("host", None) if opts.get("model") == "current" else None
+                s.run_cell(s.multiepoch_code(
+                    paths=opts.get("paths"), pattern=opts.get("pattern"), model=opts.get("model", "current"),
+                    broad_components=opts.get("broad_components", 2), outflow=opts.get("outflow", True),
+                    shared=opts.get("shared", "narrow.*"), intercalibrate=opts.get("intercalibrate", True),
+                    n_jobs=opts.get("n_jobs", -1), deredden=opts.get("deredden", True), ebv=opts.get("ebv"),
+                    rest_frame=opts.get("rest_frame", True), z=opts.get("z"), **extra))
             elif url.path == "/api/templates":
                 opts = json.loads(self._body() or b"{}")
                 s.run_cell(s.download_templates_code(opts.get("name", "")))

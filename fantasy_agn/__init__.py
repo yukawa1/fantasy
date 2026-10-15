@@ -24,7 +24,7 @@ from .components import (BalmerContinuum, BrokenPowerLaw, Component, Extinction,
 from .extinction import fitzpatrick99
 from .classify import Classification, classify
 from .compare import Comparison, compare
-from .fitting import fit, guess
+from .fitting import fit, fit_many, guess
 from .gui import gui
 
 
@@ -40,7 +40,7 @@ from .result import FitResult
 from .spectrum import Spectrum, read
 
 __all__ = [
-    "read", "Spectrum", "Model", "fit", "guess", "fit_epochs", "compare", "Comparison",
+    "read", "Spectrum", "Model", "fit", "fit_many", "guess", "fit_epochs", "compare", "Comparison",
     "classify", "Classification",
     "presets", "gui", "app",
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",

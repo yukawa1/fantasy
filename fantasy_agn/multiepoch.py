@@ -17,7 +17,7 @@ import pandas as pd
 from scipy import sparse
 from scipy.linalg import cho_factor, cho_solve
 
-from .fitting import Problem, _at_limit, _fix_unconstrained, _interior, _prepare
+from .fitting import Problem, _at_limit, _fix_unconstrained, _interior, _prepare, fit_many
 from .fitting import fit as fit_single
 from .parameters import Parameter, ParameterSet
 from .result import FitResult
@@ -117,7 +117,7 @@ class _JointProblem:
 
 
 def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_range=None,
-               errors="covariance", scale_errors=True, reference="snr", verbose=True):
+               errors="covariance", scale_errors=True, reference="snr", n_jobs=-1, verbose=True):
     """
     Fit several epochs of one object jointly.
 
@@ -135,6 +135,8 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
     :param wave_range: fitted window (default: the model's).
     :param errors: 'covariance' or None.
     :param scale_errors: inflate errors by sqrt(reduced chi2) if > 1.
+    :param n_jobs: processes for the independent fits that give the starting
+        values (-1: all cores but one; 1: serial); see :func:`fantasy_agn.fit_many`.
     :return: MultiEpochResult
     """
     t0 = time.time()
@@ -165,8 +167,11 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
     _fix_unconstrained(Problem(model, s0.wave[m0], s0.flux[m0], s0.err[m0], s0.context), model)
 
     # 1) independent fits give starting values for every epoch
-    singles = [fit_single(s, model, wave_range=wave_range, errors=None, verbose=False)
-               for s in spectra]
+    singles = fit_many(spectra, model, n_jobs=n_jobs, verbose=verbose, wave_range=wave_range,
+                       errors=None)
+    bad = [s.name for s, r in zip(spectra, singles) if isinstance(r, Exception)]
+    if bad:
+        raise RuntimeError(f"the independent fit failed for {', '.join(bad)}")
     masks = [r.mask for r in singles]
     prob = _JointProblem(model, spectra, masks, shared, intercalibrate)
 

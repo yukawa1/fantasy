@@ -78,6 +78,9 @@ def ebv_sfd(ra, dec, map_dir=None):
     return float(m.ebv(ra, dec))
 
 
+_IRSA_CACHE = {}
+
+
 def ebv_irsa(ra, dec, timeout=20):
     """
     E(B-V) of the SFD98 maps at (ra, dec) from the IRSA dust service
@@ -86,6 +89,9 @@ def ebv_irsa(ra, dec, timeout=20):
     import urllib.parse
     import urllib.request
     import xml.etree.ElementTree as ET
+    key = (round(float(ra), 4), round(float(dec), 4))     # ~0.4 arcsec; the map pixels are 2.4'
+    if key in _IRSA_CACHE:
+        return _IRSA_CACHE[key]
     query = urllib.parse.urlencode({"locstr": f"{float(ra):.6f} {float(dec):.6f} equ j2000",
                                     "regSize": "2.0"})
     with urllib.request.urlopen(f"{IRSA_DUST}?{query}", timeout=timeout) as resp:
@@ -98,7 +104,8 @@ def ebv_irsa(ra, dec, timeout=20):
 
     def value(tag):
         return float(stats.findtext(tag).split()[0])
-    return value("refPixelValueSFD"), value("refPixelValueSandF")
+    _IRSA_CACHE[key] = (value("refPixelValueSFD"), value("refPixelValueSandF"))
+    return _IRSA_CACHE[key]
 
 
 def galactic_ebv(ra=None, dec=None, source="auto", sf11=True, file_value=None):

@@ -64,7 +64,7 @@ function fmt(v) {
 let currentView = "analysis";
 function setView(name, docId) {
   currentView = name;
-  for (const v of ["analysis", "model", "docs"]) $("view-" + v).classList.toggle("hidden", v !== name);
+  for (const v of ["analysis", "model", "multi", "docs"]) $("view-" + v).classList.toggle("hidden", v !== name);
   for (const l of document.querySelectorAll(".link[data-view-link]")) l.classList.toggle("active", l.dataset.viewLink === name);
   $("main").classList.toggle("docs", name === "docs");
   if (name === "docs") openDocs(docId);
@@ -236,6 +236,8 @@ function renderCards() {
   const err = clientError || state.error;      // a refused action stays visible until the next one
   msg.classList.toggle("error", !!err);
   msg.textContent = err ? err : (busy ? "running …" : state.info);
+  $("mmessage").textContent = msg.textContent;
+  $("mmessage").classList.toggle("error", !!err);
   $("card-results").classList.toggle("hidden", !state.has_result);
   $("tiles").innerHTML = state.results.map((r) => {
     const m2 = /^(.*?)(?: ± (\S+))?(?: ([a-zA-Z/%]+))?$/.exec(r.value);
@@ -284,7 +286,8 @@ async function loadPlot() {
     if (!same) view = [lo, hi];
     $("plotcard").classList.remove("hidden");
     $("plottitle").textContent = d.title;
-    const isFigureOnly = (state.figure_stem || "").endsWith("_classification");
+    const stem = state.figure_stem || "";
+    const isFigureOnly = stem.endsWith("_classification") || stem === "light_curves";
     setPV(isFigureOnly ? "figure" : "interactive");
     renderLegend();
     drawPlot();
@@ -614,6 +617,63 @@ $("btn-add").onclick = () => {
 };
 async function modelAction(body) { return post("/api/model", body); }
 
+// ========================================================== multi-epoch
+let mFiles = [];
+function renderMulti() {
+  if (!$("mmodel").options.length && state) {
+    $("mmodel").innerHTML = '<option value="current">current model (step 3)</option>' +
+      state.models.map((m) => `<option>${esc(m)}</option>`).join("");
+    $("mmodel").value = "hbeta";
+    $("mjobs").value = Math.max(1, (state.cpus || 2) - 1);
+    $("mcpus").textContent = `${state.cpus} processor cores on this computer; the independent fits run in parallel.`;
+  }
+  $("btn-multi").disabled = !!state.busy;
+  const m = state.multi;
+  $("mresults").classList.toggle("hidden", !m);
+  if (!m) return;
+  const span = m.mjd ? `${(m.mjd[1] - m.mjd[0]).toFixed(0)} days` : "—";
+  $("mtiles").innerHTML = [["epochs", m.n], ["joint χ²/ν", m.rchi2.toFixed(3)], ["time span", span],
+    ["fit time", `${m.time.toFixed(0)} s`]].map(([a, b]) =>
+    `<div class="tile"><div class="lab">${a}</div><div class="val">${esc(b)}</div></div>`).join("");
+  $("minfo").textContent = "Broad-line fluxes and widths and the continuum per epoch (intercalibrated).";
+  $("mtable").innerHTML = `<tr>${m.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
+    m.rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("");
+  if (state.figure_stem === "light_curves") $("mfig").src = withToken(`/api/figure.png?v=${state.figure_version}`);
+}
+function renderMFiles() {
+  $("mfiles-info").textContent = mFiles.length ? `${mFiles.length} files: ${mFiles.slice(0, 3).map((f) => f.name).join(", ")}${mFiles.length > 3 ? " …" : ""}`
+    : "SDSS, DESI, 1D FITS or text, one file per epoch";
+}
+const mdrop = $("mdrop");
+$("mbrowse").onclick = (e) => { e.preventDefault(); e.stopPropagation(); $("mfiles").click(); };
+mdrop.onclick = () => $("mfiles").click();
+$("mfiles").onchange = () => { mFiles = [...$("mfiles").files]; renderMFiles(); };
+mdrop.ondragover = (e) => { e.preventDefault(); mdrop.classList.add("over"); };
+mdrop.ondragleave = () => mdrop.classList.remove("over");
+mdrop.ondrop = (e) => { e.preventDefault(); mdrop.classList.remove("over"); mFiles = [...e.dataTransfer.files]; renderMFiles(); };
+$("btn-multi").onclick = async () => {
+  const opts = {
+    model: $("mmodel").value, broad_components: Number($("mncomp").value), outflow: $("moutflow").checked,
+    shared: $("mshared").value, intercalibrate: $("minter").checked, n_jobs: Number($("mjobs").value),
+    deredden: $("mdered").checked, ebv: $("mdered").checked && $("mebv").value !== "" ? Number($("mebv").value) : null,
+    rest_frame: true, z: $("mz").value || null, pattern: $("mpattern").value.trim() || null,
+  };
+  if (!opts.pattern) {
+    if (!mFiles.length) return showError("Drop several spectra or give a pattern such as /data/*.fits");
+    const batch = "epochs-" + Date.now();
+    opts.paths = [];
+    for (const [i, f] of mFiles.entries()) {
+      $("mmessage").textContent = `uploading ${i + 1}/${mFiles.length}: ${f.name}`;
+      try {
+        const r = await api(`/api/upload?${new URLSearchParams({ filename: f.name, batch })}`,
+          { method: "POST", body: f, headers: { "Content-Type": "application/octet-stream" } });
+        opts.paths.push(r.path);
+      } catch (e) { return showError(`${f.name}: ${e.message}`); }
+    }
+  }
+  post("/api/multiepoch", opts);
+};
+
 // ================================================================= docs
 let docs = null;
 async function openDocs(id) {
@@ -660,6 +720,7 @@ function render() {
   renderCells();
   renderCards();
   if (currentView === "model") renderModelEditor(false);
+  renderMulti();
 }
 async function refresh() {
   try {
@@ -693,8 +754,7 @@ setInterval(() => { if (state && state.busy) renderCells(); }, 200);
 let clientError = null;
 function showError(msg) {
   clientError = msg;
-  $("message").textContent = msg;
-  $("message").classList.add("error");
+  for (const id of ["message", "mmessage"]) { $(id).textContent = msg; $(id).classList.add("error"); }
 }
 async function post(path, body, headers) {
   clientError = null;
@@ -806,6 +866,7 @@ function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("docs")) setView("docs", h.split("/")[1]);
   else if (h === "model") setView("model");
+  else if (h === "multi") setView("multi");
   else setView("analysis");
 }
 window.addEventListener("hashchange", route);

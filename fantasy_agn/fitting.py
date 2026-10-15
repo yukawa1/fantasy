@@ -15,7 +15,7 @@ from scipy.optimize import least_squares, lsq_linear, nnls
 
 from .result import FitResult
 
-__all__ = ("fit", "guess")
+__all__ = ("fit", "guess", "fit_many")
 
 
 class Problem:
@@ -618,3 +618,65 @@ def _monte_carlo(prob, theta, n, noise_scale, seed, n_jobs):
                 f"parallel Monte Carlo failed ({type(exc).__name__}); running serially. "
                 "In scripts, put your code under  if __name__ == '__main__':  to use n_jobs > 1.")
     return np.array(_mc_worker((prob, theta, seeds, noise_scale)))
+
+
+# ------------------------------------------------------- many spectra in parallel
+_WORKER = {}
+
+
+def _init_fit_worker(model, options):
+    """Runs once in each worker process: keep the model (it can be large)."""
+    _WORKER["model"], _WORKER["options"] = model, options
+
+
+def _fit_one(spectrum):
+    try:
+        return fit(spectrum, _WORKER["model"], verbose=False, **_WORKER["options"])
+    except Exception as exc:                      # reported, not raised
+        return exc
+
+
+def _n_workers(n_jobs, n_tasks):
+    cpus = os.cpu_count() or 1
+    if n_jobs is None or n_jobs == -1:
+        n_jobs = max(cpus - 1, 1)
+    return max(1, min(int(n_jobs), n_tasks))
+
+
+def fit_many(spectra, model, n_jobs=-1, verbose=True, **fit_options):
+    """
+    Fit the same model to many spectra (epochs of one object, or a sample) in
+    parallel processes. Returns a list of FitResult in the order of
+    ``spectra``; a spectrum that cannot be fitted gives the exception instead
+    (with a warning).
+
+    :param n_jobs: processes (-1: all cores but one; 1: serial). In scripts on
+        macOS and Windows put the code under ``if __name__ == "__main__":``,
+        otherwise the fits run serially.
+    :param fit_options: passed to :func:`fit` (e.g. wave_range, errors).
+    """
+    t0 = time.time()
+    spectra = list(spectra)
+    n = len(spectra)
+    workers = _n_workers(n_jobs, n)
+    results = None
+    if workers > 1:
+        try:
+            with ProcessPoolExecutor(workers, initializer=_init_fit_worker,
+                                     initargs=(model, fit_options)) as ex:
+                results = list(ex.map(_fit_one, spectra))
+        except (RuntimeError, BrokenProcessPool, OSError) as exc:
+            warnings.warn(f"parallel fitting failed ({type(exc).__name__}); running serially. "
+                          "In scripts, put your code under  if __name__ == '__main__':  to use n_jobs > 1.")
+            results = None
+    if results is None:
+        workers = 1
+        _init_fit_worker(model, fit_options)
+        results = [_fit_one(s) for s in spectra]
+    failed = [(s.name, r) for s, r in zip(spectra, results) if isinstance(r, Exception)]
+    for name, exc in failed:
+        warnings.warn(f"{name}: {type(exc).__name__}: {exc}")
+    if verbose:
+        print(f"fitted {n - len(failed)}/{n} spectra in {time.time() - t0:.1f} s "
+              f"({workers} process{'es' if workers > 1 else ''})")
+    return results

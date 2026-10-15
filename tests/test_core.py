@@ -948,11 +948,14 @@ def test_galactic_dereddening(monkeypatch):
         return io.BytesIO(IRSA_ANSWER)
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     monkeypatch.delenv("SFD_DIR", raising=False)
+    from fantasy_agn import extinction
+    extinction._IRSA_CACHE.clear()
     ebv, src = galactic_ebv(214.8, 53.6)                         # no file value, no maps -> IRSA
     assert ebv == 0.0094 and "Schlafly" in src and "214.8" in calls[0]
     assert galactic_ebv(214.8, 53.6, sf11=False)[0] == 0.0109
     ebv, src = galactic_ebv(None, None, file_value=0.05)         # DESI: value in the file
-    assert abs(ebv - 0.043) < 1e-9 and "file" in src and len(calls) == 2
+    assert abs(ebv - 0.043) < 1e-9 and "file" in src
+    assert len(calls) == 1                                   # the same position is asked only once
     with pytest.raises(RuntimeError):
         galactic_ebv(None, None)                                 # nothing to go on
 
@@ -1064,3 +1067,31 @@ def test_sdss_resolution_curve():
     w, f = s.resolution_curve
     assert f[np.argmin(abs(w - 3900))] > f[np.argmin(abs(w - 8000))] + 20      # blue end is worse
     assert abs(np.median(f) - s.resolution) < 15
+
+
+def test_fit_many_parallel_equals_serial():
+    import glob
+    files = sorted(glob.glob(os.path.join(EXAMPLES, "spec-*.fits")))[:2]
+    spectra = [fa.read(f).to_rest_frame() for f in files]
+    model = fa.presets.hbeta(broad_components=1)
+    serial = fa.fit_many(spectra, model, n_jobs=1, verbose=False)
+    parallel = fa.fit_many(spectra, model, n_jobs=2, verbose=False)
+    for a, b in zip(serial, parallel):
+        assert abs(a.chi2 - b.chi2) < 1e-6 * a.chi2
+    bad = fa.Spectrum(np.linspace(7000, 8000, 50), np.ones(50), np.ones(50), rest_frame=True, z=0.0)
+    with pytest.warns(UserWarning):
+        out = fa.fit_many([spectra[0], bad], model, n_jobs=1, verbose=False)
+    assert isinstance(out[1], Exception) and out[0].chi2 > 0
+
+
+def test_app_multiepoch_code():
+    from fantasy_agn.app.session import Session
+    s = Session()
+    code = s.multiepoch_code(pattern="/data/rm/*.fits", model="hbeta", broad_components=2, outflow=False,
+                             shared="narrow.*, feii.fwhm", n_jobs=4, ebv=0.01)
+    assert "glob.glob('/data/rm/*.fits')" in code and ".deredden(ebv=0.01).to_rest_frame()" in code
+    assert "fa.fit_epochs(spectra, model, shared=('narrow.*', 'feii.fwhm'), intercalibrate=True, n_jobs=4)" in code
+    with pytest.raises(ValueError, match="no model yet"):
+        s.multiepoch_code(paths=["a.fits", "b.fits"], model="current")
+    with pytest.raises(ValueError, match="rest-frame"):
+        s.multiepoch_code(paths=["a.fits"], model="hbeta", rest_frame=False)

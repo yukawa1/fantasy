@@ -18,6 +18,7 @@
   <nav id="stepper" aria-label="steps"></nav>
   <nav class="links">
     <button class="link" data-view-link="model"><i data-icon="sliders"></i>Model editor</button>
+    <button class="link" data-view-link="multi"><i data-icon="layers"></i>Multi-epoch</button>
     <button class="link" data-view-link="docs"><i data-icon="book"></i>Docs</button>
     <a class="link" href="https://github.com/yukawa1/fantasy" target="_blank" rel="noopener"><i data-icon="github"></i>GitHub</a>
     <button id="reset" class="btn ghost small" title="Start a new analysis"><i data-icon="refresh"></i>New analysis</button>
@@ -281,6 +282,69 @@
       <datalist id="paramlist"></datalist>
       <div class="tablewrap"><table class="grid" id="params"></table></div>
     </div></section>
+  </section>
+
+  <!-- ============================== Multi-epoch ============================== -->
+  <section id="view-multi" class="view hidden">
+    <div class="hero"><h1>Multi-epoch <span>fitting</span></h1>
+      <div class="kicker">SHARED NARROW LINES · INTERCALIBRATION · LIGHT CURVES</div></div>
+
+    <section class="card"><div class="card-main">
+      <header class="card-head"><span class="num">1</span>
+        <div><h2>Spectra of one object</h2><p>Several epochs, fitted jointly: the narrow lines are shared and set the flux scale of every epoch.</p></div>
+        <a class="help" data-doc="multi" href="#">Need help?</a></header>
+      <div id="mdrop" tabindex="0">
+        <input type="file" id="mfiles" accept=".fits,.fit,.fz,.txt,.dat,.csv,.json" multiple hidden>
+        <i data-icon="upload" class="big"></i>
+        <div><b>Drop several spectra here</b> or <a href="#" id="mbrowse">choose files</a>
+        <small id="mfiles-info">SDSS, DESI, 1D FITS or text, one file per epoch</small></div>
+      </div>
+      <div class="form">
+        <label>or a pattern <input id="mpattern" type="text" placeholder="/data/sdss_rm/*.fits" class="wide"></label>
+        <label class="short">z <input id="mz" type="number" step="0.0001" min="0" placeholder="from files"></label>
+      </div>
+      <div class="form prep">
+        <label class="check"><input id="mdered" type="checkbox" checked> Correct Galactic extinction</label>
+        <label class="short ebv">E(B-V) <input id="mebv" type="number" step="0.001" min="0" placeholder="auto"></label>
+        <label class="check"><input id="mrest" type="checkbox" checked disabled> Move to rest frame</label>
+      </div>
+    </div>
+    <aside class="card-side"><i data-icon="layers" class="big"></i><b>One object, many epochs</b>
+      <span>Reverberation mapping, changing-look AGN, monitoring campaigns.</span></aside></section>
+
+    <section class="card"><div class="card-main">
+      <header class="card-head"><span class="num">2</span>
+        <div><h2>Model and options</h2><p>The independent fits that give the starting values run in parallel.</p></div></header>
+      <div class="form">
+        <label>Model <select id="mmodel"></select></label>
+        <label>Broad components <input id="mncomp" type="number" min="1" max="4" value="2"></label>
+        <label class="check"><input id="moutflow" type="checkbox"> outflow wing</label>
+      </div>
+      <div class="form">
+        <label title="parameter name patterns common to all epochs, separated by commas">Shared
+          <input id="mshared" type="text" value="narrow.*" class="narrow"></label>
+        <label class="check" title="a flux scale per epoch, fixed by the shared narrow lines">
+          <input id="minter" type="checkbox" checked> intercalibrate</label>
+        <label title="processes for the independent fits">Processes <input id="mjobs" type="number" min="1" value="4"></label>
+        <button id="btn-multi" class="btn primary"><i data-icon="play"></i>Fit all epochs</button>
+      </div>
+      <div id="mmessage" class="msg" role="status"></div>
+    </div>
+    <aside class="card-side"><i data-icon="target" class="big"></i><b>Parallel</b>
+      <span id="mcpus">Uses several processor cores.</span></aside></section>
+
+    <section class="card hidden" id="mresults"><div class="card-main">
+      <header class="card-head"><span class="num">3</span>
+        <div><h2>Light curves</h2><p id="minfo"></p></div></header>
+      <div id="mtiles"></div>
+      <figure><img id="mfig" alt="light curves"></figure>
+      <div class="tablewrap" style="margin-top:10px"><table class="grid" id="mtable"></table></div>
+    </div>
+    <aside class="card-side downloads">
+      <a class="btn outline tok" href="/api/lightcurve.csv" download><i data-icon="download"></i>Light curve (.csv)</a>
+      <a class="btn outline tok" href="/api/figure.pdf?dl=1"><i data-icon="download"></i>Figure (PDF)</a>
+      <a class="btn outline tok" href="/api/session.py" download><i data-icon="code"></i>Session (Python)</a>
+    </aside></section>
   </section>
 
   <!-- ============================== Docs ============================== -->

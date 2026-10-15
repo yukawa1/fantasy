@@ -6,6 +6,14 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- `fa.fit_many(spectra, model, n_jobs=-1)`: one model, many spectra, in parallel processes.
+  `fit_epochs(..., n_jobs=-1)` runs its independent starting fits in parallel (24 SDSS-RM
+  epochs: 69 s -> 22 s on 10 cores).
+- App: **Multi-epoch** view (drop several spectra or give a pattern; model, shared
+  parameters, intercalibration, processes; light curves as figure, table and CSV).
+- Faster single fits (about 2-2.5x): NNLS for the amplitudes, value-only evaluation in the
+  start-value search, early stop of the search, targeted local-minimum scans.
+- IRSA E(B-V) lookups are cached per position.
 - Presets for every class of `classify()`: `seyfert2`, `composite`, `liner`, `starforming`,
   `passive` (= `retired`), chosen by fitting SDSS examples of each class one ingredient at a
   time (host dust; BC03 young populations for star-forming galaxies; two narrow-line systems
