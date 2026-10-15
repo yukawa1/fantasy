@@ -314,3 +314,17 @@ input.wide { width: min(420px, 60vw) !important; }
 #mresults figure img { border: 1px solid var(--line); }
 #mmessage { min-height: 20px; color: var(--muted); font-size: 13.5px; }
 #mmessage.error { color: #b42318; }
+
+/* progress of long computations (multi-epoch) */
+.progress { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 13px; color: var(--ink-2); }
+.progress .track { flex: 1; height: 8px; border-radius: 4px; background: var(--teal-soft); overflow: hidden; }
+.progress .bar { height: 100%; width: 0; background: var(--teal); border-radius: 4px; transition: width .3s; }
+.progress.indeterminate .bar { width: 30%; animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
+.progress .ptext { white-space: nowrap; font-variant-numeric: tabular-nums; }
+pre.run .prog { color: var(--code-out); }
+
+/* figures keep a readable size: never wider than drawn, never taller than the window */
+#figure img, #mresults figure img { width: auto; max-width: 100%; max-height: 78vh; margin: 0 auto; }
+/* grid items may shrink below their content (wide tables scroll inside .tablewrap) */
+.view { min-width: 0; }

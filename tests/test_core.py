@@ -1074,8 +1074,16 @@ def test_fit_many_parallel_equals_serial():
     files = sorted(glob.glob(os.path.join(EXAMPLES, "spec-*.fits")))[:2]
     spectra = [fa.read(f).to_rest_frame() for f in files]
     model = fa.presets.hbeta(broad_components=1)
-    serial = fa.fit_many(spectra, model, n_jobs=1, verbose=False)
-    parallel = fa.fit_many(spectra, model, n_jobs=2, verbose=False)
+    from fantasy_agn.progress import set_hook
+    reports = []
+    old = set_hook(reports.append)
+    try:
+        serial = fa.fit_many(spectra, model, n_jobs=1, verbose=False)
+        parallel = fa.fit_many(spectra, model, n_jobs=2, verbose=False)
+    finally:
+        set_hook(old)
+    done = [(r["done"], r["total"]) for r in reports]
+    assert done == [(0, 2), (1, 2), (2, 2)] * 2          # serial, then parallel
     for a, b in zip(serial, parallel):
         assert abs(a.chi2 - b.chi2) < 1e-6 * a.chi2
     bad = fa.Spectrum(np.linspace(7000, 8000, 50), np.ones(50), np.ones(50), rest_frame=True, z=0.0)

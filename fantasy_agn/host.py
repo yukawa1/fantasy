@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 from scipy import fft
 
+from ._threads import n_threads
 from .components import Component, C_KMS, FWHM_PER_SIGMA, _limits, instrumental_fwhm
 from .extinction import fitzpatrick99
 from .templates import TEMPLATE_SETS, load, canonical
@@ -191,7 +192,7 @@ class StellarPopulation(Component):
         pos = (np.log(x) - ln_grid[0]) / step + pad
         i0 = np.floor(pos).astype(int)
         floor2 = max(sig_c ** 2 - sig_d ** 2, 0.0)
-        gs = _Grid(key, fft.rfft(Tp, axis=1, workers=-1), fft.rfftfreq(n_fft, d=self.dv),
+        gs = _Grid(key, fft.rfft(Tp, axis=1, workers=n_threads()), fft.rfftfreq(n_fft, d=self.dv),
                    n_fft, i0, pos - i0, fitzpatrick99(x), floor2, float(np.sqrt(floor2)), norms)
         if len(cache) >= 8:
             cache.pop(next(iter(cache)), None)
@@ -220,10 +221,11 @@ class StellarPopulation(Component):
         sk2 = max(s * s - gs.floor2, 0.0)
         kernel = np.exp(-2j * np.pi * f * v - 2 * np.pi ** 2 * f ** 2 * sk2)
         base = gs.T_hat * kernel
-        B = self._interp(fft.irfft(base, n=gs.n_fft, axis=1, workers=-1), gs)
-        dBv = self._interp(fft.irfft(base * (-2j * np.pi * f), n=gs.n_fft, axis=1, workers=-1), gs)
         ds = (-4 * np.pi ** 2 * f ** 2 * s) if sk2 > 0 else np.zeros_like(f)
-        dBs = self._interp(fft.irfft(base * ds, n=gs.n_fft, axis=1, workers=-1), gs)
+        # the three inverse transforms in one call
+        Y = fft.irfft(np.concatenate([base, base * (-2j * np.pi * f), base * ds]),
+                      n=gs.n_fft, axis=1, workers=n_threads())
+        B, dBv, dBs = (self._interp(y, gs) for y in np.split(Y, 3))
         out = (B, dBv, dBs)
         self._eval_cache = (key, out)
         return out
@@ -238,7 +240,7 @@ class StellarPopulation(Component):
         f = gs.freq
         Y = fft.irfft((p[:n] @ gs.T_hat)[None, :]
                       * np.exp(-2j * np.pi * f * v - 2 * np.pi ** 2 * f ** 2 * sk2),
-                      n=gs.n_fft, axis=1, workers=-1)
+                      n=gs.n_fft, axis=1, workers=n_threads())
         stars = self._interp(Y, gs)[:, 0]
         return stars * 10 ** (-0.4 * p[n + 2] * gs.k_ext) if self.reddening else stars
 
@@ -258,7 +260,7 @@ class StellarPopulation(Component):
             f = gs.freq
             sk2 = max(s * s - gs.floor2, 0.0)
             kernel = np.exp(-2j * np.pi * f * v - 2 * np.pi ** 2 * f ** 2 * sk2)
-            B = self._interp(fft.irfft(gs.T_hat * kernel, n=gs.n_fft, axis=1, workers=-1), gs)
+            B = self._interp(fft.irfft(gs.T_hat * kernel, n=gs.n_fft, axis=1, workers=n_threads()), gs)
             self._basis_cache = (key, B)
         att = 10 ** (-0.4 * p[n + 2] * gs.k_ext) if self.reddening else 1.0
         Batt = B * np.atleast_1d(att)[:, None] if self.reddening else B

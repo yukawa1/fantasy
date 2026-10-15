@@ -71,11 +71,16 @@ class Cell:
         self.start = None
         self.end = None
         self.out = []          # (text, kind): kind 'out' or 'err'
+        self.live = None       # printed output so far, while running
 
     def as_dict(self):
+        running = self.start is not None and self.end is None
+        out = [{"text": t, "kind": k} for t, k in self.out]
+        live = self.live
+        if running and live is not None and live.getvalue():
+            out = [{"text": live.getvalue().rstrip()[-MAX_OUTPUT:], "kind": "out"}]
         return {"code": self.code, "n": self.n, "start": self.start, "end": self.end,
-                "running": self.start is not None and self.end is None,
-                "out": [{"text": t, "kind": k} for t, k in self.out]}
+                "running": running, "out": out}
 
 
 def _short_repr(value):
@@ -93,8 +98,17 @@ class Session:
     """One analysis: a list of code cells run in a shared namespace."""
 
     def __init__(self):
+        from ..progress import set_hook
         self.lock = threading.RLock()
+        self.progress = None
         self.reset()
+        set_hook(self._on_progress)
+
+    def _on_progress(self, p):
+        """Progress reports of fit_many / fit_epochs while a cell runs."""
+        with self.lock:
+            if self.busy:
+                self.progress = p
 
     def reset(self):
         import fantasy_agn
@@ -163,6 +177,7 @@ class Session:
             return {"steps": list(STEPS), "done": self.done(), "busy": self.busy,
                     "now": time.time(), "cells": [c.as_dict() for c in self.cells],
                     "error": self.error, "figure_version": self.figure_version,
+                    "progress": self.progress,
                     "figure_stem": self.figure_stem,
                     "results": [{"label": a, "value": b} for a, b in self.results],
                     "warnings": self.warnings, "recommended": self.recommended,
@@ -188,7 +203,7 @@ class Session:
         if fig is None:
             return None
         buf = io.BytesIO()
-        if fmt == "png" and dpi <= 150:
+        if fmt == "png" and dpi <= 220:          # on-screen figures (220: 2x for sharp displays)
             fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
         else:
             with paper_style():
@@ -213,12 +228,13 @@ class Session:
                 cell = self.cells[int(index)]
                 cell.code, cell.out, cell.n, cell.end = code, [], None, None
             cell.start = time.time()
-            self.busy, self.error = "running", None
+            self.busy, self.error, self.progress = "running", None, None
         threading.Thread(target=self._execute, args=(cell,), daemon=True).start()
         return cell
 
     def _execute(self, cell):
         printed = io.StringIO()
+        cell.live = printed
         value = None
         try:
             tree = ast.parse(cell.code, mode="exec")
@@ -249,7 +265,8 @@ class Session:
             with self.lock:
                 self.count += 1
                 cell.n, cell.end = self.count, time.time()
-                self.busy = None
+                cell.live = None
+                self.busy, self.progress = None, None
 
     def _show(self, fig, stem):
         with self.lock:

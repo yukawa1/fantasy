@@ -17,9 +17,11 @@ import pandas as pd
 from scipy import sparse
 from scipy.linalg import cho_factor, cho_solve
 
-from .fitting import Problem, _at_limit, _fix_unconstrained, _interior, _prepare, fit_many
+from .fitting import (Problem, _at_limit, _fix_unconstrained, _interior, _prepare,
+                      _thread_map, fit_many)
 from .fitting import fit as fit_single
 from .parameters import Parameter, ParameterSet
+from .progress import report
 from .result import FitResult
 
 __all__ = ("fit_epochs", "MultiEpochResult")
@@ -95,8 +97,9 @@ class _JointProblem:
         full = self.full(theta)
         resid = []
         blocks_r, blocks_c, blocks_v = [], [], []
-        for k in range(self.n):
-            x, y, err, f, Jb, s = self._epoch(k, full)
+        # epochs are independent: evaluated in threads
+        for k, (x, y, err, f, Jb, s) in enumerate(_thread_map(lambda k: self._epoch(k, full),
+                                                               range(self.n))):
             resid.append((s * f - y) / err)
             rows = np.arange(self.rows[k], self.rows[k + 1])
             vals = s * Jb / err[:, None]
@@ -195,6 +198,7 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
     theta0 = np.array([full0[jn.index(p.name)] for p in prob.free])
 
     # 2) joint fit with a sparse Jacobian
+    report("joint fit", 0, None, f"{len(theta0)} parameters, {len(spectra)} epochs")
     res = _levenberg_marquardt(prob, _interior(theta0, prob.lb, prob.ub, prob.linear))
     theta = res.x
     full = prob.full(theta)
@@ -290,6 +294,7 @@ def _levenberg_marquardt(prob, theta, max_iter=300, ftol=1e-10):
             break
         improvement = cost - ct
         theta, r, J, cost = trial, rt, Jt, ct
+        report("joint fit", nfev, None, f"chi2 = {cost:.1f}")
         lam = max(lam / 3, 1e-12)
         if improvement <= ftol * cost:
             converged = True

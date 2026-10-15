@@ -138,7 +138,7 @@ class Handler(BaseHTTPRequestHandler):
             if fmt not in ("png", "pdf", "eps"):
                 return self._error("unknown format", 404)
             dl = "dl" in q
-            data = s.figure_bytes(fmt, dpi=300 if dl else 110)
+            data = s.figure_bytes(fmt, dpi=300 if dl else (220 if "hd" in q else 110))
             if data is None:
                 return self._error("no figure yet", 404)
             ctype = {"png": "image/png", "pdf": "application/pdf",

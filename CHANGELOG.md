@@ -17,6 +17,10 @@ derivatives.
 - `fa.fit_many(spectra, model, n_jobs=-1)`: one model, many spectra, in parallel processes.
   `fit_epochs(..., n_jobs=-1)` runs its independent starting fits in parallel (24 SDSS-RM
   epochs: 69 s -> 22 s on 10 cores).
+- Progress of long computations: `fit_many` and `fit_epochs` report through
+  `fantasy_agn.progress` (`set_hook`); the app shows a progress bar with the fitted
+  spectra, the time left and the joint-fit iterations, and printed output appears while
+  a cell runs.
 - App: **Multi-epoch** view (drop several spectra or give a pattern; model, shared
   parameters, intercalibration, processes; light curves as figure, table and CSV).
 - Faster single fits (about 2-2.5x): NNLS for the amplitudes, value-only evaluation in the
@@ -31,6 +35,12 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- App: a wide light-curve table stretched the page, so the figures were drawn several
+  times too large; figures are now shown at their natural size (rendered at 2x for sharp
+  screens).
+- `fit_many` worker processes run single-threaded (no processes x threads
+  oversubscription; 20 epochs 17.6 -> 12.4 s); the joint multi-epoch evaluation runs the
+  epochs in threads.
 - `host_properties()` / `key_results()` could fail with "operands could not be broadcast"
   when the app drew a plot while a cell was running: the stellar component kept its
   prepared grid in attributes that another thread could replace. Grids are now immutable

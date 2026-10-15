@@ -157,7 +157,8 @@ function renderCells() {
     let html = "";
     if (c.running) {
       const el = now - c.start;
-      html += `<pre class="run">${SPIN[Math.floor(el * 6) % 4]} running … ${el.toFixed(0)} s</pre>`;
+      const p = progressText();
+      html += `<pre class="run">${SPIN[Math.floor(el * 6) % 4]} running … ${el.toFixed(0)} s${p ? ` <span class="prog">· ${esc(p)}</span>` : ""}</pre>`;
     }
     for (const o of c.out) html += `<pre class="${o.kind === "err" ? "err" : "out"}">${esc(o.text)}</pre>`;
     if (v.outputs.innerHTML !== html) v.outputs.innerHTML = html;
@@ -238,6 +239,7 @@ function renderCards() {
   msg.textContent = err ? err : (busy ? "running …" : state.info);
   $("mmessage").textContent = msg.textContent;
   $("mmessage").classList.toggle("error", !!err);
+  renderProgress();
   $("card-results").classList.toggle("hidden", !state.has_result);
   $("tiles").innerHTML = state.results.map((r) => {
     const m2 = /^(.*?)(?: ± (\S+))?(?: ([a-zA-Z/%]+))?$/.exec(r.value);
@@ -257,7 +259,7 @@ function renderCards() {
   if (state.figure_version !== lastFigure) {
     lastFigure = state.figure_version;
     if (state.figure_version > 0) {
-      $("figimg").src = withToken(`/api/figure.png?v=${lastFigure}`);
+      $("figimg").src = withToken(`/api/figure.png?v=${lastFigure}&hd=1`);
       loadPlot();
       if (ptab === "data") loadData();
     } else {
@@ -266,6 +268,29 @@ function renderCards() {
       drawSpark();
     }
   }
+}
+
+// ============================================================== progress
+// fit_many / fit_epochs report {task, done, total, detail}; shown while a cell runs
+function progressText() {
+  const p = state && state.busy && state.progress;
+  if (!p) return "";
+  const count = p.total ? `${p.done}/${p.total}` : (p.done ? `${p.done} steps` : "");
+  return [p.task, count, p.detail].filter(Boolean).join(" · ");
+}
+function renderProgress() {
+  const box = $("mprogress");
+  const p = state.busy && state.progress;
+  box.classList.toggle("hidden", !p);
+  if (!p) return;
+  box.classList.toggle("indeterminate", !p.total);
+  box.querySelector(".bar").style.width = p.total ? `${(100 * p.done / p.total).toFixed(1)}%` : "";
+  let text = progressText();
+  if (p.total && p.done > 0 && p.done < p.total) {
+    const el = p.time - p.start;
+    if (el > 2) text += ` · about ${Math.ceil(el / p.done * (p.total - p.done))} s left`;
+  }
+  box.querySelector(".ptext").textContent = text;
 }
 
 // ========================================================= interactive plot
@@ -638,7 +663,11 @@ function renderMulti() {
   $("minfo").textContent = "Broad-line fluxes and widths and the continuum per epoch (intercalibrated).";
   $("mtable").innerHTML = `<tr>${m.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
     m.rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("");
-  if (state.figure_stem === "light_curves") $("mfig").src = withToken(`/api/figure.png?v=${state.figure_version}`);
+  const src = withToken(`/api/figure.png?v=${state.figure_version}&hd=1`);
+  if (state.figure_stem === "light_curves" && $("mfig").dataset.v !== String(state.figure_version)) {
+    $("mfig").dataset.v = String(state.figure_version);
+    $("mfig").src = src;
+  }
 }
 function renderMFiles() {
   $("mfiles-info").textContent = mFiles.length ? `${mFiles.length} files: ${mFiles.slice(0, 3).map((f) => f.name).join(", ")}${mFiles.length > 3 ? " …" : ""}`
@@ -871,3 +900,6 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 refresh().then(route);
+
+// figures are drawn at 2x (sharp on high-resolution screens) and shown at their natural size
+for (const id of ["figimg", "mfig"]) $(id).addEventListener("load", (e) => { e.target.style.width = `${e.target.naturalWidth / 2}px`; });

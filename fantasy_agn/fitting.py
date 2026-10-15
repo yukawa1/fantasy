@@ -5,7 +5,7 @@ exact Jacobians, and uncertainty estimation.
 import os
 import time
 import warnings
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from itertools import product
 
@@ -13,6 +13,8 @@ import numpy as np
 from scipy.linalg import solve_triangular
 from scipy.optimize import least_squares, lsq_linear, nnls
 
+from ._threads import SINGLE_THREADED, environment, n_threads
+from .progress import report
 from .result import FitResult
 
 __all__ = ("fit", "guess", "fit_many")
@@ -126,14 +128,6 @@ def _bounded_lsq(A, b, lb, ub):
     return lsq_linear(A, b, bounds=(lb, ub), method="bvls").x
 
 
-def _n_threads():
-    """Threads for the grid searches: FANTASY_THREADS, else the cores (at most 8)."""
-    env = os.environ.get("FANTASY_THREADS")
-    if env:
-        return max(1, int(env))
-    return max(1, min(8, os.cpu_count() or 1))
-
-
 _POOL = {}
 
 
@@ -143,13 +137,19 @@ def _scan(prob, trials):
     trials are independent, so they run in threads (the work is in NumPy,
     SciPy and FFT code, which release the GIL).
     """
-    n = _n_threads()
-    if n == 1 or len(trials) < 4:
-        return [prob.solve_linear(t)[0] for t in trials]
+    return _thread_map(lambda t: prob.solve_linear(t)[0], trials)
+
+
+def _thread_map(fn, items):
+    """[fn(i) for i in items], in the shared thread pool when worthwhile."""
+    n = n_threads()
+    items = list(items)
+    if n == 1 or len(items) < 4:
+        return [fn(i) for i in items]
     pool = _POOL.get(n)
     if pool is None:
-        pool = _POOL[n] = ThreadPoolExecutor(n, thread_name_prefix="fantasy-grid")
-    return list(pool.map(lambda t: prob.solve_linear(t)[0], trials))
+        pool = _POOL[n] = ThreadPoolExecutor(n, thread_name_prefix="fantasy")
+    return list(pool.map(fn, items))
 
 
 # ------------------------------------------------------------- initial guess
@@ -748,11 +748,17 @@ def fit_many(spectra, model, n_jobs=-1, verbose=True, **fit_options):
     n = len(spectra)
     workers = _n_workers(n_jobs, n)
     results = None
+    task = f"fitting {n} spectra"
+    report(task, 0, n)
     if workers > 1:
         try:
-            with ProcessPoolExecutor(workers, initializer=_init_fit_worker,
-                                     initargs=(model, fit_options)) as ex:
-                results = list(ex.map(_fit_one, spectra))
+            with environment(SINGLE_THREADED), ProcessPoolExecutor(
+                    workers, initializer=_init_fit_worker, initargs=(model, fit_options)) as ex:
+                futures = {ex.submit(_fit_one, s): k for k, s in enumerate(spectra)}
+                results = [None] * n
+                for done, fut in enumerate(as_completed(futures), 1):
+                    results[futures[fut]] = fut.result()
+                    report(task, done, n, f"{workers} processes")
         except (RuntimeError, BrokenProcessPool, OSError) as exc:
             warnings.warn(f"parallel fitting failed ({type(exc).__name__}); running serially. "
                           "In scripts, put your code under  if __name__ == '__main__':  to use n_jobs > 1.")
@@ -760,7 +766,10 @@ def fit_many(spectra, model, n_jobs=-1, verbose=True, **fit_options):
     if results is None:
         workers = 1
         _init_fit_worker(model, fit_options)
-        results = [_fit_one(s) for s in spectra]
+        results = []
+        for s in spectra:
+            results.append(_fit_one(s))
+            report(task, len(results), n, "1 process")
     failed = [(s.name, r) for s, r in zip(spectra, results) if isinstance(r, Exception)]
     for name, exc in failed:
         warnings.warn(f"{name}: {type(exc).__name__}: {exc}")
