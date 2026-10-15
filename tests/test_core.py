@@ -630,3 +630,27 @@ def test_halpha_tied_outflow_and_hei():
     labels = list(fa.presets.variants("halpha", broad_components=(1,),
                                       outflow=(False, True, {"shift": 0, "fwhm": 900})))
     assert labels == ["1 broad", "1 broad + outflow", "1 broad + [OIII]-tied outflow"]
+
+
+def test_variants_profiles():
+    v = fa.presets.variants("hbeta", broad_components=(2,), outflow=(True,),
+                            broad_profile=("gaussian", "gauss-hermite"))
+    assert list(v) == ["2 broad + outflow", "2 GH broad + outflow"]
+    assert v["2 GH broad + outflow"].components[-2].profile == "gauss-hermite" or any(
+        getattr(c, "profile", "") == "gauss-hermite" for c in v["2 GH broad + outflow"].components)
+
+
+def test_broken_powerlaw_free_break():
+    c = fa.BrokenPowerLaw(break_wave=(4600, 4000, 6000))
+    x = np.linspace(3800, 6800, 800)
+    p = np.array([2.0, -1.2, -2.3, 5030.0])
+    f, J = c.evaluate(x, p, {})
+    for i in range(p.size):
+        d = 1e-6 * max(abs(p[i]), 1)
+        a, b = p.copy(), p.copy()
+        a[i] += d
+        b[i] -= d
+        num = (c.evaluate(x, a, {})[0] - c.evaluate(x, b, {})[0]) / (2 * d)
+        assert np.max(np.abs(num - J[:, i])) < 1e-5 * np.max(np.abs(num)) + 1e-10
+    fixed = fa.BrokenPowerLaw(pivot=5030.0)
+    assert np.allclose(fixed.evaluate(x, p[:3], {})[0], f)

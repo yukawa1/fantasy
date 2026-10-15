@@ -359,26 +359,42 @@ class PowerLaw(Component):
 
 
 class BrokenPowerLaw(Component):
-    """Power law with different indices blueward and redward of ``pivot``."""
+    """
+    Power law with different indices blueward and redward of a break.
+
+    :param pivot: break wavelength (A), fixed; ``amp`` is the flux density there.
+    :param break_wave: (initial, min, max) to fit the break wavelength instead
+        (parameter ``break``); then ``pivot`` is ignored and ``amp`` is the flux
+        density at the fitted break.
+    """
     kind = "continuum"
 
     def __init__(self, name="continuum", pivot=5100.0, index_blue=(-1.5, -5, 3),
-                 index_red=(-1.5, -5, 3)):
+                 index_red=(-1.5, -5, 3), break_wave=None):
         super().__init__(name)
-        self.pivot = float(pivot)
+        self.free_break = break_wave is not None
+        self.pivot = float(pivot if break_wave is None else _limits(break_wave, (pivot, pivot, pivot))[0])
         self._par("amp", 1.0, 0.0, np.inf, linear=True, unit="flux/A",
-                  description=f"flux density at {pivot:g} A")
+                  description="flux density at the break" if self.free_break
+                  else f"flux density at {pivot:g} A")
         self._par("index_blue", *_limits(index_blue, (-1.5, -5, 3)))
         self._par("index_red", *_limits(index_red, (-1.5, -5, 3)))
+        if self.free_break:
+            self._par("break", *_limits(break_wave, (pivot, pivot, pivot)), unit="A",
+                      description="break wavelength")
 
     def evaluate(self, x, p, ctx):
-        amp, ib, ir = p
-        r = x / self.pivot
+        amp, ib, ir = p[:3]
+        pivot = p[3] if self.free_break else self.pivot
+        r = x / pivot
         blue = r < 1
         shape = np.where(blue, r ** ib, r ** ir)
         f = amp * shape
         logr = np.log(r)
-        return f, np.column_stack([shape, np.where(blue, f * logr, 0), np.where(blue, 0, f * logr)])
+        cols = [shape, np.where(blue, f * logr, 0), np.where(blue, 0, f * logr)]
+        if self.free_break:
+            cols.append(-np.where(blue, ib, ir) * f / pivot)
+        return f, np.column_stack(cols)
 
 
 class Polynomial(Component):

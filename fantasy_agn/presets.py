@@ -55,7 +55,9 @@ def _continuum(kind, pivot, break_wave):
         return PowerLaw("continuum", pivot=pivot)
     if kind == "broken":
         return BrokenPowerLaw("continuum", pivot=break_wave)
-    raise ValueError("continuum must be 'powerlaw' or 'broken'")
+    if kind == "broken_free":
+        return BrokenPowerLaw("continuum", break_wave=(break_wave, 4000.0, 6000.0))
+    raise ValueError("continuum must be 'powerlaw', 'broken' or 'broken_free'")
 
 
 def _balmer(model):
@@ -220,9 +222,11 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
 
     :param extinction: True (Fitzpatrick 1999) or 'calzetti': fit an intrinsic
         E(B-V) of the AGN; fluxes and luminosities are then dereddened.
-    :param continuum: 'broken' (default; slope change at 4600 A) or 'powerlaw'.
-        A single power law cannot follow the curvature of the continuum over
-        this wide range.
+    :param continuum: 'broken' (default; slope change at 4600 A), 'broken_free'
+        (break wavelength fitted within 4000-6000 A) or 'powerlaw'. A single
+        power law cannot follow the curvature of the continuum over this wide
+        range. The continuum shape is the main systematic of this preset:
+        compare several options (and host=True) with fa.compare.
     :param balmer: add the Balmer continuum and high-order Balmer lines, which
         shape the spectrum below ~4000 A.
     :param host: fit a host galaxy simultaneously: True/'stellar' (stellar
@@ -307,23 +311,35 @@ def auto(spectrum, **options):
     return PRESETS[name](**options)
 
 
-def variants(name="hbeta", broad_components=(1, 2, 3), outflow=(False, True), **options):
+def variants(name="hbeta", broad_components=(1, 2, 3), outflow=(False, True),
+             broad_profile=("gaussian",), **options):
     """
     Several decompositions of one preset for fa.compare(): every combination of
-    the number of broad components and with/without an outflow wing (where the
-    preset has one). Other options (e.g. host=True) apply to all. For H-alpha,
-    ``outflow=(False, hbeta_result)`` ties the wing to the [OIII] outflow.
+    the number of broad components, the broad-line profile and with/without an
+    outflow wing (where the preset has one). Other options (e.g. host=True)
+    apply to all. For H-alpha, ``outflow=(False, hbeta_result)`` ties the wing
+    to the [OIII] outflow.
+
+    :param broad_profile: profile name or several, e.g.
+        ('gaussian', 'gauss-hermite'): Gauss-Hermite components can follow
+        asymmetric broad lines (bumps, shoulders) with fewer components.
     """
     import inspect
     func = PRESETS[name]
     params = inspect.signature(func).parameters
+    profiles = (broad_profile,) if isinstance(broad_profile, str) else tuple(broad_profile)
+    short = {"gaussian": "", "gauss-hermite": "GH ", "lorentzian": "Lorentzian ", "voigt": "Voigt "}
     out = {}
-    for n in broad_components:
-        for o in (outflow if "outflow" in params else (False,)):
-            kw = dict(options, broad_components=n)
-            if "outflow" in params:
-                kw["outflow"] = o
-            label = f"{n} broad" + ("" if o is False or o is None
-                                     else " + outflow" if o is True else " + [OIII]-tied outflow")
-            out[label] = func(**kw)
+    for prof in profiles:
+        for n in broad_components:
+            for o in (outflow if "outflow" in params else (False,)):
+                kw = dict(options, broad_components=n)
+                if prof != "gaussian":
+                    kw["broad_profile"] = prof
+                if "outflow" in params:
+                    kw["outflow"] = o
+                label = (f"{n} {short.get(prof, prof + ' ')}broad"
+                         + ("" if o is False or o is None
+                            else " + outflow" if o is True else " + [OIII]-tied outflow"))
+                out[label] = func(**kw)
     return out
