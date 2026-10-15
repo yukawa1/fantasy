@@ -663,10 +663,11 @@ def test_preset_new_lines():
         assert f"narrow.{ln}.flux" in names
     assert m.params["narrow.[NeIII]3968.flux"].tie is not None
     assert "broad_he.HeI4471.flux" in names and "broad_oi.OI6046.flux" in names
-    assert "coronal.[FeVII]6087.flux" in names and "coronal.[FeX]6375.flux" in names
+    assert "coronal.[FeVII]6087.flux" in names and "coronal_high.[FeX]6375.flux" in names
     assert "coronal" not in [c.name for c in fa.presets.optical().components]
-    hb = [c for c in fa.presets.hbeta(coronal=True).components if c.name == "coronal"][0]
-    assert hb.line_names == ["[FeVII]5159", "[FeXIV]5303"]
+    comps = {c.name: c for c in fa.presets.hbeta(coronal=True).components}
+    assert comps["coronal"].line_names == ["[FeVII]5159"]
+    assert comps["coronal_high"].line_names == ["[FeXIV]5303"]
     # library wavelengths are vacuum (air converted)
     assert abs(fa.LINES["[FeVII]6087"] - 6088.7) < 0.1
 
@@ -684,3 +685,38 @@ def test_balmer_continuum_broadening():
     import copy
     c = copy.deepcopy(smooth)
     assert c._cache == {} and c.params is not smooth.params
+
+
+def test_optical_physical():
+    m = fa.presets.optical(broad_components=3, outflow=True, physical=True, host="pca")
+    assert m.wave_range == (3550, 6900)
+    assert m.params["continuum.index"].fixed and m.params["continuum.index"].value == -1.7
+    assert "host" in [c.name for c in m.components] and "balmer_cont" in [c.name for c in m.components]
+    for c in m.components:
+        if getattr(c, "role", "") == "broad" and f"{c.name}.fwhm" in m.params.names:
+            assert m.params[f"{c.name}.fwhm"].max <= 15000 * 1.3 + 1
+    assert m.params["outflow_ha.fwhm"].tie is not None
+    free = fa.presets.optical(physical=True, slope=None, host="pca")
+    p = free.params["continuum.index"]
+    assert not p.fixed and np.isclose(p.min, -7 / 3) and p.max == -1.0
+    assert fa.presets.optical().wave_range == (3700, 6900)
+
+
+def test_balmer_decrement_warning():
+    x = np.arange(4700.0, 6800.0, 1.0)
+    truth = fa.Model(fa.PowerLaw("continuum", pivot=5100),
+                     fa.Lines("broad", ["Hb"], fwhm=(4000, 1000, 9000)),
+                     fa.Lines("broad_ha", ["Ha"], fwhm=(4000, 1000, 9000)))
+    full = truth.params.full_values()
+    full[truth.params.index("broad.Hb.flux")] = 100.0
+    full[truth.params.index("broad_ha.Ha.flux")] = 150.0          # ratio 1.5
+    ctx = {"medium": "vacuum", "resolution": 0.0}
+    y = truth.evaluate(x, ctx, full)
+    spec = fa.Spectrum(x, y + np.random.default_rng(2).normal(0, 0.01, x.size), np.full(x.size, 0.01),
+                       medium="vacuum")
+    r = fa.fit(spec, truth.copy(), verbose=False)
+    ratio, err = r.balmer_decrement()
+    assert abs(ratio - 1.5) < 0.02 and err > 0
+    assert "Halpha/Hbeta" in r.summary(short=True)
+    assert fa.fit(spec, fa.Model(fa.PowerLaw("continuum", pivot=5100),
+                                 fa.Lines("broad", ["Hb"])), verbose=False).balmer_decrement() is None

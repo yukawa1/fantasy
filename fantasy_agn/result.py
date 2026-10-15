@@ -218,6 +218,29 @@ class FitResult:
             out[k], out[k + "_err"] = float(a), float(e)
         return out
 
+    def balmer_decrement(self):
+        """
+        Broad H-alpha / H-beta flux ratio (all broad components of each line)
+        with its error, or None if the model lacks either line. Unreddened
+        broad-line AGN have about 3.06 with 0.03 dex scatter (Dong et al. 2008;
+        2.7-2.9 according to Gaskell 2017); values far outside 2.5-4 point to
+        a decomposition problem (continuum vs. broad wings) or to reddening.
+        """
+        comps = {ln: [c.name for c in self._line_components()
+                      if c.role == "broad" and ln in c.line_names] for ln in ("Ha", "Hb")}
+        if not comps["Ha"] or not comps["Hb"]:
+            return None
+        fa = self._line_profile_func("Ha", comps["Ha"])
+        fb = self._line_profile_func("Hb", comps["Hb"])
+
+        def ratio(full):
+            pa, pb = fa[3](full).sum(), fb[3](full).sum()
+            dla, dlb = fa[2][1] - fa[2][0], fb[2][1] - fb[2][0]
+            return pa * dla / (pb * dlb) if pb > 0 else np.nan
+
+        val, err = self.propagate(ratio)
+        return float(val), float(err)
+
     def continuum(self, at=5100.0):
         """AGN continuum flux density at a rest wavelength, with error."""
         val, err = self.propagate(lambda full: self._agn_continuum(at, full)[0])
@@ -372,6 +395,15 @@ class FitResult:
             msg.append(f"  WARNING: the host galaxy is negative over {negative:.0%} of the fitted "
                        "range, which is unphysical; the host is probably negligible, so fit "
                        "without it")
+        try:
+            dec = self.balmer_decrement()
+        except Exception:
+            dec = None
+        if dec is not None and np.isfinite(dec[0]) and not 2.5 <= dec[0] <= 4.0:
+            msg.append(f"  WARNING: broad Halpha/Hbeta = {dec[0]:.2f} +- {dec[1]:.2f}, far from "
+                       "the typical ~3 (Dong et al. 2008): the continuum probably trades flux "
+                       "with the broad-line wings (try physical=True or another continuum), "
+                       "or the broad-line region is reddened")
         if self.unconstrained and not short:
             msg.append(f"  outside the fitted range, fixed at 0: {', '.join(self.unconstrained)}")
         if self.at_zero and not short:

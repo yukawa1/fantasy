@@ -6,6 +6,15 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- `presets.optical(physical=True)`: physically motivated decomposition after QSFit
+  (Calderone et al. 2017): one AGN power law (α_λ = −1.7, Selsing et al. 2016;
+  `slope=None` fits it within −2.33…−1.0), stellar host, velocity-broadened Balmer
+  continuum from 3550 Å, broad components ≤ 15 000 km/s, and an [OIII]-tied
+  [NII]/Hα outflow wing.
+- `FitResult.balmer_decrement()`; the summary warns when broad Hα/Hβ is outside
+  2.5–4 (typical ~3, Dong et al. 2008).
+- Coronal lines are split by ionisation: [FeVII] and [FeX]/[FeXIV] (`coronal_high`)
+  have separate kinematics (FWHM up to 3000 km/s).
 - More lines: narrow H8, [NeIII]3968 (tied to 3869) + Hε, [SII]4069,4076,
   [NI]5198,5200 and HeI6678 in `optical`; [NI]5198,5200 in `hbeta`; broad HeI4471
   (`hbeta`, `optical`) and HeI6678 (`optical`). Optional `coronal=True` ([FeVII]3759,

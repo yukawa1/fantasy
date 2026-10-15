@@ -25,14 +25,14 @@ BROAD_FWHM = (1000.0, 30000.0)   # FWHM range shared out among several component
 BROAD_OVERLAP = 1.3
 
 
-def broad_fwhm_ranges(n):
+def broad_fwhm_ranges(n, fwhm_max=None):
     """
-    FWHM limits (start, min, max) for n broad components: 1000-30000 km/s is
-    split into n logarithmic bands that overlap by a factor 1.3, so every
-    component has its own width regime (core, intermediate, wings, ...) and
-    two components cannot simply swap roles.
+    FWHM limits (start, min, max) for n broad components: 1000-30000 km/s (or
+    up to ``fwhm_max``) is split into n logarithmic bands that overlap by a
+    factor 1.3, so every component has its own width regime (core,
+    intermediate, wings, ...) and two components cannot simply swap roles.
     """
-    lo, hi = BROAD_FWHM
+    lo, hi = BROAD_FWHM[0], (fwhm_max or BROAD_FWHM[1])
     edges = lo * (hi / lo) ** (np.arange(n + 1) / n)
     out = []
     for k in range(n):
@@ -41,7 +41,8 @@ def broad_fwhm_ranges(n):
         out.append((float(np.sqrt(a * b)), float(a), float(b)))
     return out
 # Coronal lines: usually broader and blueshifted relative to the narrow lines.
-CORONAL = dict(fwhm=(600, 150, 2000), shift=(0, -1000, 500))
+CORONAL = dict(fwhm=(600, 150, 3000), shift=(0, -1000, 500))
+CORONAL_HIGH = ("[FeX]6375", "[FeXIV]5303")
 CORONAL_LINES = ["[FeVII]3759", "[FeVII]5159", "[FeXIV]5303", "[FeVII]5721", "[FeVII]6087",
                  "[FeX]6375"]
 OUTFLOW = dict(fwhm=(900, 300, 2500), shift=(-300, -2000, 200))
@@ -52,6 +53,8 @@ NEIII_RATIO = 1 / 3.32   # [NeIII]3968/3869
 OI_RATIO = 1 / 3.0
 NII_HA_MAX = 3.0            # upper limit of [NII]6583/H-alpha in an outflow wing
 HA_OUTFLOW_FWHM = (900, 300, 2000)
+PHYSICAL_SLOPE = -1.7          # alpha_lambda, host-free quasar continuum (Selsing+2016)
+PHYSICAL_BROAD_FWHM_MAX = 15000.0
 
 
 def _continuum(kind, pivot, break_wave):
@@ -88,14 +91,23 @@ def _host(kind):
 
 
 def _coronal(model, wave_range):
-    """Coronal lines inside the window, with their own (shared) kinematics."""
+    """
+    Coronal lines inside the window: [FeVII] (ionisation potential 100 eV) and
+    the higher-ionisation [FeX] and [FeXIV] (235 and 361 eV) each with their own
+    shared kinematics, since coronal lines are often broader and more
+    blueshifted with increasing ionisation potential.
+    """
     from .lines import line_wavelength
-    lines = [ln for ln in CORONAL_LINES if wave_range[0] < line_wavelength(ln) < wave_range[1]]
-    if lines:
-        model.add(Lines("coronal", lines, role="narrow", **CORONAL))
+    inside = [ln for ln in CORONAL_LINES if wave_range[0] < line_wavelength(ln) < wave_range[1]]
+    low = [ln for ln in inside if ln not in CORONAL_HIGH]
+    high = [ln for ln in inside if ln in CORONAL_HIGH]
+    if low:
+        model.add(Lines("coronal", low, role="narrow", **CORONAL))
+    if high:
+        model.add(Lines("coronal_high", high, role="narrow", **CORONAL))
 
 
-def _broad(model, name, lines, n, profile="gaussian"):
+def _broad(model, name, lines, n, profile="gaussian", fwhm_max=None):
     """
     n broad Gaussian components for the same lines, named name, name2, name3, ...
     Each has its own kinematics; the narrowest may shift by +-3000 km/s, the
@@ -104,9 +116,12 @@ def _broad(model, name, lines, n, profile="gaussian"):
     if n < 1:
         raise ValueError("broad_components must be at least 1")
     if n == 1:
-        model.add(Lines(name, lines, role="broad", profile=profile, **BROAD))
+        kin = dict(BROAD)
+        if fwhm_max:
+            kin["fwhm"] = (min(kin["fwhm"][0], fwhm_max), kin["fwhm"][1], min(kin["fwhm"][2], fwhm_max))
+        model.add(Lines(name, lines, role="broad", profile=profile, **kin))
         return model
-    for k, fwhm in enumerate(broad_fwhm_ranges(n)):
+    for k, fwhm in enumerate(broad_fwhm_ranges(n, fwhm_max)):
         shift = (0, -3000, 3000) if k == 0 else (0, -5000, 5000)
         model.add(Lines(name if k == 0 else f"{name}{k + 1}", lines, role="broad",
                         fwhm=fwhm, shift=shift, profile=profile))
@@ -236,7 +251,8 @@ def outflow_kinematics(source):
 
 def optical(broad_components=2, feii=True, outflow=False, host=False, continuum="broken",
             balmer=True, extinction=False, coronal=False, oi6046=False,
-          broad_profile="gaussian", wave_range=(3700, 6900)):
+          broad_profile="gaussian", wave_range=None, physical=False, slope=PHYSICAL_SLOPE,
+          broad_fwhm_max=None):
     """
     Full optical range (3700-6900 A): broken power law, Balmer continuum and
     high-order Balmer lines, FeII, narrow lines from [OII]3727 to [SII]6731
@@ -248,6 +264,27 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
     :param coronal: add the coronal lines [FeVII]3759,5159,5721,6087, [FeXIV]5303
         and [FeX]6375 (shared kinematics of their own).
     :param oi6046: add broad OI6046 (strong in objects with strong FeII).
+    :param physical: physically motivated decomposition (after QSFit,
+        Calderone et al. 2017, and the references in the documentation):
+
+        - one AGN power law over the whole range with slope alpha_lambda =
+          ``slope`` (default -1.7, Selsing et al. 2016; QSFit fixes it for
+          z < 0.6, where it is degenerate with the host). ``slope=None`` fits
+          it within the accretion-disc range -2.33 ... -1.0. No broken power
+          law: the slope change near 5000 A is mostly host-galaxy light;
+        - a stellar-population host galaxy (``host=True`` unless given);
+        - the velocity-broadened Balmer continuum and high-order Balmer lines,
+          with a window starting at 3550 A so that the Balmer edge is covered;
+        - broad components no wider than 15000 km/s (wider "lines" trade flux
+          with the continuum);
+        - with ``outflow=True`` an [NII]/H-alpha wing with the kinematics of the
+          [OIII] outflow.
+
+        Check ``result.balmer_decrement()``: broad H-alpha/H-beta near 3
+        (Dong et al. 2008) indicates a consistent decomposition.
+    :param slope: AGN power-law slope for ``physical=True`` (None: fit it).
+    :param broad_fwhm_max: upper FWHM limit of the broad components, km/s
+        (default 30000; 15000 with physical=True).
 
     :param extinction: True (Fitzpatrick 1999) or 'calzetti': fit an intrinsic
         E(B-V) of the AGN; fluxes and luminosities are then dereddened.
@@ -262,7 +299,19 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
         population templates with sigma* and v*, cannot become negative) or
         'pca' (Yip+2004 eigenspectra; can come out negative, the summary warns).
     """
+    if physical:
+        continuum = "powerlaw"
+        host = host or True
+        balmer = True
+        broad_fwhm_max = broad_fwhm_max or PHYSICAL_BROAD_FWHM_MAX
+        wave_range = wave_range or (3550, 6900)
+    wave_range = wave_range or (3700, 6900)
     m = Model(_continuum(continuum, 5100, 4600))
+    if physical:
+        if slope is None:
+            m.set("continuum.index", value=PHYSICAL_SLOPE, min=-7 / 3, max=-1.0)
+        else:
+            m.fix("continuum.index", slope)
     if host:
         m.add(_host(host))
     if feii:
@@ -279,8 +328,14 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
     if outflow:
         m.add(Lines("outflow", ["[OIII]4959", "[OIII]5007"], role="outflow",
                     ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO)}, **OUTFLOW))
-    _broad(m, "broad", ["Hd", "Hg", "Hb"], broad_components, broad_profile)
-    _broad(m, "broad_ha", ["Ha"], broad_components, broad_profile)
+    if outflow and physical:
+        m.add(Lines("outflow_ha", ["[NII]6548", "Ha", "[NII]6583"], role="outflow",
+                    ratios={"[NII]6548": ("[NII]6583", NII_RATIO)},
+                    max_ratios={"[NII]6583": ("Ha", NII_HA_MAX)}))
+        m.tie("outflow_ha.fwhm", "outflow.fwhm")
+        m.tie("outflow_ha.shift", "outflow.shift")
+    _broad(m, "broad", ["Hd", "Hg", "Hb"], broad_components, broad_profile, broad_fwhm_max)
+    _broad(m, "broad_ha", ["Ha"], broad_components, broad_profile, broad_fwhm_max)
     m.add(Lines("broad_he", ["HeI4471", "HeII4686", "HeI5876", "HeI6678"], role="broad",
                 fwhm=(4000, 1000, 15000),
                 shift=(0, -4000, 2000)))
@@ -324,6 +379,7 @@ def civ(broad_components=1, broad_profile="gaussian", wave_range=(1450, 1720)):
     return m
 
 
+DEFAULT_RANGES = {"optical": (3700, 6900)}   # presets whose default window depends on options
 PRESETS = {"optical": optical, "hbeta": hbeta, "halpha": halpha, "mgii": mgii, "civ": civ}
 
 
@@ -333,7 +389,7 @@ def available(spectrum):
     lo, hi = spectrum.wave[spectrum.good].min(), spectrum.wave[spectrum.good].max()
     out = []
     for name, func in PRESETS.items():
-        w0, w1 = inspect.signature(func).parameters["wave_range"].default
+        w0, w1 = inspect.signature(func).parameters["wave_range"].default or DEFAULT_RANGES[name]
         if lo <= w0 + 50 and hi >= w1 - 50:
             out.append(name)
     return out
