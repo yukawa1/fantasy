@@ -822,7 +822,7 @@ def test_app_session_cells():
     assert s.cells[1].out[-1][0] == "15" and s.cells[1].n == 4
     # the buttons generate code that runs in the same namespace
     path = os.path.join(EXAMPLES, "spec-1059-52618-0453.fits")
-    s.run_cell(s.read_code(path=path))
+    s.run_cell(s.read_code(path=path, deredden=False))
     _wait(s)
     assert s.spec is not None and s.done() == ["read"] and s.figure_version == 1
     code = s.fit_code("hbeta", broad_components=1, outflow=False)
@@ -916,7 +916,7 @@ def test_app_plot_data_and_tables():
     from fantasy_agn.app.session import Session, _plain_label
     s = Session()
     assert s.plot_data() is None and s.data_tables() == []
-    s.run_cell(s.read_code(path=os.path.join(EXAMPLES, "spec-1059-52618-0453.fits")))
+    s.run_cell(s.read_code(path=os.path.join(EXAMPLES, "spec-1059-52618-0453.fits"), deredden=False))
     _wait(s)
     d = s.plot_data()
     assert len(d["x"]) == len(d["flux"]) and d["resid"] is None and d["series"] == []
@@ -928,3 +928,57 @@ def test_app_plot_data_and_tables():
     assert len(d["resid"]) == len(d["x"]) and 4000 < d["x"][0] < d["x"][-1] < 5600
     assert [t["title"] for t in s.data_tables()] == ["Spectrum", "Fitted lines"]
     assert _plain_label("$F_\\lambda$ ($10^{-17}\\,\\mathrm{erg\\,s^{-1}}$)") == "Fλ (10⁻¹⁷ erg s⁻¹)"
+
+
+IRSA_ANSWER = b"""<?xml version="1.0"?><results status="ok"><result><desc>E(B-V)</desc>
+<statistics><refPixelValueSandF> 0.0094 (mag) </refPixelValueSandF>
+<refPixelValueSFD> 0.0109 (mag) </refPixelValueSFD></statistics></result>
+<result><statistics><refPixelValueSandF> 9.9 (mag) </refPixelValueSandF>
+<refPixelValueSFD> 9.9 (mag) </refPixelValueSFD></statistics></result></results>"""
+
+
+def test_galactic_dereddening(monkeypatch):
+    import io
+    import urllib.request
+    from fantasy_agn.extinction import galactic_ebv
+    calls = []
+
+    def fake_urlopen(url, timeout=None):
+        calls.append(url)
+        return io.BytesIO(IRSA_ANSWER)
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.delenv("SFD_DIR", raising=False)
+    ebv, src = galactic_ebv(214.8, 53.6)                         # no file value, no maps -> IRSA
+    assert ebv == 0.0094 and "Schlafly" in src and "214.8" in calls[0]
+    assert galactic_ebv(214.8, 53.6, sf11=False)[0] == 0.0109
+    ebv, src = galactic_ebv(None, None, file_value=0.05)         # DESI: value in the file
+    assert abs(ebv - 0.043) < 1e-9 and "file" in src and len(calls) == 2
+    with pytest.raises(RuntimeError):
+        galactic_ebv(None, None)                                 # nothing to go on
+
+    x = np.linspace(3800, 9000, 200)
+    s = fa.Spectrum(x, np.ones_like(x), np.full_like(x, .1), z=0.1, ra=214.8, dec=53.6)
+    assert not s.dereddened and "not corrected" in repr(s)
+    d = s.deredden()
+    assert d.dereddened and d.meta["ebv"] == 0.0094 and d.flux[0] > d.flux[-1] > 1
+    with pytest.warns(UserWarning, match="already corrected"):
+        assert np.allclose(d.deredden(ebv=0.1).flux, d.flux)    # never twice
+    # dereddening in the observed or the rest frame gives the same spectrum
+    a = s.deredden(ebv=0.05).to_rest_frame()
+    b = s.to_rest_frame().deredden(ebv=0.05)
+    assert np.allclose(a.flux, b.flux) and np.allclose(a.wave, b.wave)
+
+
+def test_app_read_options():
+    from fantasy_agn.app.session import Session
+    s = Session()
+    code = s.read_code(path="x.fits")
+    assert code.startswith("spec = fa.read('x.fits').deredden().to_rest_frame()")
+    assert "spec = fa.read('x.fits').deredden(ebv=0.03).to_rest_frame(z=0.1)" in s.read_code(path="x.fits", ebv=0.03, z=0.1)
+    plain = s.read_code(path="x.fits", deredden=False, rest_frame=False)
+    assert ".deredden" not in plain and "to_rest_frame" not in plain
+    s.run_cell(s.read_code(path=os.path.join(EXAMPLES, "spec-1059-52618-0453.fits"), ebv=0.03, rest_frame=False))
+    _wait(s)
+    assert s.spec.meta["ebv"] == 0.03 and not s.spec.rest_frame
+    with pytest.raises(ValueError, match="rest frame"):
+        s.fit_code("hbeta")

@@ -7,12 +7,14 @@ Preprocessing methods return a new Spectrum, so steps can be chained::
 """
 import os
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from astropy.io import fits
 
 from .components import remove_emission_lines
-from .extinction import deredden as _deredden, ebv_sfd
+from .extinction import deredden as _deredden, galactic_ebv
 from .lines import DATA
 from .wavelengths import vac_to_air
 
@@ -97,9 +99,11 @@ class Spectrum:
 
     def __repr__(self):
         frame = "rest" if self.rest_frame else "observed"
+        ext = (f", E(B-V)={self.meta['ebv']:.4f} corrected" if "ebv" in self.meta
+               else ", Galactic extinction not corrected")
         return (f"Spectrum({self.name!r}, {self.wave[0]:.0f}-{self.wave[-1]:.0f} A {frame} "
                 f"({self.medium}), {self.wave.size} pixels, z={self.z}, "
-                f"R~{self.resolution:.0f} km/s)")
+                f"R~{self.resolution:.0f} km/s{ext})")
 
     # ---------------------------------------------------- preprocessing
     def to_rest_frame(self, z=None):
@@ -116,21 +120,38 @@ class Spectrum:
                          err=self.err * (1 + z), z=z, rest_frame=True,
                          resolution_curve=curve)
 
-    def deredden(self, ebv=None, r_v=3.1):
+    def deredden(self, ebv=None, r_v=3.1, source="auto", sf11=True):
         """
-        Correct for Galactic extinction with the Fitzpatrick (1999) law. If
-        ``ebv`` is not given it is read from the SFD98 maps at (ra, dec), which
-        needs the optional sfdmap2 package and map files.
+        Correct for Galactic (Milky Way) extinction with the Fitzpatrick (1999)
+        law. Do this once, before measuring fluxes and luminosities.
+
+        :param ebv: E(B-V) in magnitudes. If not given it is looked up at the
+            position of the spectrum (see :func:`fantasy_agn.extinction.galactic_ebv`):
+            the value in the file (DESI), local SFD98 maps (sfdmap2) or the IRSA
+            dust service online, with the Schlafly & Finkbeiner (2011)
+            recalibration when ``sf11`` is True.
+        :param source: 'auto', 'file', 'sfd' or 'irsa' for the lookup.
         """
+        if "ebv" in self.meta:
+            warnings.warn(f"{self.name}: already corrected for Galactic extinction "
+                          f"(E(B-V) = {self.meta['ebv']:.4f}); not applied again")
+            return self.copy()
         if ebv is None:
-            if self.ra is None or self.dec is None:
-                raise ValueError("pass ebv=... (no coordinates to look it up)")
-            ebv = ebv_sfd(self.ra, self.dec)
+            ebv, where = galactic_ebv(self.ra, self.dec, source=source, sf11=sf11,
+                                      file_value=self.meta.get("ebv_file"))
+        else:
+            ebv, where = float(ebv), "given"
         obs_wave = self.wave * (1 + self.z) if self.rest_frame else self.wave
         corr = _deredden(obs_wave, np.ones_like(obs_wave), ebv, r_v)
         new = self.copy(flux=self.flux * corr, err=self.err * corr)
         new.meta["ebv"] = ebv
+        new.meta["ebv_source"] = where
         return new
+
+    @property
+    def dereddened(self):
+        """True if Galactic extinction was corrected (``deredden``)."""
+        return "ebv" in self.meta
 
     def crop(self, wmin=None, wmax=None):
         """Keep wavelengths between wmin and wmax."""

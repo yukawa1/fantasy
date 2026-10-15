@@ -6,6 +6,11 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Galactic extinction: `spec.deredden()` looks up E(B-V) automatically (value in the file
+  for DESI, local SFD98 maps, or the IRSA dust service), with the Schlafly & Finkbeiner
+  (2011) recalibration; never applied twice; `spec.dereddened`. The fit summary and the
+  classification note uncorrected spectra. The app and `fa.gui()` have
+  "Correct Galactic extinction" and "Move to rest frame" options when reading.
 - App redesign with the FANTASY logo: header with logo, wordmark and step indicator;
   navy code panel with Code/Data tabs, Python version and a code input at the bottom;
   step cards with side panels; results as large numbers; an interactive spectrum plot

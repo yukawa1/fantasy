@@ -7,7 +7,7 @@ import os
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-__all__ = ("fitzpatrick99", "deredden", "ebv_sfd")
+__all__ = ("fitzpatrick99", "deredden", "ebv_sfd", "ebv_irsa", "galactic_ebv", "SF11")
 
 
 def fitzpatrick99(wave, r_v=3.1):
@@ -51,11 +51,15 @@ def deredden(wave, flux, ebv, r_v=3.1):
     return flux * 10 ** (0.4 * ebv * fitzpatrick99(wave, r_v))
 
 
+SF11 = 0.86          # Schlafly & Finkbeiner (2011): E(B-V) = 0.86 x E(B-V)_SFD
+IRSA_DUST = "https://irsa.ipac.caltech.edu/cgi-bin/DUST/nph-dust"
+
+
 def ebv_sfd(ra, dec, map_dir=None):
     """
-    E(B-V) from the SFD98 maps at (ra, dec) in degrees. Requires the optional
-    ``sfdmap2`` package and the map files; ``map_dir`` defaults to the
-    environment variable SFD_DIR.
+    E(B-V) of the SFD98 maps (not recalibrated) at (ra, dec) in degrees.
+    Requires the optional ``sfdmap2`` package and the map files; ``map_dir``
+    defaults to the environment variable SFD_DIR.
     """
     try:
         from sfdmap2 import sfdmap
@@ -67,4 +71,72 @@ def ebv_sfd(ra, dec, map_dir=None):
     map_dir = map_dir or os.environ.get("SFD_DIR")
     if not map_dir:
         raise ValueError("set SFD_DIR to the folder with the SFD .fits maps or pass map_dir")
-    return float(sfdmap.SFDMap(map_dir).ebv(ra, dec))
+    try:
+        m = sfdmap.SFDMap(map_dir, scaling=1.0)
+    except TypeError:
+        m = sfdmap.SFDMap(map_dir)
+    return float(m.ebv(ra, dec))
+
+
+def ebv_irsa(ra, dec, timeout=20):
+    """
+    E(B-V) of the SFD98 maps at (ra, dec) from the IRSA dust service
+    (NASA/IPAC, needs internet). Returns (SFD, Schlafly & Finkbeiner 2011).
+    """
+    import urllib.parse
+    import urllib.request
+    import xml.etree.ElementTree as ET
+    query = urllib.parse.urlencode({"locstr": f"{float(ra):.6f} {float(dec):.6f} equ j2000",
+                                    "regSize": "2.0"})
+    with urllib.request.urlopen(f"{IRSA_DUST}?{query}", timeout=timeout) as resp:
+        root = ET.fromstring(resp.read())
+    if root.attrib.get("status", "ok") != "ok":
+        raise RuntimeError(f"IRSA dust service: {root.findtext('.//message') or 'error'}")
+    stats = root.find(".//statistics")           # the first block is E(B-V)
+    if stats is None:
+        raise RuntimeError("IRSA dust service: unexpected answer")
+
+    def value(tag):
+        return float(stats.findtext(tag).split()[0])
+    return value("refPixelValueSFD"), value("refPixelValueSandF")
+
+
+def galactic_ebv(ra=None, dec=None, source="auto", sf11=True, file_value=None):
+    """
+    Galactic E(B-V) for a position, and a description of where it came from.
+
+    :param source: 'auto' (the value in the file, then local SFD maps with
+        sfdmap2, then the IRSA dust service online), 'file', 'sfd' or 'irsa'.
+    :param sf11: apply the Schlafly & Finkbeiner (2011) recalibration of the
+        SFD98 maps (factor 0.86), the usual choice today.
+    :param file_value: an SFD98 E(B-V) stored in the data file (DESI: EBV).
+    :return: (ebv, source description)
+    """
+    order = ["file", "sfd", "irsa"] if source == "auto" else [source]
+    problems = []
+    for s in order:
+        try:
+            if s == "file":
+                if file_value is None:
+                    raise ValueError("no E(B-V) in the file")
+                sfd, where = float(file_value), "from the file (SFD98)"
+            elif s == "sfd":
+                if ra is None or dec is None:
+                    raise ValueError("no coordinates")
+                sfd, where = ebv_sfd(ra, dec), "SFD98 maps (sfdmap2)"
+            elif s == "irsa":
+                if ra is None or dec is None:
+                    raise ValueError("no coordinates")
+                sfd, sandf = ebv_irsa(ra, dec)
+                if sf11:
+                    return sandf, "IRSA dust service, Schlafly & Finkbeiner 2011"
+                return sfd, "IRSA dust service, SFD98"
+            else:
+                raise ValueError(f"unknown source {s!r}")
+            if sf11:
+                return SF11 * sfd, where + " x 0.86 (Schlafly & Finkbeiner 2011)"
+            return sfd, where
+        except Exception as exc:                 # try the next source
+            problems.append(f"{s}: {exc}")
+    raise RuntimeError("no Galactic E(B-V) found (" + "; ".join(problems) + "); pass ebv=... "
+                       "explicitly, e.g. from https://irsa.ipac.caltech.edu/applications/DUST/")

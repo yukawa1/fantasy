@@ -98,11 +98,17 @@ class WorkflowApp:
         self.z = w.FloatText(value=0.0, description="z (0 = from file)", step=0.001,
                              style={"description_width": "initial"},
                              layout=w.Layout(width="200px"))
+        self.dered = w.Checkbox(value=True, description="Correct Galactic extinction", indent=False,
+                                layout=w.Layout(width="auto"))
+        self.ebv = w.Text(placeholder="auto", description="E(B-V)", layout=w.Layout(width="150px"))
+        self.rest = w.Checkbox(value=True, description="Move to rest frame", indent=False,
+                               layout=w.Layout(width="auto"))
         self.read_btn = w.Button(description="Read", button_style="primary", icon="folder-open")
         self.read_btn.on_click(lambda _: self._run(self._do_read))
         read_box = w.VBox([w.HTML("<b>1 · Read a spectrum</b> — a file path, an upload, or a DESI "
                                   "target"),
                            self.path, _row(w, [self.upload, self.targetid]),
+                           _row(w, [self.dered, self.ebv, self.rest]),
                            _row(w, [self.z, self.read_btn])])
 
         # 2. classify
@@ -254,17 +260,16 @@ class WorkflowApp:
             c = self._cell("import fantasy_agn as fa")
             self._finish(c)
         z = self.z.value or None
-        zarg = f", z={z}" if z else ""
         if self.targetid.value.strip():
             tid = int(self.targetid.value.strip())
-            c = self._cell(f"spec = fa.desi.fetch({tid}).to_rest_frame({zarg.lstrip(', ')})")
+            src = f"fa.desi.fetch({tid})"
             from . import desi
             spec = desi.fetch(tid)
         elif self.upload.value:
             item = self.upload.value[0] if isinstance(self.upload.value, (list, tuple)) \
                 else list(self.upload.value.values())[0]
             name = item["name"]
-            c = self._cell(f'spec = fa.read("{name}").to_rest_frame({zarg.lstrip(", ")})')
+            src = f'fa.read("{name}")'
             path = _save_upload(item)
             try:
                 spec = read(path)
@@ -274,16 +279,31 @@ class WorkflowApp:
                 spec.name = os.path.splitext(name)[0]
         elif self.path.value.strip():
             path = os.path.expanduser(self.path.value.strip())
-            c = self._cell(f'spec = fa.read("{path}").to_rest_frame({zarg.lstrip(", ")})')
+            src = f'fa.read("{path}")'
             spec = read(path)
         else:
             raise ValueError("give a file path, upload a file or enter a DESI TARGETID")
-        spec = spec.to_rest_frame(z=z) if z else spec.to_rest_frame()
+        code = "spec = " + src
+        ebv_text = self.ebv.value.strip()
+        if self.dered.value:
+            code += f".deredden(ebv={float(ebv_text):g})" if ebv_text else ".deredden()"
+        if self.rest.value:
+            code += f".to_rest_frame({'z=' + repr(z) if z else ''})"
+        c = self._cell(code)
+        if self.dered.value:
+            spec = spec.deredden(ebv=float(ebv_text)) if ebv_text else spec.deredden()
+        if self.rest.value:
+            spec = spec.to_rest_frame(z=z) if z else spec.to_rest_frame()
+        elif z:
+            spec.z = z
         self.spec = spec
         good = spec.good
-        self._finish(c, f"<Spectrum {spec.name}: {good.sum()} px, rest frame "
-                        f"{spec.wave[good].min():.0f}-{spec.wave[good].max():.0f} Å, "
-                        f"z = {spec.z:.4f}>")
+        ext = (f"E(B-V) = {spec.meta['ebv']:.4f} ({spec.meta['ebv_source']})" if spec.dereddened
+               else "Galactic extinction not corrected")
+        self._finish(c, f"<Spectrum {spec.name}: {good.sum()} px, "
+                        f"{'rest' if spec.rest_frame else 'observed'} frame "
+                        f"{spec.wave[good].min():.0f}-{spec.wave[good].max():.0f} \u00c5, "
+                        f"z = {spec.z if spec.z is None else round(spec.z, 4)}>", ext)
         self._show_figure(spec.plot(fig=_figure()).figure)
         self.done = {0}
         self.step = 1
@@ -326,6 +346,9 @@ class WorkflowApp:
         return name, kw, f"model = fa.presets.{name}({args})"
 
     def _do_fit(self):
+        if not self.spec.rest_frame:
+            raise ValueError("the models are defined in the rest frame: read the spectrum with "
+                             "'Move to rest frame' ticked")
         name, kw, code = self._model_code()
         err = self.errors.value
         fit_code = "r = fa.fit(spec, model" + (f', errors="{err}"' if err != "covariance" else "") + ")"

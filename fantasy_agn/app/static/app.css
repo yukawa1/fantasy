@@ -298,3 +298,6 @@ td .lines { color: var(--muted); font-size: 12.5px; }
 #doc .api { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 16px; }
 #doc .api h3 code { background: var(--teal-soft); color: var(--teal-dark); font-size: 13px; white-space: pre-wrap; }
 #doc mark { background: #ffe8a3; }
+
+.form.prep { padding-top: 10px; border-top: 1px dashed var(--line); }
+.form.prep label.ebv input { width: 90px; }

@@ -66,8 +66,17 @@
           <label>or a path <input id="path" type="text" placeholder="/path/to/spec-0615-52347-0108.fits"></label>
           <label>or DESI TARGETID <input id="targetid" type="text" inputmode="numeric" placeholder="39627963565609635"></label>
           <label class="short">z <input id="z" type="number" step="0.0001" min="0" placeholder="from file"></label>
+        </div>
+        <div class="form prep">
+          <label class="check" title="Correct the Milky Way extinction (Fitzpatrick 1999, R_V = 3.1)">
+            <input id="dered" type="checkbox" checked> Correct Galactic extinction</label>
+          <label class="short ebv" title="Leave empty to look it up: file, SFD maps or the IRSA dust service (Schlafly &amp; Finkbeiner 2011)">E(B-V)
+            <input id="ebv" type="number" step="0.001" min="0" placeholder="auto"></label>
+          <label class="check" title="Divide the wavelengths by 1+z; the models are defined in the rest frame">
+            <input id="restframe" type="checkbox" checked> Move to rest frame</label>
           <button id="btn-read" class="btn primary">Read spectrum <i data-icon="arrow"></i></button>
         </div>
+        <p class="hint small" id="prep-hint"></p>
       </div>
       <aside class="card-side" id="side-read"><i data-icon="database" class="big"></i>
         <b>Ready to analyze</b><span>Load a spectrum to get started.</span>

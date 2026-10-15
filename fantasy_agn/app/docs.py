@@ -11,7 +11,8 @@ GUIDES = [
 <p>FANTASY fits optical and UV spectra of active galaxies: quasars and Seyfert 1s,
 type 2 AGN, LINERs and star-forming galaxies. The app guides you through five steps:</p>
 <ol>
-<li><b>Read</b> a spectrum: drop a file, give a path, or enter a DESI TARGETID.</li>
+<li><b>Read</b> a spectrum: drop a file, give a path, or enter a DESI TARGETID. It is
+corrected for Galactic extinction and moved to the rest frame (both can be switched off).</li>
 <li><b>Classify</b> it: <code>fa.classify(spec)</code> measures the starlight, looks for broad
 lines and places the narrow lines on the BPT diagrams. It recommends a model.</li>
 <li><b>Model</b>: start from a ready-made model (preset), then add or remove components
@@ -49,10 +50,25 @@ instrumental resolution and the flux unit when the file has them.</p>
 <pre>spec = fa.read("spec-0615-52347-0108.fits").to_rest_frame()
 spec = fa.read("my_spectrum.txt", z=0.123).to_rest_frame()
 spec = fa.desi.fetch(39627963565609635).to_rest_frame()   # DESI DR1 via Data Lab</pre>
+<h3>Galactic extinction</h3>
+<p>Correct the Milky Way extinction before measuring fluxes and luminosities. Without it
+fluxes and L5100 are too low by 5&ndash;20% for E(B-V) = 0.015&ndash;0.06 (typical at high
+Galactic latitude) and the Balmer decrement is 2&ndash;6% too high; ratios of nearby lines
+(BPT) change by less than 0.003 dex.</p>
+<pre>spec = fa.read("spec-0615-52347-0108.fits").deredden().to_rest_frame()
+spec.meta["ebv"], spec.meta["ebv_source"]      # 0.0122, IRSA dust service, SF11
+spec = fa.read("my.txt").deredden(ebv=0.03).to_rest_frame(z=0.12)</pre>
+<p><code>deredden()</code> uses the Fitzpatrick (1999) law with R<sub>V</sub> = 3.1. Without
+<code>ebv</code> it looks up E(B-V) at the position of the spectrum: the value in the file
+(DESI), local SFD98 maps (<code>pip install sfdmap2</code> and <code>SFD_DIR</code>), or the
+IRSA dust service online (this sends the coordinates to NASA/IPAC). The SFD98 values are
+recalibrated by 0.86 (Schlafly &amp; Finkbeiner 2011) unless <code>sf11=False</code>. It
+works in the observed or the rest frame and is never applied twice. The fit summary and the
+classification note when a spectrum was not corrected.</p>
+<p>In the app, <b>Correct Galactic extinction</b> and <b>Move to rest frame</b> in step 1 do
+this; leave E(B-V) empty for the automatic value or type your own.</p>
 <h3>Useful methods</h3>
 <ul>
-<li><code>spec.deredden(ebv=0.03)</code>: Galactic extinction (Fitzpatrick 1999), before
-<code>to_rest_frame()</code>.</li>
 <li><code>spec.crop(4000, 7000)</code>, <code>spec.mask((5570, 5585))</code>: restrict the
 range or exclude bad regions (e.g. sky lines).</li>
 <li><code>spec.plot()</code>: the spectrum in the publication style.</li>

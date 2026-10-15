@@ -277,8 +277,8 @@ class Session:
                 val = f"{q.value:.4g}{unit}"
             rows.append((q.quantity, val))
         self.results = rows
-        self.warnings = [ln.strip().replace("WARNING: ", "")
-                         for ln in r.summary(short=True).split("\n") if "WARNING" in ln]
+        self.warnings = [ln.strip().replace("WARNING: ", "").replace("note: ", "")
+                         for ln in r.summary(short=True).split("\n") if "WARNING" in ln or "note:" in ln]
 
     def model_state(self):
         """Components and parameters of ``model`` for the model editor."""
@@ -301,29 +301,48 @@ class Session:
                 "wave_range": list(m.wave_range) if m.wave_range else None}
 
     # ------------------------------------------------- code for the buttons
-    def read_code(self, path=None, data=None, filename=None, targetid=None, z=None):
+    def read_code(self, path=None, data=None, filename=None, targetid=None, z=None,
+                  deredden=True, ebv=None, rest_frame=True):
+        """
+        Code that reads a spectrum, optionally corrects Galactic extinction
+        (E(B-V) looked up automatically, or ``ebv``) and moves it to the rest frame.
+        """
         z = float(z) if z not in (None, "", 0, "0") else None
-        zarg = f"z={z}" if z else ""
         if targetid:
-            return f"spec = fa.desi.fetch({int(targetid)}).to_rest_frame({zarg})\nspec"
-        if data is not None:
-            # uploaded files are kept, so that the code (and the script) can read them again
-            os.makedirs(UPLOADS, exist_ok=True)
-            name = os.path.basename(filename or "spectrum.fits")
-            path = os.path.join(UPLOADS, name)
-            with open(path, "wb") as fh:
-                fh.write(data)
-        if not path:
-            raise ValueError("choose a file, give a path or a DESI TARGETID")
-        path = os.path.expanduser(path.strip())
-        return f"spec = fa.read({path!r}).to_rest_frame({zarg})\nspec"
+            src = f"fa.desi.fetch({int(targetid)})"
+        else:
+            if data is not None:
+                # uploaded files are kept, so that the code (and the script) can read them again
+                os.makedirs(UPLOADS, exist_ok=True)
+                name = os.path.basename(filename or "spectrum.fits")
+                path = os.path.join(UPLOADS, name)
+                with open(path, "wb") as fh:
+                    fh.write(data)
+            if not path:
+                raise ValueError("choose a file, give a path or a DESI TARGETID")
+            src = f"fa.read({os.path.expanduser(path.strip())!r})"
+        code = "spec = " + src
+        if deredden:
+            if ebv not in (None, ""):
+                code += f".deredden(ebv={float(ebv):g})"
+            else:
+                code += ".deredden()"            # E(B-V) looked up at the position
+        if rest_frame:
+            code += f".to_rest_frame({'z=' + repr(z) if z else ''})"
+        elif z:
+            code += f"\nspec.z = {z!r}"
+        lines = [code]
+        if deredden:
+            lines.append('print("Galactic E(B-V) =", round(spec.meta["ebv"], 4), "from", spec.meta["ebv_source"])')
+        lines.append("spec")
+        return "\n".join(lines)
 
     @staticmethod
     def classify_code():
         return "c = fa.classify(spec)\nc"
 
-    @staticmethod
-    def fit_code(model="optical", broad_components=2, outflow=True, errors="covariance"):
+    def fit_code(self, model="optical", broad_components=2, outflow=True, errors="covariance"):
+        self._need_rest_frame()
         name, kw = MODELS[model]
         kw = dict(kw)
         params = inspect.signature(getattr(presets, name)).parameters
@@ -348,10 +367,16 @@ class Session:
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
         return f"model = fa.presets.{name}({args})\nmodel"
 
+    def _need_rest_frame(self):
+        if self.spec is not None and not self.spec.rest_frame:
+            raise ValueError("the models are defined in the rest frame: read the spectrum again with "
+                             "'Move to rest frame' ticked (or run spec = spec.to_rest_frame())")
+
     def fit_model_code(self, errors="covariance"):
         """Fit the current model (from the model step or an edited cell)."""
         if self.model is None:
             raise ValueError("create a model first (step 3)")
+        self._need_rest_frame()
         err = f', errors="{errors}"' if errors != "covariance" else ""
         return f"r = fa.fit(spec, model{err})\nr.key_results()"
 

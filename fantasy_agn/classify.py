@@ -200,6 +200,9 @@ class Classification:
                 parts.append(f"  {label} = {m[k]:+.2f} +- {m[k + '_err']:.2f}")
         if np.isfinite(m.get("ew_ha", np.nan)):
             parts.append(f"  EW(Ha) = {m['ew_ha']:.1f} A")
+        if "ebv" not in self.spectrum.meta:
+            parts.append("  note: Galactic extinction not corrected (spec.deredden()); line ratios "
+                         "of nearby lines are hardly affected")
         parts.append(f"  recommended: fa.presets.{self.RECOMMENDED[self.label][0]}"
                      f"({', '.join(f'{k}={v}' for k, v in self.RECOMMENDED[self.label][1].items())})")
         return "\n".join(parts)

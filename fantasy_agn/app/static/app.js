@@ -233,8 +233,9 @@ function renderCards() {
   }
   $("fit-hint").textContent = m ? "Fits the model of step 3 (edit it in the model editor)." : "Without a model the recommended preset is used.";
   const msg = $("message");
-  msg.classList.toggle("error", !!state.error);
-  msg.textContent = state.error ? state.error : (busy ? "running …" : state.info);
+  const err = clientError || state.error;      // a refused action stays visible until the next one
+  msg.classList.toggle("error", !!err);
+  msg.textContent = err ? err : (busy ? "running …" : state.info);
   $("card-results").classList.toggle("hidden", !state.has_result);
   $("tiles").innerHTML = state.results.map((r) => {
     const m2 = /^(.*?)(?: ± (\S+))?(?: ([a-zA-Z/%]+))?$/.exec(r.value);
@@ -683,11 +684,14 @@ function setState(s) {
 setInterval(() => { if (state && state.busy) renderCells(); }, 200);
 
 // ============================================================== actions
+let clientError = null;
 function showError(msg) {
+  clientError = msg;
   $("message").textContent = msg;
   $("message").classList.add("error");
 }
 async function post(path, body, headers) {
+  clientError = null;
   try {
     const isJSON = body !== undefined && !(body instanceof Blob);
     const opts = { method: "POST", headers: Object.assign(isJSON ? { "Content-Type": "application/json" } : {}, headers || {}) };
@@ -700,15 +704,33 @@ async function post(path, body, headers) {
     return false;
   }
 }
+function prepOptions() {
+  return { deredden: $("dered").checked, ebv: $("dered").checked && $("ebv").value !== "" ? Number($("ebv").value) : null,
+           rest_frame: $("restframe").checked };
+}
+function renderPrepHint() {
+  const o = prepOptions();
+  const parts = [];
+  parts.push(o.deredden ? (o.ebv !== null ? `extinction corrected with E(B-V) = ${o.ebv}` :
+    "E(B-V) looked up at the position (file, SFD maps or the IRSA dust service online)") : "Galactic extinction not corrected");
+  parts.push(o.rest_frame ? "rest frame" : "observed frame (the models need the rest frame)");
+  $("prep-hint").textContent = parts.join(" · ");
+  $("ebv").disabled = !o.deredden;
+}
+for (const id of ["dered", "ebv", "restframe"]) $(id).addEventListener("input", renderPrepHint);
+renderPrepHint();
 function readJSON() {
   const z = $("z").value;
-  const body = { path: $("path").value.trim() || null, targetid: $("targetid").value.trim() || null, z: z || null };
+  const body = Object.assign({ path: $("path").value.trim() || null, targetid: $("targetid").value.trim() || null,
+                               z: z || null }, prepOptions());
   if (!body.path && !body.targetid) return showError("Drop a file, give a path or a DESI TARGETID.");
   post("/api/read", body);
 }
 function readFile(file) {
-  const q = new URLSearchParams({ filename: file.name });
+  const o = prepOptions();
+  const q = new URLSearchParams({ filename: file.name, deredden: o.deredden ? "1" : "0", rest_frame: o.rest_frame ? "1" : "0" });
   if ($("z").value) q.set("z", $("z").value);
+  if (o.ebv !== null) q.set("ebv", o.ebv);
   $("message").textContent = `uploading ${file.name} …`;
   post(`/api/read?${q}`, file, { "Content-Type": "application/octet-stream" });
 }

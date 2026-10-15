@@ -172,6 +172,8 @@ def read(path, targetid=None, index=None, redrock=None, z=None):
             if col in fm.columns.names:
                 v = fm[col][row]
                 meta[col.lower()] = v.strip() if isinstance(v, str) else v.item()
+        if "EBV" in fm.columns.names:                 # SFD98 E(B-V) of the target
+            meta["ebv_file"] = float(fm["EBV"][row])
         ra = float(fm["TARGET_RA"][row]) if "TARGET_RA" in fm.columns.names else None
         dec = float(fm["TARGET_DEC"][row]) if "TARGET_DEC" in fm.columns.names else None
         mjd = None

@@ -447,6 +447,9 @@ class FitResult:
                        "the typical ~3 (Dong et al. 2008): the continuum probably trades flux "
                        "with the broad-line wings (try physical=True or another continuum), "
                        "or the broad-line region is reddened")
+        if not self.spectrum.meta.get("ebv") and "ebv" not in self.spectrum.meta:
+            msg.append("  note: Galactic extinction not corrected; fluxes and luminosities are "
+                       "too low (use spec.deredden() before fitting)")
         if self.unconstrained and not short:
             msg.append(f"  outside the fitted range, fixed at 0: {', '.join(self.unconstrained)}")
         if self.at_zero and not short:

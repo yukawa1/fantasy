@@ -54,7 +54,7 @@ pip install "fantasy_agn[gui]"     # + Jupyter widgets (fa.gui())
 import fantasy_agn as fa
 
 spec = fa.read("spec-1059-52618-0453.fits")          # SDSS, DESI, 1D FITS or text columns
-spec = spec.deredden(ebv=0.03).to_rest_frame()      # redshift read from the file
+spec = spec.deredden().to_rest_frame()   # Galactic E(B-V) looked up; z from the file
 
 result = fa.fit(spec, fa.presets.hbeta())
 result.plot()
