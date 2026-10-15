@@ -218,6 +218,49 @@ class FitResult:
             out[k], out[k + "_err"] = float(a), float(e)
         return out
 
+    def key_results(self):
+        """
+        The main numbers of the fit as a table (quantity, value, error, unit):
+        for broad-line objects the FWHM and flux of the main broad line, the
+        black-hole mass and the Balmer decrement; for narrow-line objects
+        [OIII]5007 and the BPT ratios; the stellar velocity dispersion and
+        host fraction when a stellar host is fitted.
+        """
+        rows = []
+        broad = [c for c in self._line_components() if c.role == "broad"]
+        line = next((ln for ln in ("Hb", "Ha", "MgII2798", "CIV1549")
+                     if any(ln in c.line_names for c in broad)), None)
+        if line:
+            m = self.measure(line, [c.name for c in broad if line in c.line_names])
+            rows += [(f"broad {line} FWHM", m["fwhm"], m["fwhm_err"], "km/s"),
+                     (f"broad {line} flux", m["flux"], m["flux_err"], "")]
+            try:
+                bh = self.bh_mass(line)
+                rows.append(("log M_BH", bh["log_mbh"], bh["log_mbh_err"], "dex"))
+            except Exception:
+                pass
+            dec = self.balmer_decrement()
+            if dec:
+                rows.append(("broad Ha/Hb", dec[0], dec[1], ""))
+        else:
+            t = self.lines[self.lines.component.isin(["narrow", "outflow"])]
+            tot = t.groupby("line").flux.sum()
+            if "[OIII]5007" in tot:
+                n = t[(t.component == "narrow") & (t.line == "[OIII]5007")].iloc[0]
+                rows += [("[OIII]5007 flux", tot["[OIII]5007"], np.nan, ""),
+                         ("[OIII]5007 FWHM (narrow)", n.fwhm, n.fwhm_err, "km/s")]
+            for a, b, lab in (("[NII]6583", "Ha", "log [NII]/Ha"), ("[OIII]5007", "Hb", "log [OIII]/Hb")):
+                if a in tot and b in tot and tot[a] > 0 and tot[b] > 0:
+                    rows.append((lab, float(np.log10(tot[a] / tot[b])), np.nan, "dex"))
+        from .host import StellarPopulation
+        if any(isinstance(c, StellarPopulation) for c in self.model.components):
+            hp = self.host_properties()
+            rows.append(("sigma* (host)", hp["sigma_star"][0], hp["sigma_star"][1], "km/s"))
+            k = next((k for k in hp if k.startswith("host_fraction")), None)
+            if k:
+                rows.append((f"host fraction at {k.split('_')[-1]} A", hp[k][0], hp[k][1], ""))
+        return pd.DataFrame(rows, columns=["quantity", "value", "error", "unit"])
+
     def balmer_decrement(self):
         """
         Broad H-alpha / H-beta flux ratio (all broad components of each line)

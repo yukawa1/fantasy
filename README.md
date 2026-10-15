@@ -28,9 +28,24 @@ Version 2 is a rewrite with these features:
 
 ## Installation
 
+The easiest way is the **FANTASY app** with its launcher: it uses
+[uv](https://docs.astral.sh/uv/) to set up Python 3.12 and the tested package versions
+(`uv.lock`) in an environment of its own, so nothing else on your computer matters:
+
+| system | start the app |
+|---|---|
+| macOS | double-click `launch/FANTASY.command` (or run `launch/fantasy-app.sh`) |
+| Linux | `launch/fantasy-app.sh` |
+| Windows | double-click `launch\fantasy-app.bat` |
+
+If uv is missing, the launcher offers to install it. The first start downloads Python
+and the packages (about a minute); afterwards it starts in a few seconds.
+
+As a Python package:
+
 ```console
-pip install fantasy_agn            # core
-pip install "fantasy_agn[gui]"     # + Jupyter GUI
+pip install fantasy_agn            # core, then: fantasy-app  or  python -m fantasy_agn.app
+pip install "fantasy_agn[gui]"     # + Jupyter widgets (fa.gui())
 ```
 
 ## Quick start
@@ -176,16 +191,22 @@ res.light_curve()    # broad-line fluxes, FWHMs and continuum per epoch, with er
 res.plot_light_curves()
 ```
 
-### GUI
+### The app (no programming needed)
 
-```python
-import fantasy_agn as fa
-app = fa.gui()       # in a Jupyter notebook
+```console
+fantasy-app          # or a launcher in launch/, or fa.app() from Python
 ```
 
-Upload a spectrum, check the redshift, pick a model, and press **Fit**. You get a
-plot, tables with uncertainties, a black-hole mass and download links. Afterwards the
-results are also available in code as `app.result`.
+The app opens in your browser and runs only on your computer. Follow the steps
+**read → classify → fit → results**: drop a spectrum (or give a path or a DESI
+TARGETID), let `classify()` decide what kind of object it is, and fit the recommended
+model. Every button writes ordinary FANTASY code into the code panel and runs it; you
+can **edit any cell and run it again** (Shift+Enter) or add your own cells, all in one
+namespace (`spec`, `c`, `model`, `r`). Download the figure (PDF/EPS/PNG), the line
+table, or the whole session as a Python script.
+
+In a Jupyter notebook, `fa.gui()` shows the same steps as widgets
+(`fa.gui(classic=True)`: the tabbed form with all options and multi-epoch fits).
 
 ## Upgrading from 1.x
 

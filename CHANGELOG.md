@@ -6,6 +6,16 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- **FANTASY app** (`fantasy-app`, `python -m fantasy_agn.app`, `fa.app()`): a local web
+  application (standard library server, no extra dependencies) with the steps
+  read → classify → fit → results and an editable code panel: buttons generate code into
+  cells, every cell can be edited and re-run, and the session can be downloaded as a
+  script. API protected by a per-start token and a Host check.
+- Launchers in `launch/` (macOS, Linux, Windows) run the app with uv, Python 3.12 and the
+  locked dependencies (`uv.lock`, `.python-version`) in `~/.fantasy_agn/env-py3.12`.
+- `FitResult.key_results()`: the main numbers of a fit as a table.
+- `fa.gui()` is now the guided workflow; `fa.gui(classic=True)` the tabbed form.
+  `Classification.plot_steps()` shows what `classify()` did.
 - `fa.classify(spec)`: classifies a spectrum before fitting: stellar continuum
   (E-MILES + featureless power law, dust screen), broad-line test (ΔBIC, S/N, FWHM),
   BPT [NII]/[SII]/[OI] diagrams (Kauffmann 2003; Kewley 2001, 2006) and WHAN

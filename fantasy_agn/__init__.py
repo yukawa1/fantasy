@@ -12,7 +12,8 @@ Quick start::
     result.measure("Hb")     # total broad H-beta: flux, FWHM, sigma, ...
     result.bh_mass()
 
-In a Jupyter notebook, ``fa.gui()`` opens a point-and-click interface.
+The application ``fantasy-app`` (or ``fa.app()``) opens a point-and-click
+interface in the browser; in a Jupyter notebook ``fa.gui()`` shows it as widgets.
 """
 __version__ = "2.0.0"
 
@@ -25,6 +26,12 @@ from .classify import Classification, classify
 from .compare import Comparison, compare
 from .fitting import fit, guess
 from .gui import gui
+
+
+def app(port=8780, open_browser=True):
+    """Start the FANTASY application in the browser (see :mod:`fantasy_agn.app`)."""
+    from .app import run
+    run(port=port, open_browser=open_browser)
 from .lines import LINES, line_wavelength, read_line_list
 from .model import Model
 from .multiepoch import MultiEpochResult, fit_epochs
@@ -35,7 +42,7 @@ from .spectrum import Spectrum, read
 __all__ = [
     "read", "Spectrum", "Model", "fit", "guess", "fit_epochs", "compare", "Comparison",
     "classify", "Classification",
-    "presets", "gui",
+    "presets", "gui", "app",
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
     "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "StellarPopulation",
     "Extinction",

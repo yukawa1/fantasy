@@ -2,7 +2,8 @@
 Point-and-click interface for Jupyter notebooks.
 
     import fantasy_agn as fa
-    app = fa.gui()      # shows the interface
+    app = fa.gui()               # guided workflow: read -> classify -> fit -> results
+    app = fa.gui(classic=True)   # tabbed form with all options and multi-epoch fits
     app.result.lines    # results are available in code afterwards
 
 Needs the optional dependency ipywidgets (pip install "fantasy_agn[gui]").
@@ -537,10 +538,18 @@ class FantasyApp:
             display(HTML(_download_link(lc.to_csv(index=False), "light_curve.csv", "light curve")))
 
 
-def gui():
-    """Show the FANTASY point-and-click interface in a Jupyter notebook."""
+def gui(classic=False):
+    """
+    Show the FANTASY point-and-click interface in a Jupyter notebook: the
+    guided workflow read -> classify -> fit -> results, which shows the code
+    of every step (see :mod:`fantasy_agn.workflow`), or with ``classic=True``
+    the tabbed form with all options (spectrum, model, fit, multi-epoch).
+    """
     try:
         import ipywidgets  # noqa: F401
     except ImportError:
         raise ImportError('the GUI needs ipywidgets: pip install "fantasy_agn[gui]"') from None
-    return FantasyApp()
+    if classic:
+        return FantasyApp()
+    from .workflow import WorkflowApp
+    return WorkflowApp()

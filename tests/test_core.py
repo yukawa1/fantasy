@@ -200,8 +200,11 @@ def test_unconstrained_amplitudes_are_fixed():
 
 def test_gui_builds():
     pytest.importorskip("ipywidgets")
-    app = fa.gui()
-    assert app.preset.value in fa.presets.PRESETS
+    classic = fa.gui(classic=True)
+    assert classic.preset.value in fa.presets.PRESETS
+    guided = fa.gui()
+    from fantasy_agn.workflow import MODELS
+    assert guided.model_dd.value in MODELS and "import fantasy_agn" not in guided.code.value
 
 
 def test_optical_preset_follows_blue_continuum():
@@ -793,3 +796,71 @@ def test_classify_sdss(fname, label):
     if not os.path.exists(path):
         pytest.skip("SDSS class examples not downloaded")
     assert fa.classify(fa.read(path).to_rest_frame()).label == label
+
+
+def _wait(session, timeout=300):
+    import time
+    t0 = time.time()
+    while session.busy and time.time() - t0 < timeout:
+        time.sleep(0.05)
+    assert not session.busy
+
+
+def test_app_session_cells():
+    from fantasy_agn.app.session import Session
+    s = Session()
+    s.run_cell("x = 2\nprint('hello')\nx * 3")
+    _wait(s)
+    c = s.cells[-1]
+    assert c.n == 2 and [o[0] for o in c.out] == ["hello", "6"]
+    s.run_cell("1 / 0")                                   # errors are shown, not raised
+    _wait(s)
+    assert s.cells[-1].out[-1][1] == "err" and "ZeroDivisionError" in s.cells[-1].out[-1][0]
+    assert "ZeroDivisionError" in s.state()["error"]
+    s.run_cell("x = 5\nx * 3", index=1)                  # edit and rerun a cell
+    _wait(s)
+    assert s.cells[1].out[-1][0] == "15" and s.cells[1].n == 4
+    # the buttons generate code that runs in the same namespace
+    path = os.path.join(EXAMPLES, "spec-1059-52618-0453.fits")
+    s.run_cell(s.read_code(path=path))
+    _wait(s)
+    assert s.spec is not None and s.done() == ["read"] and s.figure_version == 1
+    code = s.fit_code("hbeta", broad_components=1, outflow=False)
+    assert code.startswith("model = fa.presets.hbeta(broad_components=1, outflow=False)")
+    s.run_cell(code)
+    _wait(s)
+    st = s.state()
+    assert st["done"] == ["read", "fit", "results"] and st["has_result"]
+    assert any(r["label"].startswith("broad Hb FWHM") for r in st["results"])
+    script = s.script()
+    assert "fa.read(" in script and "fa.presets.hbeta(" in script and "1 / 0" in script
+    assert s.figure_bytes("pdf")[:4] == b"%PDF"
+
+
+def test_app_server_requires_token():
+    import json
+    import threading
+    import urllib.request
+    import urllib.error
+    from fantasy_agn.app.server import Handler, make_server
+    server = make_server(port=0)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{port}"
+        page = urllib.request.urlopen(base + "/").read().decode()
+        assert Handler.token in page and "__FANTASY_TOKEN__" not in page
+        for req in (urllib.request.Request(base + "/api/state"),
+                    urllib.request.Request(base + "/api/exec", data=b'{"code": "1"}', method="POST"),
+                    urllib.request.Request(base + "/api/state", headers={"X-Fantasy-Token": "wrong"}),
+                    urllib.request.Request(base + "/api/state", headers={"X-Fantasy-Token": Handler.token,
+                                                                         "Host": "evil.example.com"})):
+            with pytest.raises(urllib.error.HTTPError) as e:
+                urllib.request.urlopen(req)
+            assert e.value.code == 403
+        ok = urllib.request.Request(base + "/api/state", headers={"X-Fantasy-Token": Handler.token})
+        state = json.loads(urllib.request.urlopen(ok).read())
+        assert state["cells"][0]["code"] == "import fantasy_agn as fa"
+    finally:
+        server.shutdown()
+        server.server_close()

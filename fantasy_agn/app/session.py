@@ -1,0 +1,294 @@
+"""
+The state of one analysis, independent of the user interface.
+
+Everything is code: the buttons (read, classify, fit) generate Python code
+into a new cell and run it, and the user can edit any cell and run it again
+or add cells. All cells run in one namespace (``fa``, ``spec``, ``c``,
+``model``, ``r``, ...), so editing a cell has the same effect as changing the
+form. After every run the session looks at ``spec``, ``c`` and ``r`` and
+updates the steps, the figure and the results.
+"""
+import ast
+import contextlib
+import inspect
+import io
+import os
+import platform
+import threading
+import time
+import traceback
+
+import numpy as np
+
+from .. import presets
+
+STEPS = ("read", "classify", "fit", "results")
+UPLOADS = os.path.join(os.path.expanduser("~"), ".fantasy_agn", "uploads")
+
+# Models offered in the interface: label -> (preset, options)
+MODELS = {
+    "optical": ("optical", {}),
+    "optical (physical)": ("optical", {"physical": True}),
+    "hbeta": ("hbeta", {}),
+    "halpha": ("halpha", {}),
+    "type2": ("type2", {}),
+    "galaxy": ("galaxy", {}),
+}
+CLASS_MODEL = {"type1": "optical", "type1_host": "optical (physical)", "seyfert2": "type2",
+               "liner": "type2", "composite": "type2", "unknown": "type2",
+               "starforming": "galaxy", "retired": "galaxy", "passive": "galaxy"}
+MAX_OUTPUT = 6000
+
+
+class Cell:
+    def __init__(self, code):
+        self.code = code
+        self.n = None
+        self.start = None
+        self.end = None
+        self.out = []          # (text, kind): kind 'out' or 'err'
+
+    def as_dict(self):
+        return {"code": self.code, "n": self.n, "start": self.start, "end": self.end,
+                "running": self.start is not None and self.end is None,
+                "out": [{"text": t, "kind": k} for t, k in self.out]}
+
+
+def _short_repr(value):
+    import pandas as pd
+    if isinstance(value, pd.DataFrame):
+        with pd.option_context("display.width", 110, "display.max_columns", 12,
+                               "display.float_format", "{:.4g}".format):
+            text = value.to_string(max_rows=40)
+    else:
+        text = repr(value)
+    return text if len(text) < MAX_OUTPUT else text[:MAX_OUTPUT] + "\n…"
+
+
+class Session:
+    """One analysis: a list of code cells run in a shared namespace."""
+
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.reset()
+
+    def reset(self):
+        import fantasy_agn
+        with self.lock:
+            self.ns = {"fa": fantasy_agn, "np": np, "__name__": "__fantasy__"}
+            self.cells = [Cell("import fantasy_agn as fa")]
+            self.cells[0].n, self.cells[0].start, self.cells[0].end = 1, time.time(), time.time()
+            self.count = 1
+            self.busy = None
+            self.error = None
+            self.figure = None
+            self.figure_version = 0
+            self.figure_stem = None
+            self.results = []
+            self.warnings = []
+            self.recommended = None
+            self.info = "Read a spectrum to start."
+            self._seen = {}               # id() of spec, c, r at the last update
+
+    # ----------------------------------------------------------- objects
+    @property
+    def spec(self):
+        from ..spectrum import Spectrum
+        s = self.ns.get("spec")
+        return s if isinstance(s, Spectrum) else None
+
+    @property
+    def classification(self):
+        from ..classify import Classification
+        c = self.ns.get("c")
+        return c if isinstance(c, Classification) else None
+
+    @property
+    def result(self):
+        from ..result import FitResult
+        r = self.ns.get("r")
+        return r if isinstance(r, FitResult) else None
+
+    def done(self):
+        steps = []
+        if self.spec is not None:
+            steps.append("read")
+        if self.classification is not None:
+            steps.append("classify")
+        if self.result is not None:
+            steps += ["fit", "results"]
+        return steps
+
+    def state(self):
+        with self.lock:
+            spec = self.spec
+            return {"steps": list(STEPS), "done": self.done(), "busy": self.busy,
+                    "now": time.time(), "cells": [c.as_dict() for c in self.cells],
+                    "error": self.error, "figure_version": self.figure_version,
+                    "results": [{"label": a, "value": b} for a, b in self.results],
+                    "warnings": self.warnings, "recommended": self.recommended,
+                    "models": list(MODELS), "info": self.info,
+                    "spectrum": spec.name if spec is not None else None,
+                    "has_result": self.result is not None,
+                    "python": platform.python_version(),
+                    "version": __import__("fantasy_agn").__version__}
+
+    def script(self):
+        body = [c.code for c in self.cells[1:] if c.n]
+        return ("# FANTASY session (generated by the FANTASY app)\n"
+                "import fantasy_agn as fa\n\n" + "\n\n".join(body) + "\n")
+
+    def figure_bytes(self, fmt="png", dpi=110):
+        from ..plotting import paper_style
+        with self.lock:
+            fig = self.figure
+        if fig is None:
+            return None
+        buf = io.BytesIO()
+        if fmt == "png" and dpi <= 150:
+            fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+        else:
+            with paper_style():
+                fig.savefig(buf, format=fmt, dpi=300 if fmt == "png" else None,
+                            bbox_inches="tight")
+        return buf.getvalue()
+
+    def lines_csv(self):
+        r = self.result
+        return r.lines.to_csv(index=False) if r is not None else None
+
+    # ------------------------------------------------------------- running
+    def run_cell(self, code, index=None):
+        """Run code in a new cell, or replace cell ``index`` and run it again."""
+        with self.lock:
+            if self.busy:
+                raise RuntimeError("a cell is still running")
+            if index is None:
+                cell = Cell(code)
+                self.cells.append(cell)
+            else:
+                cell = self.cells[int(index)]
+                cell.code, cell.out, cell.n, cell.end = code, [], None, None
+            cell.start = time.time()
+            self.busy, self.error = "running", None
+        threading.Thread(target=self._execute, args=(cell,), daemon=True).start()
+        return cell
+
+    def _execute(self, cell):
+        printed = io.StringIO()
+        value = None
+        try:
+            tree = ast.parse(cell.code, mode="exec")
+            last = tree.body[-1] if tree.body and isinstance(tree.body[-1], ast.Expr) else None
+            if last is not None:
+                tree.body = tree.body[:-1]
+            with contextlib.redirect_stdout(printed):
+                exec(compile(tree, "<cell>", "exec"), self.ns)
+                if last is not None:
+                    value = eval(compile(ast.Expression(last.value), "<cell>", "eval"), self.ns)
+            out = printed.getvalue().rstrip()
+            with self.lock:
+                if out:
+                    cell.out.append((out[:MAX_OUTPUT], "out"))
+                if value is not None:
+                    cell.out.append((_short_repr(value), "out"))
+            self._update(value)
+        except Exception as exc:
+            tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+            # drop the frames of the app itself
+            tb = [ln for ln in tb if "fantasy_agn/app/" not in ln]
+            with self.lock:
+                if printed.getvalue():
+                    cell.out.append((printed.getvalue().rstrip(), "out"))
+                cell.out.append(("".join(tb[-6:]).rstrip(), "err"))
+                self.error = f"{type(exc).__name__}: {exc}"
+        finally:
+            with self.lock:
+                self.count += 1
+                cell.n, cell.end = self.count, time.time()
+                self.busy = None
+
+    def _show(self, fig, stem):
+        with self.lock:
+            self.figure, self.figure_stem = fig, stem
+            self.figure_version += 1
+
+    def _update(self, value):
+        """Follow changes of spec, c and r (from buttons or edited cells)."""
+        from matplotlib.axes import Axes
+        from matplotlib.figure import Figure
+        spec, c, r = self.spec, self.classification, self.result
+        seen = {"spec": id(spec) if spec is not None else None,
+                "c": id(c) if c is not None else None,
+                "r": id(r) if r is not None else None}
+        changed = {k for k in seen if seen[k] != self._seen.get(k) and seen[k] is not None}
+        self._seen = seen
+        if isinstance(value, (Figure, Axes)):
+            fig = value if isinstance(value, Figure) else value.figure
+            self._show(fig, "figure")
+        elif "r" in changed:
+            self._show(r.plot(fig=Figure()), f"{spec.name if spec else 'fit'}_fit")
+            self._results(r)
+            self.info = "Done. Download the figure, the line table or the session as a script."
+        elif "c" in changed:
+            self._show(c.plot_steps(fig=Figure()), f"{c.spectrum.name}_classification")
+            self.recommended = {"model": CLASS_MODEL.get(c.label, "type2"),
+                                "broad_components": 2 if c.label.startswith("type1") else 1,
+                                "label": c.label, "uncertain": c.uncertain}
+            self.info = (f"Recommended model: {self.recommended['model']}. Change it if you like, "
+                         "then press Fit.")
+        elif "spec" in changed:
+            self._show(spec.plot(fig=Figure()).figure, f"{spec.name}_spectrum")
+            self.recommended, self.results, self.warnings = None, [], []
+            self.info = "Next: classify the spectrum."
+
+    def _results(self, r):
+        t = r.key_results()
+        rows = []
+        for q in t.itertuples():
+            unit = f" {q.unit}" if q.unit else ""
+            if q.unit == "" and "fraction" in q.quantity:
+                val = f"{q.value:.0%}"
+            elif np.isfinite(q.error):
+                val = f"{q.value:.4g} ± {q.error:.2g}{unit}"
+            else:
+                val = f"{q.value:.4g}{unit}"
+            rows.append((q.quantity, val))
+        self.results = rows
+        self.warnings = [ln.strip().replace("WARNING: ", "")
+                         for ln in r.summary(short=True).split("\n") if "WARNING" in ln]
+
+    # ------------------------------------------------- code for the buttons
+    def read_code(self, path=None, data=None, filename=None, targetid=None, z=None):
+        z = float(z) if z not in (None, "", 0, "0") else None
+        zarg = f"z={z}" if z else ""
+        if targetid:
+            return f"spec = fa.desi.fetch({int(targetid)}).to_rest_frame({zarg})\nspec"
+        if data is not None:
+            # uploaded files are kept, so that the code (and the script) can read them again
+            os.makedirs(UPLOADS, exist_ok=True)
+            name = os.path.basename(filename or "spectrum.fits")
+            path = os.path.join(UPLOADS, name)
+            with open(path, "wb") as fh:
+                fh.write(data)
+        if not path:
+            raise ValueError("choose a file, give a path or a DESI TARGETID")
+        path = os.path.expanduser(path.strip())
+        return f"spec = fa.read({path!r}).to_rest_frame({zarg})\nspec"
+
+    @staticmethod
+    def classify_code():
+        return "c = fa.classify(spec)\nc"
+
+    @staticmethod
+    def fit_code(model="optical", broad_components=2, outflow=True, errors="covariance"):
+        name, kw = MODELS[model]
+        kw = dict(kw)
+        params = inspect.signature(getattr(presets, name)).parameters
+        if "broad_components" in params:
+            kw["broad_components"] = int(broad_components)
+        if "outflow" in params:
+            kw["outflow"] = bool(outflow)
+        args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
+        err = f', errors="{errors}"' if errors != "covariance" else ""
+        return f"model = fa.presets.{name}({args})\nr = fa.fit(spec, model{err})\nr.key_results()"

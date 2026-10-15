@@ -163,13 +163,16 @@ class Classification:
                    "retired": ("galaxy", {}), "passive": ("galaxy", {}),
                    "unknown": ("type2", {})}
 
-    def __init__(self, spectrum, label, uncertain, reason, measurements, stellar, lines):
+    def __init__(self, spectrum, label, uncertain, reason, measurements, stellar, lines,
+                 narrow_fit=None, broad_fit=None, masks=None):
         self.spectrum = spectrum
         self.label = label
         self.uncertain = uncertain
         self.reason = reason
         self.measurements = measurements
         self.stellar_fit, self.line_fit = stellar, lines
+        # both line fits of the broad-line test and the masks of the stellar fit
+        self.narrow_fit, self.broad_fit, self.masks = narrow_fit, broad_fit, masks
 
     def model(self, **options):
         """Recommended model, e.g. ``fa.fit(spec, cls.model())``."""
@@ -200,6 +203,71 @@ class Classification:
         parts.append(f"  recommended: fa.presets.{self.RECOMMENDED[self.label][0]}"
                      f"({', '.join(f'{k}={v}' for k, v in self.RECOMMENDED[self.label][1].items())})")
         return "\n".join(parts)
+
+    def plot_steps(self, fig=None, save=None):
+        """
+        What :func:`classify` did: the spectrum with the masked lines and the
+        stellar fit, H-alpha in the starlight-subtracted spectrum with the
+        narrow-only and the narrow+broad fit, and the [NII] BPT diagram.
+        """
+        from .plotting import COLORS, flux_label, new_figure, paper_style, savefig
+        s, m = self.spectrum, self.measurements
+        cont = self.stellar_fit.model_flux(s.wave)
+        with paper_style():
+            fig = new_figure(fig, figsize=(7.1, 5.0))
+            gs = fig.add_gridspec(2, 2, height_ratios=[1.15, 1], hspace=0.38, wspace=0.28)
+            ax = fig.add_subplot(gs[0, :])
+            lo, hi = self.stellar_fit.spectrum.wave[self.stellar_fit.mask][[0, -1]]
+            v = (s.wave >= lo) & (s.wave <= hi)
+            ax.plot(s.wave[v], s.flux[v], color="0.55", lw=0.5, label="data")
+            for i, (a, b) in enumerate(self.masks or []):
+                ax.axvspan(a, b, color="#56B4E9", alpha=0.18, lw=0,
+                           label="masked lines" if i == 0 else None)
+            ax.plot(s.wave[v], cont[v], color=COLORS.get("host", "#999933"), lw=1.0,
+                    label="stars + power law")
+            ax.set_xlim(lo, hi)
+            ax.set_ylim(0, np.nanpercentile(s.flux[v], 99.7) * 1.1)
+            ax.set_xlabel(r"Rest-frame wavelength ($\mathrm{\AA}$)")
+            ax.set_ylabel(flux_label(s).replace(" (", "\n(", 1))
+            hf = m.get("host_fraction_5100", np.nan)
+            ax.set_title(f"1 \u00b7 starlight: host {hf:.0%} at 5100 \u00c5, "
+                         f"\u03c3$_\\star$ = {m['sigma_star']:.0f} km/s", fontsize=9)
+            ax.legend(loc="upper right", fontsize=7, ncol=3)
+            ax2 = fig.add_subplot(gs[1, 0])
+            w = (s.wave > 6400) & (s.wave < 6740)
+            if w.sum() > 10 and self.narrow_fit is not None:
+                res = s.flux - cont
+                ax2.plot(s.wave[w], res[w], color="0.35", lw=0.6, drawstyle="steps-mid")
+                ax2.plot(s.wave[w], self.narrow_fit.model_flux(s.wave)[w], color="#0072B2", lw=1.0,
+                         label="narrow only")
+                ax2.plot(s.wave[w], self.broad_fit.model_flux(s.wave)[w], color="#D55E00", lw=1.0,
+                         label="+ broad")
+                ax2.legend(fontsize=7, loc="upper left")
+                ax2.set_xlim(6400, 6740)
+            ax2.set_xlabel(r"Rest-frame wavelength ($\mathrm{\AA}$)")
+            dec = "yes" if self.label.startswith("type1") else ("weak?" if m.get("weak_broad") else "no")
+            ax2.set_title(f"2 \u00b7 broad H\u03b1? {dec}  (\u0394BIC = {m['broad_dbic']:.0f}, "
+                          f"S/N = {m['broad_snr']:.0f})", fontsize=9)
+            ax3 = fig.add_subplot(gs[1, 1])
+            x = np.linspace(-2.0, 0.46, 200)
+            ax3.plot(x, kewley01(x), "k", lw=0.8)
+            xk = np.linspace(-2.0, 0.04, 200)
+            ax3.plot(xk, kauffmann03(xk), "k--", lw=0.8)
+            for xx, yy, t in ((-1.3, -0.7, "SF"), (-0.3, -0.85, "comp."), (-0.9, 1.2, "Seyfert"),
+                              (0.12, -0.7, "LINER")):
+                ax3.text(xx, yy, t, fontsize=7, color="0.4")
+            if np.isfinite(m.get("log_nii_ha", np.nan)) and np.isfinite(m.get("log_oiii_hb", np.nan)):
+                ax3.errorbar(m["log_nii_ha"], m["log_oiii_hb"], xerr=m["log_nii_ha_err"],
+                             yerr=m["log_oiii_hb_err"], fmt="*", ms=9, color="#D55E00")
+            ax3.set_xlim(-1.6, 0.6)
+            ax3.set_ylim(-1.0, 1.5)
+            ax3.set_xlabel(r"log [N$\,$II]/H$\alpha$")
+            ax3.set_ylabel(r"log [O$\,$III]/H$\beta$")
+            ax3.set_title(f"3 \u00b7 {self.label.replace('_', ' ')}"
+                          + (" (uncertain)" if self.uncertain else ""), fontsize=9)
+        if save:
+            savefig(fig, save)
+        return fig
 
     def plot(self, fig=None, save=None):
         """BPT ([NII], [SII], [OI]) and WHAN diagrams with this object."""
@@ -296,12 +364,14 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
                 float(bl.loc[bline, "fwhm"]), float(f))
 
     # 1.-2. stellar continuum (narrow masks) and emission lines
-    stellar, smooth, cont, r_n, r_b = stages(_MASK_NARROW)
+    masks = _MASK_NARROW
+    stellar, smooth, cont, r_n, r_b = stages(masks)
     bline, dbic, snr, fwhm, bflux = broad_stats(r_n, r_b)
     if dbic > broad_dbic and snr > broad_snr:
         # broad lines: repeat with wide masks so that their wings do not
         # leak into the stellar fit
-        stellar, smooth, cont, r_n, r_b = stages(_MASK_BROAD)
+        masks = _MASK_BROAD
+        stellar, smooth, cont, r_n, r_b = stages(masks)
         bline, dbic, snr, fwhm, bflux = broad_stats(r_n, r_b)
     hp = stellar.host_properties()
     meas["host_fraction_5100"] = hp["host_fraction_5100"][0] if lo < 5100 < hi else np.nan
@@ -410,7 +480,10 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
         reason += (f"; possible weak broad {bline} (FWHM {meas['broad_fwhm']:.0f} km/s, "
                    f"S/N {meas['broad_snr']:.1f}): type 1.8/1.9?")
         uncertain = True
-    result = Classification(spec, label, bool(uncertain), reason, meas, stellar, r)
+    mask_ranges = [(line_wavelength(ln) * (1 - dv / C_KMS), line_wavelength(ln) * (1 + dv / C_KMS))
+                   for ln, dv in masks.items()]
+    result = Classification(spec, label, bool(uncertain), reason, meas, stellar, r,
+                            narrow_fit=r_n, broad_fit=r_b, masks=mask_ranges)
     if verbose:
         print(result)
     return result

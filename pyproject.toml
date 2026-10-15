@@ -31,11 +31,15 @@ dev = ["pytest"]
 Documentation = "https://fantasy-agn.readthedocs.io"
 Source = "https://github.com/yukawa1/fantasy"
 
+[project.scripts]
+fantasy-app = "fantasy_agn.app:main"
+
 [tool.setuptools]
-packages = ["fantasy_agn"]
+packages = ["fantasy_agn", "fantasy_agn.app"]
 
 [tool.setuptools.package-data]
 fantasy_agn = ["data/*.csv", "data/*.fits"]
+"fantasy_agn.app" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
