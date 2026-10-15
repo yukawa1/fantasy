@@ -910,3 +910,21 @@ def test_app_docs():
     models = next(p for p in pages if p["id"] == "api-models")["html"]
     assert "fa.presets.optical(" in models and "broad_components" in models
     assert "&lt;" not in models.split("<pre>")[0][:0]          # rendered without raising
+
+
+def test_app_plot_data_and_tables():
+    from fantasy_agn.app.session import Session, _plain_label
+    s = Session()
+    assert s.plot_data() is None and s.data_tables() == []
+    s.run_cell(s.read_code(path=os.path.join(EXAMPLES, "spec-1059-52618-0453.fits")))
+    _wait(s)
+    d = s.plot_data()
+    assert len(d["x"]) == len(d["flux"]) and d["resid"] is None and d["series"] == []
+    s.run_cell(s.fit_code("hbeta", broad_components=1, outflow=False))
+    _wait(s)
+    d = s.plot_data()
+    names = [x["name"] for x in d["series"]]
+    assert names[0] == "model" and "broad lines" in names and "narrow lines" in names
+    assert len(d["resid"]) == len(d["x"]) and 4000 < d["x"][0] < d["x"][-1] < 5600
+    assert [t["title"] for t in s.data_tables()] == ["Spectrum", "Fitted lines"]
+    assert _plain_label("$F_\\lambda$ ($10^{-17}\\,\\mathrm{erg\\,s^{-1}}$)") == "Fλ (10⁻¹⁷ erg s⁻¹)"

@@ -40,6 +40,18 @@ CLASS_MODEL = {"type1": "optical", "type1_host": "optical (physical)", "seyfert2
 MAX_OUTPUT = 6000
 
 
+_SUP = str.maketrans("-0123456789", "\u207b\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079")
+
+
+def _plain_label(text):
+    """A matplotlib mathtext label as plain Unicode text for the browser."""
+    import re
+    text = re.sub(r"\^\{?(-?\d+)\}?", lambda m: m.group(1).translate(_SUP), text)
+    for a, b in (("\\lambda", "\u03bb"), ("\\,", " "), ("\\mathrm", ""), ("\\times", "\u00d7"), ("_", "")):
+        text = text.replace(a, b)
+    return re.sub(r"[${}]", "", text)
+
+
 class Cell:
     def __init__(self, code):
         self.code = code
@@ -133,6 +145,7 @@ class Session:
             return {"steps": list(STEPS), "done": self.done(), "busy": self.busy,
                     "now": time.time(), "cells": [c.as_dict() for c in self.cells],
                     "error": self.error, "figure_version": self.figure_version,
+                    "figure_stem": self.figure_stem,
                     "results": [{"label": a, "value": b} for a, b in self.results],
                     "warnings": self.warnings, "recommended": self.recommended,
                     "models": list(MODELS), "info": self.info,
@@ -443,3 +456,100 @@ class Session:
         if not lines:
             raise ValueError("nothing changed")
         return "\n".join(lines) + "\nmodel"
+
+    # ------------------------------------------------------ interactive plot
+    def plot_data(self, max_points=6000):
+        """
+        Arrays for the interactive plot in the browser: the spectrum, and when
+        available the fitted model with its components grouped by kind (or the
+        stellar continuum of the classification), and the residuals.
+        """
+        spec, c, r = self.spec, self.classification, self.result
+        if spec is None:
+            return None
+        series = []
+        if r is not None and r.spectrum.name == spec.name:
+            s = r.spectrum
+            lo, hi = r.model.wave_range or (s.wave.min(), s.wave.max())
+            sel = (s.wave >= lo) & (s.wave <= hi)
+            parts = r.model_flux(components=True)
+            groups = {"continuum": [], "host": [], "Fe II": [], "Balmer": [], "narrow lines": [],
+                      "broad lines": [], "outflow": []}
+            for comp in r.model.components:
+                name, role, kind = comp.name, getattr(comp, "role", None), getattr(comp, "kind", "")
+                if name not in parts:
+                    continue
+                if kind == "continuum" and name.startswith("balmer"):
+                    key = "Balmer"
+                elif kind == "continuum":
+                    key = "continuum"
+                elif kind == "host":
+                    key = "host"
+                elif name.startswith("feii"):
+                    key = "Fe II"
+                elif name.startswith("balmer"):
+                    key = "Balmer"
+                elif role in ("broad", "outflow"):
+                    key = "broad lines" if role == "broad" else "outflow"
+                else:
+                    key = "narrow lines"
+                groups[key].append(parts[name])
+            model = r.model_flux()
+            series.append(("model", model))
+            for key, arrs in groups.items():
+                if arrs:
+                    series.append((key, np.sum(arrs, axis=0)))
+            resid = (s.flux - model) / s.err
+            title = f"{s.name}: fit, \u03c7\u00b2/\u03bd = {r.rchi2:.2f}"
+        else:
+            s = spec
+            good = s.good
+            lo, hi = s.wave[good].min(), s.wave[good].max()
+            sel = (s.wave >= lo) & (s.wave <= hi)
+            resid = None
+            title = f"{s.name}: spectrum"
+            if c is not None and c.spectrum.name == spec.name:
+                series.append(("stars + power law", c.stellar_fit.model_flux(s.wave)))
+                title = f"{s.name}: starlight from the classification"
+        idx = np.nonzero(sel)[0]
+        step = max(1, int(np.ceil(idx.size / max_points)))
+        idx = idx[::step]
+
+        def arr(a):
+            out = np.asarray(a, float)[idx]
+            return [round(float(v), 6) if np.isfinite(v) else None for v in out]
+
+        from ..plotting import flux_label
+        ylab = _plain_label(flux_label(s))
+        return {"title": title, "x": arr(s.wave), "flux": arr(s.flux),
+                "series": [{"name": n, "y": arr(v)} for n, v in series],
+                "resid": arr(resid) if resid is not None else None,
+                "xlabel": "Rest-frame wavelength (\u00c5)", "ylabel": ylab,
+                "version": self.figure_version}
+
+    def data_tables(self):
+        """Tables for the Data tab: spectrum, classification and fitted lines."""
+        out = []
+        spec, c, r = self.spec, self.classification, self.result
+        if spec is not None:
+            good = spec.good
+            out.append({"title": "Spectrum", "columns": ["quantity", "value"], "rows": [
+                ["name", spec.name], ["redshift", f"{spec.z:.5f}" if spec.z is not None else "\u2014"],
+                ["pixels", int(good.sum())],
+                ["rest-frame range", f"{spec.wave[good].min():.0f}\u2013{spec.wave[good].max():.0f} \u00c5"],
+                ["resolution", f"{spec.resolution:.0f} km/s" if spec.resolution else "unknown"],
+                ["medium", spec.medium]]})
+        if c is not None:
+            rows = [["class", c.label + (" (uncertain)" if c.uncertain else "")]]
+            for k, v in c.measurements.items():
+                if isinstance(v, (int, float, np.floating)) and not isinstance(v, bool) and np.isfinite(v):
+                    rows.append([k, f"{v:.4g}"])
+            out.append({"title": "Classification", "columns": ["quantity", "value"], "rows": rows})
+        if r is not None:
+            t = r.lines
+            rows = [[row.component, row.line, f"{row.flux:.4g}", f"{row.flux_err:.2g}",
+                     f"{row.fwhm:.0f}", f"{row.shift:.0f}", f"{row.ew:.3g}"] for row in t.itertuples()]
+            out.append({"title": "Fitted lines", "columns": ["component", "line", "flux", "\u00b1",
+                                                             "FWHM km/s", "shift km/s", "EW \u00c5"],
+                        "rows": rows})
+        return out

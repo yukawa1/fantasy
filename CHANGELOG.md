@@ -6,6 +6,11 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- App redesign with the FANTASY logo: header with logo, wordmark and step indicator;
+  navy code panel with Code/Data tabs, Python version and a code input at the bottom;
+  step cards with side panels; results as large numbers; an interactive spectrum plot
+  (zoom, pan, hover read-out, legend toggles, full screen) next to the publication
+  figure (PDF/EPS/PNG).
 - App: **Model** tab (start from a preset, add/remove components with a form, edit
   parameter values, limits, fixed and ties in a table; every change is written as code)
   and **Docs** tab (guides, line list and an API reference generated from the docstrings,

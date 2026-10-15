@@ -8,6 +8,38 @@ let lastFigure = -1;
 let pollTimer = null;
 const views = [];             // one view per code cell
 
+// ================================================================ icons
+const ICONS = {
+  upload: '<path d="M7 18a5 5 0 0 1-.6-9.96A7 7 0 0 1 19.6 9.5 4.5 4.5 0 0 1 18 18"/><path d="M12 21v-9m-3.5 3.5L12 12l3.5 3.5"/>',
+  arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
+  pulse: '<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>',
+  sliders: '<path d="M4 6h10m4 0h2M4 12h4m4 0h8M4 18h12m4 0h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  play: '<path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/>',
+  download: '<path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19h14"/>',
+  code: '<path d="m9 7-5 5 5 5m6-10 5 5-5 5"/>',
+  book: '<path d="M5 4h9a4 4 0 0 1 4 4v12H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/>',
+  github: '<path d="M9 19c-4 1.5-4-2-6-2.5m12 5v-3.5a3 3 0 0 0-.9-2.3c3-.3 6.1-1.5 6.1-6.7a5.2 5.2 0 0 0-1.4-3.6 4.8 4.8 0 0 0-.1-3.6s-1.1-.3-3.7 1.4a12.7 12.7 0 0 0-6.6 0C5.8 1.5 4.7 1.8 4.7 1.8a4.8 4.8 0 0 0-.1 3.6 5.2 5.2 0 0 0-1.4 3.6c0 5.2 3.1 6.4 6.1 6.7a3 3 0 0 0-.9 2.3V21"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/>',
+  table: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M4 14.5h16M10 10v9"/>',
+  database: '<ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6M5 12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8"/>',
+  nodes: '<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="m7.5 7.5 3 3m3 0 3-3m-3 6 3 3m-6 0-3 3"/>',
+  target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  zoomin: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5M11 8v6M8 11h6"/>',
+  zoomout: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5M8 11h6"/>',
+  reset: '<path d="M4 9V4h5M20 15v5h-5M4 4l6 6m10 10-6-6"/>',
+  expand: '<path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5"/>',
+  layers: '<path d="m12 4 8 4-8 4-8-4z"/><path d="m4 12 8 4 8-4M4 16l8 4 8-4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+};
+function icon(name) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ""}</svg>`;
+}
+function paintIcons(root = document) {
+  for (const el of root.querySelectorAll("i[data-icon]")) if (!el.firstChild) el.innerHTML = icon(el.dataset.icon);
+}
+paintIcons();
+
+// ================================================================ api
 async function api(path, options = {}) {
   options.headers = Object.assign({ "X-Fantasy-Token": TOKEN }, options.headers || {});
   const r = await fetch(path, options);
@@ -32,22 +64,41 @@ function fmt(v) {
 let currentView = "analysis";
 function setView(name, docId) {
   currentView = name;
-  for (const t of document.querySelectorAll(".tab")) t.classList.toggle("active", t.dataset.view === name);
   for (const v of ["analysis", "model", "docs"]) $("view-" + v).classList.toggle("hidden", v !== name);
+  for (const l of document.querySelectorAll(".link[data-view-link]")) l.classList.toggle("active", l.dataset.viewLink === name);
   $("main").classList.toggle("docs", name === "docs");
   if (name === "docs") openDocs(docId);
   if (name === "model" && state) renderModelEditor(true);
+  if (name === "analysis" && plotData) requestAnimationFrame(drawPlot);
   const hash = name === "docs" && docId ? `#docs/${docId}` : `#${name}`;
   if (location.hash !== hash) history.replaceState(null, "", hash);
 }
-for (const t of document.querySelectorAll(".tab")) t.onclick = () => setView(t.dataset.view);
 document.addEventListener("click", (e) => {
   const help = e.target.closest(".help");
-  if (help) { e.preventDefault(); setView("docs", help.dataset.doc); }
-  const go = e.target.closest("[data-goto]");
-  if (go) { e.preventDefault(); setView(go.dataset.goto); }
+  if (help) { e.preventDefault(); setView("docs", help.dataset.doc); return; }
+  const link = e.target.closest("[data-view-link]");
+  if (link) { e.preventDefault(); setView(link.dataset.viewLink); }
 });
-$("open-editor").onclick = (e) => { e.preventDefault(); setView("model"); };
+
+// panel tabs: code / data
+let ptab = "code";
+for (const b of document.querySelectorAll(".ptab")) b.onclick = () => {
+  ptab = b.dataset.ptab;
+  for (const x of document.querySelectorAll(".ptab")) x.classList.toggle("active", x === b);
+  $("cells").classList.toggle("hidden", ptab !== "code");
+  $("datapane").classList.toggle("hidden", ptab !== "data");
+  $("composer").classList.toggle("hidden", ptab !== "code");
+  if (ptab === "data") loadData();
+};
+async function loadData() {
+  try {
+    const tables = await api("/api/data");
+    $("datapane").innerHTML = tables.length ? tables.map((t) =>
+      `<div class="dtable"><h3>${esc(t.title)}</h3><table><tr>${t.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
+      t.rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("") + "</table></div>").join("")
+      : '<p class="placeholder">Read a spectrum: its properties, the classification and the fitted lines appear here.</p>';
+  } catch (e) { $("datapane").textContent = e.message; }
+}
 
 // =============================================================== editor
 function autosize(area) {
@@ -58,7 +109,7 @@ function makeView(index) {
   const root = document.createElement("div");
   root.className = "cell";
   root.innerHTML = '<div class="prompt"></div><div><div class="editor"><textarea spellcheck="false" rows="1"></textarea>' +
-    '<button class="runbtn" title="Run (Shift+Enter)">▶</button></div><div class="outputs"></div></div>';
+    `<button class="runbtn" title="Run (Shift+Enter)">▶</button></div><div class="outputs"></div></div>`;
   const v = { root, prompt: root.querySelector(".prompt"), area: root.querySelector("textarea"),
               outputs: root.querySelector(".outputs"), code: null, dirty: false, index };
   v.area.addEventListener("input", () => {
@@ -68,52 +119,38 @@ function makeView(index) {
   });
   v.area.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); runView(v); }
-    else if (e.key === "Tab") {
-      e.preventDefault();
-      const a = v.area, s = a.selectionStart;
-      a.value = a.value.slice(0, s) + "    " + a.value.slice(a.selectionEnd);
-      a.selectionStart = a.selectionEnd = s + 4;
-      a.dispatchEvent(new Event("input"));
-    }
+    else if (e.key === "Tab") { e.preventDefault(); insertTab(v.area); }
   });
   root.querySelector(".runbtn").onclick = () => runView(v);
   return v;
 }
+function insertTab(a) {
+  const s = a.selectionStart;
+  a.value = a.value.slice(0, s) + "    " + a.value.slice(a.selectionEnd);
+  a.selectionStart = a.selectionEnd = s + 4;
+  a.dispatchEvent(new Event("input"));
+}
 function runView(v) {
   if (state && state.busy) return;
-  const code = v.area.value;
-  const body = v.index === null ? { code } : { code, index: v.index };
-  if (v.index === null) { v.root.remove(); views.splice(views.indexOf(v), 1); }
   v.dirty = false;
-  post("/api/exec", body);
+  post("/api/exec", { code: v.area.value, index: v.index });
 }
 const SPIN = "|/-\\";
+let lastCellCount = 0;
 function renderCells() {
   const now = Date.now() / 1000 + clockOffset;
   const box = $("cells");
   const cells = state.cells;
-  const serverViews = views.filter((v) => v.index !== null);
-  while (serverViews.length < cells.length) {
-    const v = makeView(serverViews.length);
-    const firstNew = views.find((x) => x.index === null);
-    box.insertBefore(v.root, firstNew ? firstNew.root : null);
-    views.splice(serverViews.length, 0, v);
-    serverViews.push(v);
-  }
-  while (serverViews.length > cells.length) {
-    const v = serverViews.pop();
-    v.root.remove();
-    views.splice(views.indexOf(v), 1);
-  }
+  while (views.length < cells.length) { const v = makeView(views.length); box.appendChild(v.root); views.push(v); }
+  while (views.length > cells.length) views.pop().root.remove();
   cells.forEach((c, i) => {
-    const v = serverViews[i];
+    const v = views[i];
     v.prompt.textContent = c.running ? "In [*]:" : (c.n ? `In [${c.n}]:` : "In [ ]:");
     v.root.classList.toggle("running", c.running);
+    v.root.classList.toggle("last", i === cells.length - 1 && !c.running);
     v.area.readOnly = !!state.busy;
     if (c.code !== v.code && (!v.dirty || document.activeElement !== v.area)) {
-      v.code = c.code;
-      v.area.value = c.code;
-      v.dirty = false;
+      v.code = c.code; v.area.value = c.code; v.dirty = false;
       v.root.classList.remove("dirty");
       autosize(v.area);
     }
@@ -125,36 +162,46 @@ function renderCells() {
     for (const o of c.out) html += `<pre class="${o.kind === "err" ? "err" : "out"}">${esc(o.text)}</pre>`;
     if (v.outputs.innerHTML !== html) v.outputs.innerHTML = html;
   });
+  if (cells.length !== lastCellCount) { box.scrollTop = box.scrollHeight; lastCellCount = cells.length; }
   $("script").classList.toggle("hidden", cells.length < 2);
-  if (state.busy) {               // keep the running cell in view
-    const run = box.querySelector(".cell.running");
-    if (run && !run.dataset.scrolled) { run.scrollIntoView({ block: "nearest" }); run.dataset.scrolled = "1"; }
-  }
+  $("runnew").disabled = !!state.busy;
 }
-$("addcell").onclick = () => {
-  const v = makeView(null);
-  v.prompt.textContent = "In [ ]:";
-  v.code = "";
-  $("cells").appendChild(v.root);
-  views.push(v);
-  v.area.value = state && state.model ? "model.params" : "# your code";
-  autosize(v.area);
-  v.area.focus();
-  v.area.select();
-};
+// the composer at the bottom: a new cell
+const newcode = $("newcode");
+newcode.addEventListener("input", () => autosize(newcode));
+newcode.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); runNew(); }
+  else if (e.key === "Tab") { e.preventDefault(); insertTab(newcode); }
+});
+$("runnew").onclick = runNew;
+function runNew() {
+  const code = newcode.value.trim();
+  if (!code || (state && state.busy)) return;
+  post("/api/exec", { code }).then((ok) => { if (ok) { newcode.value = ""; autosize(newcode); } });
+}
 
 // ============================================================ analysis
+const STEP_LABEL = { read: "Read", classify: "Classify", model: "Model", fit: "Fit", results: "Results" };
 function nextStep() {
   for (const s of state.steps) if (!state.done.includes(s)) return s;
   return "results";
 }
 function renderStepper() {
   const cur = nextStep();
-  $("stepper").innerHTML = state.steps.map((s) => {
+  $("stepper").innerHTML = state.steps.map((s, i) => {
     const cls = state.done.includes(s) ? "done" : (s === cur ? "cur" : "");
-    return `<span class="step ${cls}">${state.done.includes(s) ? "✓ " : ""}${s}</span>`;
-  }).join('<span class="arrow">→</span>');
+    const dot = state.done.includes(s) ? "✓" : i + 1;
+    return `<button class="step ${cls}" data-goto-step="${s}"><span class="dot">${dot}</span>${STEP_LABEL[s]}` +
+      (i < state.steps.length - 1 ? '<span class="sep"></span>' : "") + "</button>";
+  }).join("");
 }
+$("stepper").onclick = (e) => {
+  const b = e.target.closest("[data-goto-step]");
+  if (!b) return;
+  setView("analysis");
+  const card = document.querySelector(`.card[data-step="${b.dataset.gotoStep}"]`) || $("card-fit");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+};
 function renderCards() {
   const busy = !!state.busy;
   const done = state.done;
@@ -162,46 +209,290 @@ function renderCards() {
   $("btn-classify").disabled = busy || !state.spectrum;
   $("btn-preset").disabled = busy;
   $("btn-fit").disabled = busy || !state.spectrum;
-  $("addcell").disabled = busy;
   $("btn-add").disabled = busy;
   const cur = nextStep();
-  for (const [card, step] of [["card-read", "read"], ["card-classify", "classify"], ["card-model", "model"], ["card-fit", "fit"]]) {
-    const el = $(card);
-    el.classList.toggle("done", done.includes(step));
-    el.classList.toggle("cur", cur === step);
-    el.classList.toggle("disabled", step !== "read" && step !== "model" && !state.spectrum);
+  for (const card of document.querySelectorAll("#view-analysis .card[data-step]")) {
+    const step = card.dataset.step;
+    card.classList.toggle("done", done.includes(step));
+    card.classList.toggle("cur", cur === step);
+    card.classList.toggle("disabled", (step === "classify" || step === "fit") && !state.spectrum);
   }
   const badge = $("badge");
   if (state.recommended) {
     badge.textContent = state.recommended.label.replace("_", " ") + (state.recommended.uncertain ? " (uncertain)" : "");
+    badge.classList.toggle("ok", !state.recommended.uncertain);
     badge.classList.remove("hidden");
   } else badge.classList.add("hidden");
   const m = state.model;
   $("model-summary").classList.toggle("hidden", !m);
-  $("btn-preset").textContent = m ? "Replace model" : "Create model";
+  $("btn-preset").lastChild.textContent = m ? "Replace model" : "Create model";
   if (m) {
     $("model-chips").innerHTML = m.components.map((c) =>
       `<span class="chip" title="${esc(c.type)}${c.lines.length ? ": " + esc(c.lines.join(", ")) : ""}">${esc(c.name)}</span>`).join("") +
       `<span class="hint">${m.n_free} free parameters</span>`;
   }
-  $("fit-hint").textContent = m ? "fits the model of step 3" : "without a model: the recommended preset";
+  $("fit-hint").textContent = m ? "Fits the model of step 3 (edit it in the model editor)." : "Without a model the recommended preset is used.";
   const msg = $("message");
   msg.classList.toggle("error", !!state.error);
   msg.textContent = state.error ? state.error : (busy ? "running …" : state.info);
   $("card-results").classList.toggle("hidden", !state.has_result);
-  $("results").innerHTML = state.results.map((r) => `<tr><td>${esc(r.label)}</td><td>${esc(r.value)}</td></tr>`).join("");
+  $("tiles").innerHTML = state.results.map((r) => {
+    const m2 = /^(.*?)(?: ± (\S+))?(?: ([a-zA-Z/%]+))?$/.exec(r.value);
+    const val = m2 ? `${esc(m2[1])}${m2[2] ? ` <small>± ${esc(m2[2])}</small>` : ""}${m2[3] ? ` <small>${esc(m2[3])}</small>` : ""}` : esc(r.value);
+    return `<div class="tile"><div class="lab">${esc(r.label)}</div><div class="val">${val}</div></div>`;
+  }).join("");
   $("warnings").innerHTML = state.warnings.map((w) => `<div>⚠ ${esc(w)}</div>`).join("");
-  if (state.figure_version !== lastFigure && state.figure_version > 0) {
-    lastFigure = state.figure_version;
-    $("figimg").src = withToken(`/api/figure.png?v=${lastFigure}`);
-    $("figure").classList.remove("hidden");
+  // read card side panel
+  const side = $("side-read");
+  if (state.spectrum) {
+    side.querySelector("b").textContent = state.spectrum;
+    side.querySelector("span").textContent = "Spectrum loaded — next: classify.";
+  } else {
+    side.querySelector("b").textContent = "Ready to analyze";
+    side.querySelector("span").textContent = "Load a spectrum to get started.";
   }
-  if (state.figure_version === 0) $("figure").classList.add("hidden");
+  if (state.figure_version !== lastFigure) {
+    lastFigure = state.figure_version;
+    if (state.figure_version > 0) {
+      $("figimg").src = withToken(`/api/figure.png?v=${lastFigure}`);
+      loadPlot();
+      if (ptab === "data") loadData();
+    } else {
+      plotData = null;
+      $("plotcard").classList.add("hidden");
+      drawSpark();
+    }
+  }
 }
+
+// ========================================================= interactive plot
+const COLORS = {
+  data: "#5b6475", model: "#f26b3a", continuum: "#7c8698", host: "#9a9a2e", "Fe II": "#8b5cf6",
+  Balmer: "#10b981", "narrow lines": "#d6336c", "broad lines": "#0ea5e9", outflow: "#f2a33a",
+  "stars + power law": "#9a9a2e",
+};
+let plotData = null, view = null, hidden = new Set(), drag = null, pv = "interactive";
+async function loadPlot() {
+  try {
+    const d = await api("/api/plotdata");
+    if (!d.x) return;
+    // keep the zoom only when the new data cover the same wavelength range
+    const lo = d.x[0], hi = d.x[d.x.length - 1];
+    const same = plotData && view && Math.abs(plotData.x[0] - lo) < 1 && Math.abs(plotData.x[plotData.x.length - 1] - hi) < 1;
+    plotData = d;
+    if (!same) view = [lo, hi];
+    $("plotcard").classList.remove("hidden");
+    $("plottitle").textContent = d.title;
+    const isFigureOnly = (state.figure_stem || "").endsWith("_classification");
+    setPV(isFigureOnly ? "figure" : "interactive");
+    renderLegend();
+    drawPlot();
+    drawSpark();
+  } catch (e) { /* the figure is still available */ }
+}
+function setPV(v) {
+  pv = v;
+  for (const b of document.querySelectorAll(".segbtn")) b.classList.toggle("active", b.dataset.pv === v);
+  $("plotwrap").classList.toggle("hidden", v !== "interactive");
+  $("legend").classList.toggle("hidden", v !== "interactive");
+  $("plothelp").classList.toggle("hidden", v !== "interactive");
+  $("plottools").classList.toggle("hidden", v !== "interactive");
+  $("figure").classList.toggle("hidden", v !== "figure");
+  if (v === "interactive") requestAnimationFrame(drawPlot);
+}
+for (const b of document.querySelectorAll(".segbtn")) b.onclick = () => setPV(b.dataset.pv);
+function seriesList() {
+  if (!plotData) return [];
+  return [{ name: "data", y: plotData.flux }].concat(plotData.series);
+}
+function renderLegend() {
+  $("legend").innerHTML = seriesList().map((s) => {
+    const c = COLORS[s.name] || "#555";
+    const dash = s.name === "continuum" ? "dashed" : "solid";
+    return `<span class="lg ${hidden.has(s.name) ? "off" : ""}" data-s="${esc(s.name)}"><span class="sw" style="border-top-color:${c};border-top-style:${dash}"></span>${esc(s.name)}</span>`;
+  }).join("");
+}
+$("legend").onclick = (e) => {
+  const l = e.target.closest("[data-s]");
+  if (!l) return;
+  hidden.has(l.dataset.s) ? hidden.delete(l.dataset.s) : hidden.add(l.dataset.s);
+  renderLegend(); drawPlot();
+};
+function niceTicks(lo, hi, n) {
+  const span = hi - lo || 1, raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * p).find((s) => span / s <= n) || 10 * p;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9 * span; v += step) out.push(+v.toPrecision(10));
+  return out;
+}
+function quantile(arr, q) {
+  const a = arr.filter((v) => v !== null && isFinite(v)).sort((x, y) => x - y);
+  return a.length ? a[Math.min(a.length - 1, Math.max(0, Math.floor(q * (a.length - 1))))] : 0;
+}
+let layout = null;
+function drawPlot() {
+  const cv = $("plot");
+  if (!plotData || pv !== "interactive" || $("plotcard").classList.contains("hidden") || currentView !== "analysis") return;
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) return;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const d = plotData, hasRes = !!d.resid && !hidden.has("residuals");
+  const L = 70, R = 14, T = 10, B = 44, gap = 8;
+  const mainH = hasRes ? (H - T - B - gap) * 0.76 : H - T - B;
+  const resH = hasRes ? (H - T - B - gap) * 0.24 : 0;
+  const P = { x: L, y: T, w: W - L - R, h: mainH }, Q = { x: L, y: T + mainH + gap, w: W - L - R, h: resH };
+  const [x0, x1] = view;
+  const vis = [];
+  for (let i = 0; i < d.x.length; i++) if (d.x[i] >= x0 && d.x[i] <= x1) vis.push(i);
+  const ys = [];
+  for (const s of seriesList()) if (!hidden.has(s.name)) for (const i of vis) ys.push(s.y[i]);
+  // show whole lines: the top follows the (smooth) model, or robustly the data
+  let ylo = Math.min(0, quantile(ys, 0.002));
+  const model = d.series.find((x) => x.name === "model" && !hidden.has("model"));
+  const mmax = model ? Math.max(...vis.map((i) => model.y[i] ?? -Infinity)) : -Infinity;
+  let yhi = Math.max(mmax, quantile(vis.map((i) => d.flux[i]), 0.999)) * 1.06;
+  if (!(yhi > ylo)) yhi = ylo + 1;
+  const X = (x) => P.x + (x - x0) / (x1 - x0) * P.w;
+  const Y = (y) => P.y + P.h - (y - ylo) / (yhi - ylo) * P.h;
+  layout = { P, Q, X, x0, x1, ylo, yhi, vis };
+  g.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  g.fillStyle = "#6b7486"; g.strokeStyle = "#eef1f5"; g.lineWidth = 1;
+  // grid and ticks
+  const xt = niceTicks(x0, x1, Math.max(3, Math.floor(P.w / 90)));
+  const yt = niceTicks(ylo, yhi, Math.max(3, Math.floor(P.h / 55)));
+  g.textAlign = "center"; g.textBaseline = "top";
+  for (const t of xt) { const x = X(t); g.beginPath(); g.moveTo(x, P.y); g.lineTo(x, P.y + P.h); g.stroke(); if (hasRes) { g.beginPath(); g.moveTo(x, Q.y); g.lineTo(x, Q.y + Q.h); g.stroke(); } g.fillText(t.toLocaleString("en-US"), x, (hasRes ? Q.y + Q.h : P.y + P.h) + 6); }
+  g.textAlign = "right"; g.textBaseline = "middle";
+  for (const t of yt) { const y = Y(t); g.beginPath(); g.moveTo(P.x, y); g.lineTo(P.x + P.w, y); g.stroke(); g.fillText(+t.toPrecision(6), P.x - 6, y); }
+  g.strokeStyle = "#c9d1dc"; g.strokeRect(P.x, P.y, P.w, P.h);
+  // axis labels
+  g.fillStyle = "#3c4556"; g.textAlign = "center"; g.textBaseline = "bottom";
+  g.fillText(d.xlabel, P.x + P.w / 2, H - 2);
+  g.save(); g.translate(14, P.y + P.h / 2); g.rotate(-Math.PI / 2); g.textBaseline = "middle"; g.fillText(d.ylabel, 0, 0); g.restore();
+  // series
+  g.save(); g.beginPath(); g.rect(P.x, P.y, P.w, P.h); g.clip();
+  const order = seriesList().filter((s) => !hidden.has(s.name));
+  order.sort((a, b) => (a.name === "data" ? -1 : a.name === "model" ? 1 : 0) - (b.name === "data" ? -1 : b.name === "model" ? 1 : 0));
+  for (const s of order) {
+    g.strokeStyle = COLORS[s.name] || "#555";
+    g.lineWidth = s.name === "model" ? 1.7 : s.name === "data" ? 0.9 : 1.3;
+    g.setLineDash(s.name === "continuum" ? [6, 4] : []);
+    g.beginPath();
+    let pen = false;
+    for (const i of vis) { const y = s.y[i]; if (y === null) { pen = false; continue; } const px = X(d.x[i]), py = Y(y); pen ? g.lineTo(px, py) : g.moveTo(px, py); pen = true; }
+    g.stroke();
+  }
+  g.restore(); g.setLineDash([]);
+  // residuals
+  if (hasRes) {
+    const rr = vis.map((i) => d.resid[i]).filter((v) => v !== null);
+    const lim = Math.max(4, Math.min(12, Math.ceil(quantile(rr.map(Math.abs), 0.99))));
+    const RY = (v) => Q.y + Q.h / 2 - v / lim * Q.h / 2;
+    g.strokeStyle = "#c9d1dc"; g.strokeRect(Q.x, Q.y, Q.w, Q.h);
+    g.save(); g.beginPath(); g.rect(Q.x, Q.y, Q.w, Q.h); g.clip();
+    g.strokeStyle = "#f6c1a8"; g.setLineDash([3, 3]);
+    for (const v of [-3, 3]) { g.beginPath(); g.moveTo(Q.x, RY(v)); g.lineTo(Q.x + Q.w, RY(v)); g.stroke(); }
+    g.setLineDash([]); g.strokeStyle = COLORS.model; g.beginPath(); g.moveTo(Q.x, RY(0)); g.lineTo(Q.x + Q.w, RY(0)); g.stroke();
+    g.strokeStyle = "#5b6475"; g.lineWidth = 0.8; g.beginPath();
+    let pen = false;
+    for (const i of vis) { const v = d.resid[i]; if (v === null) { pen = false; continue; } const px = X(d.x[i]), py = RY(Math.max(-lim, Math.min(lim, v))); pen ? g.lineTo(px, py) : g.moveTo(px, py); pen = true; }
+    g.stroke(); g.restore();
+    g.fillStyle = "#6b7486"; g.textAlign = "right"; g.textBaseline = "middle";
+    for (const v of [-lim, 0, lim]) g.fillText(v, Q.x - 6, RY(v));
+    g.save(); g.translate(14, Q.y + Q.h / 2); g.rotate(-Math.PI / 2); g.textAlign = "center"; g.fillText("resid. (σ)", 0, 0); g.restore();
+  }
+  if (hover !== null) drawHover(g);
+}
+let hover = null;
+function drawHover(g) {
+  const { P, X } = layout, d = plotData, i = hover;
+  const x = X(d.x[i]);
+  g.strokeStyle = "rgba(15,27,42,.35)"; g.setLineDash([3, 3]);
+  g.beginPath(); g.moveTo(x, P.y); g.lineTo(x, P.y + P.h + (layout.Q.h ? layout.Q.h + 8 : 0)); g.stroke(); g.setLineDash([]);
+}
+function nearest(px) {
+  const { X, vis } = layout;
+  let best = null, bd = 1e9;
+  for (const i of vis) { const dd = Math.abs(X(plotData.x[i]) - px); if (dd < bd) { bd = dd; best = i; } }
+  return best;
+}
+const cv = $("plot");
+cv.addEventListener("wheel", (e) => {
+  if (!layout) return;
+  e.preventDefault();
+  const { P } = layout, f = e.deltaY > 0 ? 1.2 : 1 / 1.2;
+  const xm = view[0] + (e.offsetX - P.x) / P.w * (view[1] - view[0]);
+  zoomAt(xm, f);
+}, { passive: false });
+function zoomAt(xm, f) {
+  const full = [plotData.x[0], plotData.x[plotData.x.length - 1]];
+  let a = xm - (xm - view[0]) * f, b = xm + (view[1] - xm) * f;
+  if (b - a < 5) return;
+  if (b - a >= full[1] - full[0]) { a = full[0]; b = full[1]; }
+  if (a < full[0]) { b += full[0] - a; a = full[0]; }
+  if (b > full[1]) { a -= b - full[1]; b = full[1]; }
+  view = [Math.max(a, full[0]), Math.min(b, full[1])];
+  drawPlot();
+}
+cv.addEventListener("mousedown", (e) => { drag = { x: e.offsetX, v: view.slice() }; });
+window.addEventListener("mouseup", () => { drag = null; });
+cv.addEventListener("mousemove", (e) => {
+  if (!layout) return;
+  const { P } = layout;
+  if (drag) {
+    const full = [plotData.x[0], plotData.x[plotData.x.length - 1]];
+    const dx = (e.offsetX - drag.x) / P.w * (drag.v[1] - drag.v[0]);
+    let a = drag.v[0] - dx, b = drag.v[1] - dx;
+    if (a < full[0]) { b += full[0] - a; a = full[0]; }
+    if (b > full[1]) { a -= b - full[1]; b = full[1]; }
+    view = [a, b];
+  }
+  hover = nearest(e.offsetX);
+  drawPlot();
+  const tip = $("tip"), d = plotData;
+  if (hover === null) return tip.classList.add("hidden");
+  const lines = [`λ ${d.x[hover].toFixed(1)} Å`, `data  ${fmt(d.flux[hover])}`];
+  for (const s of d.series) if (!hidden.has(s.name) && s.y[hover] !== null) lines.push(`${s.name}  ${fmt(s.y[hover])}`);
+  tip.textContent = lines.join("\n");
+  tip.classList.remove("hidden");
+  const left = e.offsetX + 14 + 180 > cv.clientWidth ? e.offsetX - 190 : e.offsetX + 14;
+  tip.style.left = left + "px"; tip.style.top = Math.max(4, e.offsetY - 20) + "px";
+});
+cv.addEventListener("mouseleave", () => { hover = null; $("tip").classList.add("hidden"); drawPlot(); });
+cv.addEventListener("dblclick", () => { view = [plotData.x[0], plotData.x[plotData.x.length - 1]]; drawPlot(); });
+for (const b of document.querySelectorAll("[data-zoom]")) b.onclick = () => {
+  if (!plotData) return;
+  if (b.dataset.zoom === "reset") { view = [plotData.x[0], plotData.x[plotData.x.length - 1]]; return drawPlot(); }
+  zoomAt((view[0] + view[1]) / 2, b.dataset.zoom === "in" ? 1 / 1.5 : 1.5);
+};
+$("fullscreen").onclick = () => { $("plotcard").classList.toggle("full"); requestAnimationFrame(drawPlot); };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("plotcard").classList.contains("full")) { $("plotcard").classList.remove("full"); requestAnimationFrame(drawPlot); } });
+window.addEventListener("resize", () => requestAnimationFrame(drawPlot));
+
+// small spectrum preview in the read card
+function drawSpark() {
+  const c = $("spark"), g = c.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth || 200, H = c.clientHeight || 56;
+  c.width = W * dpr; c.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const grad = g.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, "#1f78b4"); grad.addColorStop(.45, "#c2185b"); grad.addColorStop(.75, "#f26b3a"); grad.addColorStop(1, "#f6c445");
+  g.strokeStyle = grad; g.lineWidth = 1.4; g.beginPath();
+  if (plotData) {
+    const xs = plotData.x, ys = plotData.flux, hi = quantile(ys, 0.995) || 1, lo = Math.min(0, quantile(ys, 0.005));
+    xs.forEach((x, i) => { const px = (x - xs[0]) / (xs[xs.length - 1] - xs[0]) * W, py = H - 2 - ((ys[i] ?? lo) - lo) / (hi - lo) * (H - 6); i ? g.lineTo(px, py) : g.moveTo(px, py); });
+  } else {
+    for (let i = 0; i <= 100; i++) { const x = i / 100, y = .15 + .5 * Math.exp(-(((x - .78) / .035) ** 2)) + .25 * Math.exp(-(((x - .55) / .05) ** 2)) + .1 * x; i ? g.lineTo(x * W, H - y * H) : g.moveTo(x * W, H - y * H); }
+  }
+  g.stroke();
+}
+drawSpark();
 
 // ========================================================= model editor
 let modelSig = null;
-const pending = {};               // parameter name -> edited row
+const pending = {};
 function renderModelEditor(force) {
   const m = state.model;
   $("no-model").classList.toggle("hidden", !!m);
@@ -255,13 +546,11 @@ function renderParams() {
 $("params").addEventListener("change", (e) => {
   const input = e.target.closest("input[data-k]");
   if (!input) return;
-  const row = input.closest("tr");
-  const name = row.dataset.p;
+  const name = input.closest("tr").dataset.p;
   const p = state.model.params.find((x) => x.name === name);
   const k = input.dataset.k;
   const e2 = pending[name] || {};
   e2[k] = input.type === "checkbox" ? input.checked : input.value;
-  // drop edits that restore the current value
   const same = (kk) => kk === "fixed" ? e2[kk] === p.fixed : kk === "tie" ? (e2[kk] || null) === (p.tie || null)
     : e2[kk] !== "" && Number(e2[kk]) === p[kk];
   for (const kk of Object.keys(e2)) if (same(kk)) delete e2[kk];
@@ -274,19 +563,13 @@ $("btn-discard").onclick = () => { for (const k of Object.keys(pending)) delete 
 $("btn-apply").onclick = () => {
   const changes = Object.entries(pending).map(([name, e]) => {
     const p = state.model.params.find((x) => x.name === name);
-    return {
-      name,
-      value: "value" in e ? e.value : null, min: "min" in e ? e.min : null, max: "max" in e ? e.max : null,
-      fixed: "fixed" in e ? e.fixed : p.fixed,
-      tie: "tie" in e ? (e.tie || null) : p.tie,
-      factor: "factor" in e ? e.factor : p.factor,
-    };
+    return { name, value: "value" in e ? e.value : null, min: "min" in e ? e.min : null, max: "max" in e ? e.max : null,
+             fixed: "fixed" in e ? e.fixed : p.fixed, tie: "tie" in e ? (e.tie || null) : p.tie,
+             factor: "factor" in e ? e.factor : p.factor };
   });
   for (const k of Object.keys(pending)) delete pending[k];
   modelAction({ action: "params", changes });
 };
-
-// add-component form
 const newLines = [];
 $("ctype").onchange = () => {
   for (const f of document.querySelectorAll(".ctype-fields"))
@@ -343,10 +626,9 @@ async function openDocs(id) {
   let html = `<h1>${esc(page.title)}</h1>` + page.html;
   if (q.length > 1) html = highlight(html, q);
   $("doc").innerHTML = html;
-  $("doc").scrollTop = 0;
   if (location.hash !== `#docs/${page.id}`) history.replaceState(null, "", `#docs/${page.id}`);
   const first = $("doc").querySelector("mark");
-  if (first) first.scrollIntoView({ block: "center" });
+  if (first) first.scrollIntoView({ block: "center" }); else window.scrollTo(0, 0);
 }
 function textOf(html) { const d = document.createElement("div"); d.innerHTML = html; return d.textContent.toLowerCase(); }
 function renderDocList() {
@@ -387,16 +669,13 @@ async function refresh() {
   }
 }
 function setState(s) {
-  const newRecommendation = s.recommended && (!state || !state.recommended ||
-    state.recommended.label !== s.recommended.label);
+  const newRecommendation = s.recommended && (!state || !state.recommended || state.recommended.label !== s.recommended.label);
   state = s;
   clockOffset = s.now - Date.now() / 1000;
   if (!$("preset").options.length) $("preset").innerHTML = s.models.map((m) => `<option>${esc(m)}</option>`).join("");
-  if (newRecommendation) {
-    $("preset").value = s.recommended.model;
-    $("ncomp").value = s.recommended.broad_components;
-  }
-  $("pyver").textContent = `Python ${s.python} · FANTASY ${s.version}`;
+  if (newRecommendation) { $("preset").value = s.recommended.model; $("ncomp").value = s.recommended.broad_components; }
+  $("pyver").innerHTML = `<span class="dotok"></span>Python ${esc(s.python)}`;
+  $("pyver").title = `FANTASY ${s.version}, Python ${s.python}`;
   render();
   clearTimeout(pollTimer);
   pollTimer = setTimeout(refresh, s.busy ? 400 : 2000);
@@ -441,21 +720,16 @@ $("btn-preset").onclick = () => modelAction({ action: "preset", model: $("preset
   broad_components: Number($("ncomp").value), outflow: $("outflow").checked });
 $("btn-fit").onclick = () => post("/api/fit", { errors: $("errors").value, model: $("preset").value,
   broad_components: Number($("ncomp").value), outflow: $("outflow").checked });
-$("reset").onclick = () => { lastFigure = -1; modelSig = null; post("/api/reset"); };
-
+$("reset").onclick = () => { lastFigure = -1; modelSig = null; view = null; post("/api/reset"); };
 const drop = $("drop");
-$("browse").onclick = (e) => { e.preventDefault(); $("file").click(); };
-drop.onclick = (e) => { if (e.target === drop) $("file").click(); };
+$("browse").onclick = (e) => { e.preventDefault(); e.stopPropagation(); $("file").click(); };
+drop.onclick = () => $("file").click();
 drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") $("file").click(); };
 $("file").onchange = () => { if ($("file").files[0]) readFile($("file").files[0]); };
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
 drop.ondragleave = () => drop.classList.remove("over");
-drop.ondrop = (e) => {
-  e.preventDefault(); drop.classList.remove("over");
-  if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
-};
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); };
 
-// line list for the add-component form
 api("/api/lines").then((ls) => {
   $("linelist").innerHTML = ls.map((l) => `<option value="${esc(l.name)}">${l.wave.toFixed(1)} Å</option>`).join("");
 }).catch(() => {});
@@ -464,7 +738,7 @@ function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("docs")) setView("docs", h.split("/")[1]);
   else if (h === "model") setView("model");
-  else if (h === "analysis") setView("analysis");
+  else setView("analysis");
 }
 window.addEventListener("hashchange", route);
 refresh().then(route);

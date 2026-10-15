@@ -4,120 +4,189 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FANTASY</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26 Q8 26 10 20 T14 6 T18 20 T24 24 L30 24' stroke='%23D55E00' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="/static/img/favicon.png">
 <meta name="fantasy-token" content="__FANTASY_TOKEN__">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header>
-  <div class="brand">FANTASY <span>2.0</span></div>
-  <nav class="tabs" role="tablist">
-    <button class="tab active" data-view="analysis" role="tab">Analysis</button>
-    <button class="tab" data-view="model" role="tab">Model</button>
-    <button class="tab" data-view="docs" role="tab">Docs</button>
-  </nav>
+<header class="topbar">
+  <a class="brand" href="#analysis" data-view-link="analysis" title="FANTASY">
+    <img src="/static/img/mark.png" srcset="/static/img/mark@2x.png 2x" alt="" class="mark">
+    <span class="brandtext"><span class="wordmark">FANTASY</span>
+      <span class="tagline">Fully Automated pythoN Tool for AGN Spectra analYsis</span></span>
+  </a>
   <nav id="stepper" aria-label="steps"></nav>
-  <button id="reset" class="ghost" title="Start a new analysis">New analysis</button>
+  <nav class="links">
+    <button class="link" data-view-link="model"><i data-icon="sliders"></i>Model editor</button>
+    <button class="link" data-view-link="docs"><i data-icon="book"></i>Docs</button>
+    <a class="link" href="https://github.com/yukawa1/fantasy" target="_blank" rel="noopener"><i data-icon="github"></i>GitHub</a>
+    <button id="reset" class="btn ghost small" title="Start a new analysis"><i data-icon="refresh"></i>New analysis</button>
+  </nav>
 </header>
 
 <main id="main">
-  <section id="codepanel" aria-label="code">
-    <div class="codehead"><span id="pyver">Python · FANTASY 2.0</span>
-      <a id="script" class="hidden tok" href="/api/session.py" download>⬇ session.py</a></div>
+  <!-- ============================== code panel ============================== -->
+  <aside id="codepanel" aria-label="code">
+    <div class="panelbar">
+      <div class="ptabs">
+        <button class="ptab active" data-ptab="code"><i data-icon="code"></i>Analysis</button>
+        <button class="ptab" data-ptab="data"><i data-icon="table"></i>Data</button>
+      </div>
+      <span class="pill" id="pyver" title="Python running the app"><span class="dotok"></span>Python</span>
+      <a id="script" class="iconbtn tok hidden" href="/api/session.py" download title="Download the session as a Python script"><i data-icon="download"></i></a>
+    </div>
     <div id="cells"></div>
-    <div class="codefoot"><button id="addcell" class="codebtn">+ cell</button>
-      <span>edit any cell · <kbd>Shift</kbd>+<kbd>Enter</kbd> runs it · variables: spec, c, model, r</span></div>
-  </section>
+    <div id="datapane" class="hidden"></div>
+    <div class="composer" id="composer">
+      <span class="cprompt">In [ ]:</span>
+      <textarea id="newcode" rows="1" spellcheck="false" placeholder="Type code here… (Shift+Enter to run)   e.g. r.lines"></textarea>
+      <button id="runnew" class="runbig" title="Run (Shift+Enter)"><i data-icon="play"></i></button>
+    </div>
+  </aside>
 
   <!-- ============================== Analysis ============================== -->
   <section id="view-analysis" class="view">
-    <div class="card" id="card-read">
-      <h2><span class="num">1</span> Read a spectrum <a class="help" data-doc="read" href="#">?</a></h2>
-      <div id="drop" tabindex="0">
-        <input type="file" id="file" accept=".fits,.fit,.fz,.txt,.dat,.csv,.json" hidden>
-        <b>Drop a spectrum here</b> or <a href="#" id="browse">choose a file</a>
-        <small>SDSS spec-*.fits, DESI coadd/SPARCL, 1D FITS, or text (wavelength, flux, error)</small>
-      </div>
-      <div class="row">
-        <label>or path <input id="path" type="text" placeholder="/path/to/spec-0615-52347-0108.fits"></label>
-      </div>
-      <div class="row">
-        <label>or DESI TARGETID <input id="targetid" type="text" inputmode="numeric" placeholder="39627963565609635"></label>
-        <label class="short">z <input id="z" type="number" step="0.0001" min="0" placeholder="from file"></label>
-        <button id="btn-read" class="primary">Read</button>
-      </div>
+    <div class="hero">
+      <h1>From spectra <span>to discovery.</span></h1>
+      <div class="kicker">ACTIVE GALACTIC NUCLEI · SPECTRAL DECOMPOSITION</div>
     </div>
 
-    <div class="card" id="card-classify">
-      <h2><span class="num">2</span> Classify <a class="help" data-doc="classify" href="#">?</a></h2>
-      <p class="hint">Starlight, broad lines and narrow-line diagnostics (BPT, WHAN) decide the model.</p>
-      <div class="row"><button id="btn-classify" class="primary" disabled>Classify</button>
-        <span id="badge" class="badge hidden"></span></div>
-    </div>
+    <section class="card" id="card-read" data-step="read">
+      <div class="card-main">
+        <header class="card-head"><span class="num">1</span>
+          <div><h2>Read a spectrum</h2><p>Load a spectrum from a file, a path or the DESI archive.</p></div>
+          <a class="help" data-doc="read" href="#">Need help?</a></header>
+        <div id="drop" tabindex="0">
+          <input type="file" id="file" accept=".fits,.fit,.fz,.txt,.dat,.csv,.json" hidden>
+          <i data-icon="upload" class="big"></i>
+          <div><b>Drop a spectrum file here</b> or <a href="#" id="browse">choose a file</a>
+          <small>SDSS spec-*.fits, DESI coadd/SPARCL, 1D FITS, or text (wavelength, flux, error)</small></div>
+        </div>
+        <div class="form">
+          <label>or a path <input id="path" type="text" placeholder="/path/to/spec-0615-52347-0108.fits"></label>
+          <label>or DESI TARGETID <input id="targetid" type="text" inputmode="numeric" placeholder="39627963565609635"></label>
+          <label class="short">z <input id="z" type="number" step="0.0001" min="0" placeholder="from file"></label>
+          <button id="btn-read" class="btn primary">Read spectrum <i data-icon="arrow"></i></button>
+        </div>
+      </div>
+      <aside class="card-side" id="side-read"><i data-icon="database" class="big"></i>
+        <b>Ready to analyze</b><span>Load a spectrum to get started.</span>
+        <canvas id="spark" width="200" height="56"></canvas></aside>
+    </section>
 
-    <div class="card" id="card-model">
-      <h2><span class="num">3</span> Model <a class="help" data-doc="model" href="#">?</a></h2>
-      <div class="row">
-        <label>Start from <select id="preset"></select></label>
-        <label>Broad components <input id="ncomp" type="number" min="1" max="4" value="2"></label>
-        <label class="check"><input id="outflow" type="checkbox" checked> outflow wing</label>
-        <button id="btn-preset" class="primary" disabled>Create model</button>
+    <section class="card" id="card-classify" data-step="classify">
+      <div class="card-main">
+        <header class="card-head"><span class="num">2</span>
+          <div><h2>Classify</h2><p>Starlight, broad lines and narrow-line diagnostics (BPT, WHAN) decide the model.</p></div>
+          <a class="help" data-doc="classify" href="#">Need help?</a></header>
+        <div class="form"><button id="btn-classify" class="btn teal" disabled><i data-icon="pulse"></i>Classify spectrum</button>
+          <span id="badge" class="badge hidden"></span></div>
       </div>
-      <div id="model-summary" class="hidden">
-        <div id="model-chips"></div>
-        <a href="#" id="open-editor">Edit components and parameters →</a>
-      </div>
-    </div>
+      <aside class="card-side"><i data-icon="nodes" class="big"></i>
+        <b>Automated classification</b><span>Type 1, host-dominated, Seyfert 2, LINER, star-forming or passive.</span></aside>
+    </section>
 
-    <div class="card" id="card-fit">
-      <h2><span class="num">4</span> Fit <a class="help" data-doc="fit" href="#">?</a></h2>
-      <div class="row">
-        <label>Errors <select id="errors">
-          <option value="covariance">fast (covariance)</option>
-          <option value="mc">Monte Carlo</option></select></label>
-        <button id="btn-fit" class="primary" disabled>Fit</button>
-        <span class="hint" id="fit-hint"></span>
+    <section class="card" id="card-model" data-step="model">
+      <div class="card-main">
+        <header class="card-head"><span class="num">3</span>
+          <div><h2>Model</h2><p>Start from a ready-made model, then change it in the model editor.</p></div>
+          <a class="help" data-doc="model" href="#">Need help?</a></header>
+        <div class="form">
+          <label>Start from <select id="preset"></select></label>
+          <label>Broad components <input id="ncomp" type="number" min="1" max="4" value="2"></label>
+          <label class="check"><input id="outflow" type="checkbox" checked> outflow wing</label>
+          <button id="btn-preset" class="btn teal" disabled><i data-icon="sliders"></i>Create model</button>
+        </div>
+        <div id="model-summary" class="hidden">
+          <div id="model-chips"></div>
+          <a href="#model" data-view-link="model" class="more">Edit components and parameters →</a>
+        </div>
       </div>
-    </div>
+      <aside class="card-side"><i data-icon="sliders" class="big"></i>
+        <b>Flexible modeling</b><span>Emission lines, outflows, Fe II, Balmer continuum, host galaxy and more.</span></aside>
+    </section>
+
+    <section class="card" id="card-fit" data-step="fit">
+      <div class="card-main">
+        <header class="card-head"><span class="num">4</span>
+          <div><h2>Fit</h2><p id="fit-hint">Fit the model to the spectrum.</p></div>
+          <a class="help" data-doc="fit" href="#">Need help?</a></header>
+        <div class="form">
+          <label>Errors <select id="errors">
+            <option value="covariance">fast (covariance)</option>
+            <option value="mc">Monte Carlo</option></select></label>
+          <button id="btn-fit" class="btn primary" disabled><i data-icon="play"></i>Fit model</button>
+        </div>
+      </div>
+      <aside class="card-side"><i data-icon="target" class="big"></i>
+        <b>Exact derivatives</b><span>Linear amplitudes solved exactly, data-driven start, errors propagated.</span></aside>
+    </section>
 
     <div id="message" role="status"></div>
 
-    <div class="card hidden" id="card-results">
-      <h2><span class="num">5</span> Results <a class="help" data-doc="results" href="#">?</a></h2>
-      <table id="results"></table>
-      <div id="warnings"></div>
-      <div class="downloads">
-        <a class="tok" href="/api/lines.csv" download>⬇ line table (.csv)</a>
-        <a class="tok" href="/api/session.py" download>⬇ session as Python script</a>
+    <section class="card hidden" id="card-results" data-step="results">
+      <div class="card-main">
+        <header class="card-head"><span class="num">5</span>
+          <div><h2>Results</h2><p>The main numbers of the fit.</p></div>
+          <a class="help" data-doc="results" href="#">Need help?</a></header>
+        <div id="tiles"></div>
+        <div id="warnings"></div>
       </div>
-    </div>
+      <aside class="card-side downloads">
+        <a class="btn outline tok" href="/api/lines.csv" download><i data-icon="download"></i>Line table (.csv)</a>
+        <a class="btn outline tok" href="/api/session.py" download><i data-icon="code"></i>Session (Python)</a>
+        <a class="btn outline tok" href="/api/figure.pdf?dl=1"><i data-icon="download"></i>Figure (PDF)</a>
+      </aside>
+    </section>
 
-    <figure id="figure" class="hidden">
-      <img id="figimg" alt="current figure">
-      <figcaption>
-        <a class="tok" href="/api/figure.pdf?dl=1">⬇ PDF</a>
-        <a class="tok" href="/api/figure.eps?dl=1">⬇ EPS</a>
-        <a class="tok" href="/api/figure.png?dl=1">⬇ PNG (300 dpi)</a>
-      </figcaption>
-    </figure>
+    <section class="card plotcard hidden" id="plotcard">
+      <div class="card-main">
+        <header class="plothead">
+          <i data-icon="pulse" class="accent"></i>
+          <div><h2>Spectrum and model</h2><p id="plottitle"></p></div>
+          <div class="seg"><button class="segbtn active" data-pv="interactive">Interactive</button><button class="segbtn" data-pv="figure">Publication figure</button></div>
+          <div class="tools" id="plottools">
+            <button class="iconbtn" data-zoom="in" title="Zoom in"><i data-icon="zoomin"></i></button>
+            <button class="iconbtn" data-zoom="out" title="Zoom out"><i data-icon="zoomout"></i></button>
+            <button class="iconbtn" data-zoom="reset" title="Reset (double-click)"><i data-icon="reset"></i></button>
+            <button class="iconbtn" id="fullscreen" title="Full screen"><i data-icon="expand"></i></button>
+          </div>
+        </header>
+        <div id="legend"></div>
+        <div id="plotwrap"><canvas id="plot"></canvas><div id="tip" class="hidden"></div></div>
+        <p class="hint small" id="plothelp">Scroll to zoom, drag to pan, double-click to reset; click a legend entry to hide it.</p>
+        <figure id="figure" class="hidden">
+          <img id="figimg" alt="publication figure">
+          <figcaption>
+            <a class="tok" href="/api/figure.pdf?dl=1"><i data-icon="download"></i>PDF</a>
+            <a class="tok" href="/api/figure.eps?dl=1"><i data-icon="download"></i>EPS</a>
+            <a class="tok" href="/api/figure.png?dl=1"><i data-icon="download"></i>PNG (300 dpi)</a>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
   </section>
 
   <!-- ============================== Model editor ============================== -->
   <section id="view-model" class="view hidden">
-    <div id="no-model" class="card">
-      <h2>No model yet</h2>
-      <p class="hint">Create one in step 3 of <a href="#" data-goto="analysis">Analysis</a>
-        (start from a preset), or start empty and add components below.</p>
-    </div>
+    <div class="hero"><h1>Model <span>editor</span></h1>
+      <div class="kicker">EVERY CHANGE IS WRITTEN AS CODE</div></div>
+    <section id="no-model" class="card"><div class="card-main">
+      <header class="card-head"><span class="num">!</span><div><h2>No model yet</h2>
+        <p>Create one in step 3 of the <a href="#analysis" data-view-link="analysis">analysis</a> (start from a preset), or add components below.</p></div></header>
+    </div></section>
 
-    <div class="card" id="components-card">
-      <h2>Components <a class="help" data-doc="model" href="#">?</a> <span class="hint" id="model-info"></span></h2>
+    <section class="card" id="components-card"><div class="card-main">
+      <header class="card-head"><span class="num"><i data-icon="layers"></i></span>
+        <div><h2>Components</h2><p id="model-info"></p></div>
+        <a class="help" data-doc="model" href="#">Need help?</a></header>
       <table class="grid" id="components"></table>
-    </div>
+    </div></section>
 
-    <div class="card">
-      <h2>Add a component</h2>
-      <div class="row">
+    <section class="card"><div class="card-main">
+      <header class="card-head"><span class="num"><i data-icon="plus"></i></span>
+        <div><h2>Add a component</h2><p>Lines from the line list, continua, Fe II, Balmer, host galaxy or extinction.</p></div></header>
+      <div class="form">
         <label>Type <select id="ctype">
           <option value="Lines">emission lines (Lines)</option>
           <option value="PowerLaw">power law</option>
@@ -133,52 +202,55 @@
         <label>Name <input id="cname" type="text" placeholder="e.g. broad3" class="narrow"></label>
       </div>
       <div class="ctype-fields" data-for="Lines">
-        <div class="row">
+        <div class="form">
           <label>Role <select id="crole"><option>narrow</option><option selected>broad</option><option>outflow</option></select></label>
           <label>Profile <select id="cprofile"><option>gaussian</option><option>lorentzian</option><option>voigt</option><option>gauss-hermite</option></select></label>
         </div>
-        <div class="row">
+        <div class="form">
           <label>Lines <input id="cline" type="text" list="linelist" placeholder="type a line, e.g. Hb, [OIII]5007" class="narrow"></label>
-          <button id="cline-add" class="small">add line</button>
+          <button id="cline-add" class="btn outline small">add line</button>
           <span id="clines" class="chips"></span>
         </div>
         <datalist id="linelist"></datalist>
-        <div class="row lim">
+        <div class="form lim">
           <span>FWHM (km/s)</span><input id="fwhm0" type="number" placeholder="start"><input id="fwhm1" type="number" placeholder="min"><input id="fwhm2" type="number" placeholder="max">
           <span>shift (km/s)</span><input id="shift0" type="number" placeholder="start"><input id="shift1" type="number" placeholder="min"><input id="shift2" type="number" placeholder="max">
         </div>
       </div>
       <div class="ctype-fields hidden" data-for="PowerLaw BrokenPowerLaw">
-        <div class="row"><label>Pivot / break (Å) <input id="cpivot" type="number" placeholder="5100"></label></div>
+        <div class="form"><label>Pivot / break (Å) <input id="cpivot" type="number" placeholder="5100"></label></div>
       </div>
       <div class="ctype-fields hidden" data-for="Polynomial">
-        <div class="row"><label>Order <input id="corder" type="number" min="0" max="8" value="2"></label></div>
+        <div class="form"><label>Order <input id="corder" type="number" min="0" max="8" value="2"></label></div>
       </div>
       <div class="ctype-fields hidden" data-for="FeII">
-        <div class="row lim"><span>FWHM (km/s)</span><input id="ffwhm0" type="number" placeholder="start"><input id="ffwhm1" type="number" placeholder="min"><input id="ffwhm2" type="number" placeholder="max"></div>
+        <div class="form lim"><span>FWHM (km/s)</span><input id="ffwhm0" type="number" placeholder="start"><input id="ffwhm1" type="number" placeholder="min"><input id="ffwhm2" type="number" placeholder="max"></div>
       </div>
       <div class="ctype-fields hidden" data-for="Extinction">
-        <div class="row"><label>Law <select id="claw"><option value="F99">Fitzpatrick 1999</option><option value="calzetti">Calzetti 2000</option></select></label></div>
+        <div class="form"><label>Law <select id="claw"><option value="F99">Fitzpatrick 1999</option><option value="calzetti">Calzetti 2000</option></select></label></div>
       </div>
-      <div class="row"><button id="btn-add" class="primary">Add component</button></div>
-    </div>
+      <div class="form"><button id="btn-add" class="btn teal"><i data-icon="plus"></i>Add component</button></div>
+    </div></section>
 
-    <div class="card" id="params-card">
-      <h2>Parameters <a class="help" data-doc="params" href="#">?</a></h2>
-      <div class="row">
+    <section class="card" id="params-card"><div class="card-main">
+      <header class="card-head"><span class="num"><i data-icon="sliders"></i></span>
+        <div><h2>Parameters</h2><p>Values, limits, fixed parameters and ties.</p></div>
+        <a class="help" data-doc="params" href="#">Need help?</a></header>
+      <div class="form">
         <label>Filter <input id="pfilter" type="text" placeholder="e.g. broad, fwhm, [OIII]" class="narrow"></label>
         <label class="check"><input id="pfluxes" type="checkbox"> show line fluxes</label>
-        <button id="btn-apply" class="primary" disabled>Apply changes</button>
-        <button id="btn-discard" disabled>Discard</button>
+        <button id="btn-apply" class="btn primary" disabled>Apply changes</button>
+        <button id="btn-discard" class="btn outline" disabled>Discard</button>
       </div>
       <datalist id="paramlist"></datalist>
       <div class="tablewrap"><table class="grid" id="params"></table></div>
-    </div>
+    </div></section>
   </section>
 
   <!-- ============================== Docs ============================== -->
   <section id="view-docs" class="view hidden">
     <aside id="docnav">
+      <img src="/static/img/logo.png" alt="FANTASY" class="doclogo">
       <input id="docsearch" type="search" placeholder="Search the documentation">
       <div id="doclist"></div>
     </aside>

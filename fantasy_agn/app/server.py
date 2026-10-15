@@ -11,6 +11,8 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     POST /api/model                  JSON {action: preset|add|remove|params, ...}: code for the model editor
     GET  /api/docs                   documentation pages (guides and API reference)
     GET  /api/lines                  the line list
+    GET  /api/plotdata               arrays for the interactive plot
+    GET  /api/data                   tables for the Data tab
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
     GET  /api/lines.csv, /api/session.py
@@ -107,6 +109,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._error("forbidden", 403)
         if url.path == "/api/state":
             return self._send(s.state())
+        if url.path == "/api/plotdata":
+            return self._send(s.plot_data() or {})
+        if url.path == "/api/data":
+            return self._send(s.data_tables())
         if url.path == "/api/docs":
             if Handler._docs is None:
                 from .docs import all_pages

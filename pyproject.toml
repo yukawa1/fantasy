@@ -39,7 +39,7 @@ packages = ["fantasy_agn", "fantasy_agn.app"]
 
 [tool.setuptools.package-data]
 fantasy_agn = ["data/*.csv", "data/*.fits"]
-"fantasy_agn.app" = ["static/*"]
+"fantasy_agn.app" = ["static/*", "static/img/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
