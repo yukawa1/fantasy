@@ -105,6 +105,16 @@
           <label>Broad components <input id="ncomp" type="number" min="1" max="4" value="2"></label>
           <label class="check"><input id="outflow" type="checkbox" checked> outflow wing</label>
         </div>
+        <div class="form">
+          <label title="Starlight of the host galaxy">Host galaxy <select id="host">
+            <option value="default">preset default</option>
+            <option value="emiles">E-MILES (Vazdekis+16)</option>
+            <option value="bc03">BC03 (Bruzual &amp; Charlot 03)</option>
+            <option value="pca">PCA eigenspectra (Yip+04)</option>
+            <option value="none">none</option></select></label>
+          <button id="btn-tpl" class="btn outline small hidden"><i data-icon="download"></i><span></span></button>
+          <span class="hint" id="host-hint"></span>
+        </div>
         <div class="form opts">
           <span class="hint">Also include:</span>
           <label class="check" title="[FeVII] 3759, 5159, 5721, 6087, [FeX] 6375, [FeXIV] 5303 with their own kinematics">
@@ -244,6 +254,13 @@
       </div>
       <div class="ctype-fields hidden" data-for="FeII">
         <div class="form lim"><span>FWHM (km/s)</span><input id="ffwhm0" type="number" placeholder="start"><input id="ffwhm1" type="number" placeholder="min"><input id="ffwhm2" type="number" placeholder="max"></div>
+      </div>
+      <div class="ctype-fields hidden" data-for="StellarPopulation">
+        <div class="form"><label>Templates <select id="ctpl">
+          <option value="emiles">E-MILES (Vazdekis+16)</option>
+          <option value="bc03">BC03 (Bruzual &amp; Charlot 03)</option>
+          <option value="fsps">FSPS (Conroy+09)</option>
+          <option value="xsl">XSL (Verro+22)</option></select></label></div>
       </div>
       <div class="ctype-fields hidden" data-for="Extinction">
         <div class="form"><label>Law <select id="claw"><option value="F99">Fitzpatrick 1999</option><option value="calzetti">Calzetti 2000</option></select></label></div>

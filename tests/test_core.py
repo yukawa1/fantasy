@@ -1004,3 +1004,35 @@ def test_app_preset_options():
     assert "red" not in s.preset_code("hbeta", 1, False, coronal=True, red=True)      # hbeta has no red side
     assert "coronal" not in s.preset_code("galaxy", 1, False, coronal=True)
     assert "physical=True" in s.preset_code("optical (physical)", 2, True, coronal=True)
+
+
+def test_templates_download_automatically(monkeypatch, tmp_path):
+    import urllib.request
+    from fantasy_agn import templates
+    monkeypatch.setenv("FANTASY_DATA", str(tmp_path))
+    calls = []
+
+    def fake_retrieve(url, path):
+        calls.append(url)
+        lam = np.linspace(3000, 9000, 50)
+        with open(path, "wb") as fh:                          # np.savez(path) would add .npz
+            np.savez(fh, lam=lam, templates=np.ones((50, 2, 1)), ages=np.array([1.0, 10.0]),
+                     metals=np.array([0.0]), fwhm=np.full(50, 2.51), masses=np.ones((2, 1)))
+    monkeypatch.setattr(urllib.request, "urlretrieve", fake_retrieve)
+    monkeypatch.setenv("FANTASY_NO_DOWNLOAD", "1")
+    with pytest.raises(FileNotFoundError, match="automatic download is off"):
+        templates.load("bc03")
+    assert calls == []
+    monkeypatch.delenv("FANTASY_NO_DOWNLOAD")
+    d = templates.load("BC03")                                    # alias, downloaded on first use
+    assert calls[0].endswith("spectra_galaxev_9.0.npz") and d["name"] == "galaxev" and d["medium"] == "air"
+    assert templates.available() == ["galaxev"] and not list(tmp_path.rglob("*.part"))
+    templates.load("bc03")
+    assert len(calls) == 1                                        # cached
+
+    def broken(url, path):
+        open(path, "wb").write(b"not a template file")
+    monkeypatch.setattr(urllib.request, "urlretrieve", broken)
+    with pytest.raises(Exception):
+        templates.download("fsps")
+    assert not list(tmp_path.rglob("*fsps*"))                     # no half-written file left

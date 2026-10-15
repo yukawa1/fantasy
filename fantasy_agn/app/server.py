@@ -13,6 +13,7 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     GET  /api/lines                  the line list
     GET  /api/plotdata               arrays for the interactive plot
     GET  /api/data                   tables for the Data tab
+    POST /api/templates              JSON {name}: download a stellar template set (as a code cell)
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
     GET  /api/lines.csv, /api/session.py
@@ -36,8 +37,11 @@ STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 
 def _options(opts):
-    """Optional line groups of the presets that the interface can switch on."""
-    return {k: bool(opts.get(k)) for k in ("coronal", "oi6046", "red") if k in opts}
+    """Optional parts of the presets that the interface can switch on."""
+    out = {k: bool(opts.get(k)) for k in ("coronal", "oi6046", "red") if k in opts}
+    if opts.get("host"):
+        out["host"] = str(opts["host"])
+    return out
 
 
 def _finite(obj):
@@ -199,6 +203,9 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     raise ValueError("unknown model action")
                 s.run_cell(code)
+            elif url.path == "/api/templates":
+                opts = json.loads(self._body() or b"{}")
+                s.run_cell(s.download_templates_code(opts.get("name", "")))
             elif url.path == "/api/reset":
                 s.reset()
             else:

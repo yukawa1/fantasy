@@ -6,6 +6,11 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- BC03 (Bruzual & Charlot 2003, GALAXEV) stellar populations for the host: `host="bc03"`
+  in the presets, `StellarPopulation(templates="bc03")`, `classify(templates=...)`; app:
+  host-galaxy menu (E-MILES, BC03, PCA, none) and template choice in the model editor.
+  Template sets download automatically on first use (`FANTASY_NO_DOWNLOAD=1` to switch
+  off); BC03 wavelengths verified to be in air.
 - `optical`: narrow HeII 4686 by default; [NeIII] 3869 shares the [OIII] outflow wing;
   `red=True` extends the fit to 7500 Å (HeI 7065, [ArIII] 7136, [OII] 7320, 7330). App:
   "Also include" options for coronal lines, OI 6046 and the red side (found missing in

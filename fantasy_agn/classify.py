@@ -101,13 +101,13 @@ def _above_kewley(x, y, diagram):
 
 
 # ----------------------------------------------------------------- fits
-def _stellar_fit(spec, wave_range, masks):
+def _stellar_fit(spec, wave_range, masks, templates="emiles"):
     from .host import StellarPopulation
     ranges = []
     for ln, dv in masks.items():
         lam = line_wavelength(ln)
         ranges.append((lam * (1 - dv / C_KMS), lam * (1 + dv / C_KMS)))
-    model = Model(PowerLaw("continuum", pivot=5100), StellarPopulation(reddening=True))
+    model = Model(PowerLaw("continuum", pivot=5100), StellarPopulation(templates=templates, reddening=True))
     model.fix("continuum.index", -1.7)
     smooth = Model(PowerLaw("continuum", pivot=5100), Polynomial("poly", order=3, pivot=5100))
     masked = spec.mask(*ranges)
@@ -325,7 +325,7 @@ class Classification:
 
 # ------------------------------------------------------------- classify
 def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
-             min_snr=3.0, verbose=False):
+             min_snr=3.0, templates="emiles", verbose=False):
     """
     Classify a rest-frame spectrum before choosing a model (see the module
     documentation for the procedure).
@@ -336,6 +336,8 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
     :param broad_snr: minimum S/N of the broad H-alpha (or H-beta) flux (default 20,
         see the module documentation).
     :param min_snr: minimum S/N for a narrow line to enter a diagnostic.
+    :param templates: stellar population templates for the starlight ('emiles',
+        'bc03', ...; see fantasy_agn.templates).
     :return: Classification
     """
     spec = spectrum if spectrum.rest_frame else spectrum.to_rest_frame()
@@ -348,7 +350,7 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
     lrange = (max(lo, 4750.0), min(hi, 6800.0))
 
     def stages(masks):
-        stellar, smooth = _stellar_fit(spec, (lo, hi), masks)
+        stellar, smooth = _stellar_fit(spec, (lo, hi), masks, templates)
         cont = stellar.model_flux(spec.wave)
         resid = spec.copy(flux=spec.flux - cont)
         with warnings.catch_warnings():

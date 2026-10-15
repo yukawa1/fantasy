@@ -52,6 +52,13 @@ def _plain_label(text):
     return re.sub(r"[${}]", "", text)
 
 
+def _templates_state():
+    from .. import templates
+    have = set(templates.available())
+    return [{"name": n, "available": n in have, "size_mb": info["size_mb"], "cite": info["cite"]}
+            for n, info in templates.TEMPLATE_SETS.items()]
+
+
 class Cell:
     def __init__(self, code):
         self.code = code
@@ -152,6 +159,7 @@ class Session:
                     "spectrum": spec.name if spec is not None else None,
                     "has_result": self.result is not None,
                     "model": self.model_state(),
+                    "templates": _templates_state(),
                     "python": platform.python_version(),
                     "version": __import__("fantasy_agn").__version__}
 
@@ -355,11 +363,23 @@ class Session:
         name, kw = MODELS[model]
         kw = dict(kw)
         params = inspect.signature(getattr(presets, name)).parameters
+        host = extra.pop("host", None)
         opts = dict(broad_components=int(broad_components), outflow=bool(outflow))
         opts.update({k: bool(v) for k, v in extra.items() if v is not None})
         for k, v in opts.items():
             if k in params and (k in ("broad_components", "outflow") or v):
                 kw[k] = v
+        if host not in (None, "", "default") and "host" in params:
+            if host == "none":
+                if name not in ("type2", "galaxy") and not kw.get("physical"):
+                    kw["host"] = False
+            else:
+                from ..templates import TEMPLATE_SETS, canonical
+                if host != "pca" and canonical(host) not in TEMPLATE_SETS:
+                    raise ValueError(f"unknown host templates {host!r}")
+                kw["host"] = host
+        if kw.get("host") is False:
+            del kw["host"]                         # the default of the type 1 presets
         return name, kw
 
     def preset_code(self, model="optical", broad_components=2, outflow=True, **extra):
@@ -431,6 +451,13 @@ class Session:
         elif kind in ("FeII", "BalmerContinuum", "HighOrderBalmer", "StellarPopulation", "HostGalaxy"):
             if name:
                 args.append(f"name={name!r}")
+            if kind == "StellarPopulation" and spec.get("templates"):
+                from ..templates import TEMPLATE_SETS, canonical
+                tpl = canonical(spec["templates"])
+                if tpl not in TEMPLATE_SETS:
+                    raise ValueError(f"unknown templates {spec['templates']!r}")
+                if tpl != "emiles":
+                    args.append(f"templates={tpl!r}")
             if kind == "FeII":
                 lim = limits("fwhm")
                 if lim:
@@ -578,3 +605,11 @@ class Session:
                                                              "FWHM km/s", "shift km/s", "EW \u00c5"],
                         "rows": rows})
         return out
+
+    @staticmethod
+    def download_templates_code(name):
+        from ..templates import TEMPLATE_SETS, canonical
+        name = canonical(name)
+        if name not in TEMPLATE_SETS:
+            raise ValueError(f"unknown template set {name!r}")
+        return f"fa.templates.download({name!r})"

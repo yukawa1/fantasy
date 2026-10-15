@@ -134,7 +134,10 @@ lorentzian, voigt, gauss-hermite</td></tr>
 <tr><td><code>fa.FeII</code></td><td>optical (or UV) iron template</td></tr>
 <tr><td><code>fa.BalmerContinuum</code>, <code>fa.HighOrderBalmer</code></td><td>Balmer pseudo-continuum</td></tr>
 <tr><td><code>fa.StellarPopulation</code>, <code>fa.HostGalaxy</code></td><td>host galaxy: stellar templates (σ★, age,
-metallicity) or PCA eigenspectra</td></tr>
+metallicity) or PCA eigenspectra. Template sets: <code>"emiles"</code> (E-MILES, Vazdekis et al. 2016; default),
+<code>"bc03"</code> (Bruzual &amp; Charlot 2003), <code>"fsps"</code>, <code>"xsl"</code>; in the presets
+<code>host="bc03"</code>. A set is downloaded automatically the first time it is used (13&ndash;94 MB, once, from
+github.com/micappe/ppxf_data); <code>FANTASY_NO_DOWNLOAD=1</code> switches this off.</td></tr>
 <tr><td><code>fa.Extinction</code></td><td>intrinsic reddening of the AGN components</td></tr>
 </table>
 <p>Limits are given as <code>(start, min, max)</code>, e.g. <code>fwhm=(3000, 1000, 9000)</code> in

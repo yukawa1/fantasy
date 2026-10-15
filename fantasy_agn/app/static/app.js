@@ -606,6 +606,7 @@ $("btn-add").onclick = () => {
     else if (type === "Polynomial") comp.order = $("corder").value;
     else if (type === "FeII") comp.fwhm = triple("ffwhm");
     else if (type === "Extinction") comp.law = $("claw").value;
+    else if (type === "StellarPopulation") comp.templates = $("ctpl").value;
     modelAction({ action: "add", component: comp }).then((ok) => {
       if (ok) { newLines.length = 0; renderNewLines(); $("cname").value = ""; }
     });
@@ -676,6 +677,7 @@ function setState(s) {
   if (!$("preset").options.length) $("preset").innerHTML = s.models.map((m) => `<option>${esc(m)}</option>`).join("");
   if (newRecommendation) { $("preset").value = s.recommended.model; $("ncomp").value = s.recommended.broad_components; }
   renderPresetOptions();
+  renderHost();
   $("pyver").innerHTML = `<span class="dotok"></span>Python ${esc(s.python)}`;
   $("pyver").title = `FANTASY ${s.version}, Python ${s.python}`;
   render();
@@ -741,8 +743,29 @@ $("targetid").addEventListener("keydown", (e) => { if (e.key === "Enter") readJS
 $("btn-classify").onclick = () => post("/api/classify");
 function presetOptions() {
   return { model: $("preset").value, broad_components: Number($("ncomp").value), outflow: $("outflow").checked,
-           coronal: $("opt-coronal").checked, oi6046: $("opt-oi").checked, red: $("opt-red").checked };
+           coronal: $("opt-coronal").checked, oi6046: $("opt-oi").checked, red: $("opt-red").checked,
+           host: $("host").value };
 }
+const TPL = { emiles: "emiles", bc03: "galaxev" };
+function tplInfo(choice) {
+  const name = TPL[choice];
+  return name && state && state.templates ? state.templates.find((t) => t.name === name) : null;
+}
+function renderHost() {
+  const choice = $("host").value, t = tplInfo(choice);
+  const b = $("btn-tpl");
+  if (t && !t.available) {
+    b.classList.remove("hidden");
+    b.querySelector("span").textContent = `Download now (${t.size_mb} MB)`;
+    b.dataset.name = t.name;
+    $("host-hint").textContent = `${choice.toUpperCase()} templates are downloaded automatically the first time they are used (${t.size_mb} MB, once)`;
+  } else {
+    b.classList.add("hidden");
+    $("host-hint").textContent = t ? t.cite : (choice === "pca" ? "Yip et al. 2004 eigenspectra (can become negative)" : "");
+  }
+}
+$("host").addEventListener("change", renderHost);
+$("btn-tpl").onclick = () => post("/api/templates", { name: $("btn-tpl").dataset.name });
 // which options the chosen preset supports (optical has all three, hbeta/halpha only coronal lines)
 const PRESET_OPTS = { "optical": ["coronal", "oi6046", "red"], "optical (physical)": ["coronal", "oi6046", "red"],
                       "hbeta": ["coronal"], "halpha": ["coronal"], "type2": ["coronal"], "galaxy": [] };

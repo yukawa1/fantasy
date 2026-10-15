@@ -80,16 +80,21 @@ def _balmer(model):
 
 def _host(kind):
     """
-    host=True or 'stellar': non-negative stellar population templates with
-    sigma* and v* (needs fantasy_agn.templates.download('emiles') once);
-    host='pca': the Yip et al. (2004) eigenspectra of FANTASY 1.x.
+    Host galaxy component: True/'stellar' (E-MILES stellar populations),
+    a template set ('emiles', 'bc03' = GALAXEV, 'fsps', 'xsl'; see
+    fantasy_agn.templates, downloaded once), or 'pca' (Yip+2004 eigenspectra).
     """
     if kind is True or kind == "stellar":
         from .host import StellarPopulation
         return StellarPopulation()
     if kind == "pca":
         return HostGalaxy()
-    raise ValueError("host must be True/'stellar', 'pca' or False")
+    from .templates import TEMPLATE_SETS, canonical
+    if isinstance(kind, str) and canonical(kind) in TEMPLATE_SETS:
+        from .host import StellarPopulation
+        return StellarPopulation(templates=canonical(kind))
+    raise ValueError("host must be True/'stellar' (E-MILES), a template set ('emiles', 'bc03', "
+                     "'fsps', 'xsl'), 'pca' or False")
 
 
 def _coronal(model, wave_range):

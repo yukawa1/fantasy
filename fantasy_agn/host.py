@@ -30,7 +30,7 @@ from scipy import fft
 
 from .components import Component, C_KMS, FWHM_PER_SIGMA, _limits, instrumental_fwhm
 from .extinction import fitzpatrick99
-from .templates import TEMPLATE_SETS, load
+from .templates import TEMPLATE_SETS, load, canonical
 from .wavelengths import air_to_vac
 
 __all__ = ("StellarPopulation",)
@@ -62,6 +62,7 @@ class StellarPopulation(Component):
                  velocity=(0, -600, 600), sigma=(150, 30, 450), reddening=False,
                  ebv=(0.1, 0.0, 1.5), dv=20.0):
         super().__init__(name)
+        templates = canonical(templates)            # 'bc03' -> 'galaxev'
         data = load(templates)
         all_ages, all_metals = data["ages"], data["metals"]
         age_idx = (np.arange(0, all_ages.size, 2) if ages is None else
