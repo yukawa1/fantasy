@@ -328,3 +328,16 @@ pre.run .prog { color: var(--code-out); }
 #figure img, #mresults figure img { width: auto; max-width: 100%; max-height: 78vh; margin: 0 auto; }
 /* grid items may shrink below their content (wide tables scroll inside .tablewrap) */
 .view { min-width: 0; }
+
+/* multi-epoch: the fit of each epoch */
+.epochs { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.epochs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.epochs-head h3 { margin: 0; font-size: 15px; }
+.epoch-nav { display: flex; align-items: center; gap: 6px; }
+.epoch-nav select { max-width: 340px; }
+.epoch-nav a { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.epochfig { min-height: 120px; }
+.epochfig img { width: auto; max-width: 100%; max-height: 78vh; margin: 0 auto; transition: opacity .15s; }
+.epochfig.loading img { opacity: .45; }
+#mtable tr.sel td { background: var(--teal-soft); }
+#mtable tr:not(:first-child) { cursor: pointer; }

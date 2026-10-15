@@ -21,6 +21,8 @@ derivatives.
   `fantasy_agn.progress` (`set_hook`); the app shows a progress bar with the fitted
   spectra, the time left and the joint-fit iterations, and printed output appears while
   a cell runs.
+- App, multi-epoch results: **Fit of each epoch** (data, model, components, residuals) with
+  arrows / arrow keys, a list, or a click on a table row; one PDF with all epoch fits.
 - App: **Multi-epoch** view (drop several spectra or give a pattern; model, shared
   parameters, intercalibration, processes; light curves as figure, table and CSV).
 - Faster single fits (about 2-2.5x): NNLS for the amplitudes, value-only evaluation in the

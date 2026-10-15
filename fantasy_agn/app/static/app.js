@@ -12,6 +12,7 @@ const views = [];             // one view per code cell
 const ICONS = {
   upload: '<path d="M7 18a5 5 0 0 1-.6-9.96A7 7 0 0 1 19.6 9.5 4.5 4.5 0 0 1 18 18"/><path d="M12 21v-9m-3.5 3.5L12 12l3.5 3.5"/>',
   arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
+  left: '<path d="M19 12H5m5-5-5 5 5 5"/>',
   pulse: '<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>',
   sliders: '<path d="M4 6h10m4 0h2M4 12h4m4 0h8M4 18h12m4 0h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   play: '<path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/>',
@@ -661,14 +662,57 @@ function renderMulti() {
     ["fit time", `${m.time.toFixed(0)} s`]].map(([a, b]) =>
     `<div class="tile"><div class="lab">${a}</div><div class="val">${esc(b)}</div></div>`).join("");
   $("minfo").textContent = "Broad-line fluxes and widths and the continuum per epoch (intercalibrated).";
-  $("mtable").innerHTML = `<tr>${m.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
-    m.rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("");
+  if (m.id !== mId) {                       // a new result: rebuild table and epoch list
+    mId = m.id;
+    $("mtable").innerHTML = `<tr>${m.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
+      m.rows.map((r, k) => `<tr data-k="${k}">${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("");
+    $("esel").innerHTML = m.epochs.map((e, k) =>
+      `<option value="${k}">${k}: ${esc(e.name)}${e.mjd ? ` · MJD ${e.mjd}` : ""}${e.reference ? " · reference" : ""}</option>`).join("");
+    showEpoch(0);
+  }
   const src = withToken(`/api/figure.png?v=${state.figure_version}&hd=1`);
   if (state.figure_stem === "light_curves" && $("mfig").dataset.v !== String(state.figure_version)) {
     $("mfig").dataset.v = String(state.figure_version);
     $("mfig").src = src;
   }
 }
+let mId = null, epochK = 0;
+function showEpoch(k) {
+  const m = state && state.multi;
+  if (!m) return;
+  epochK = Math.max(0, Math.min(m.n - 1, k));
+  const e = m.epochs[epochK];
+  $("esel").value = String(epochK);
+  $("eprev").disabled = epochK === 0;
+  $("enext").disabled = epochK === m.n - 1;
+  $("einfo").textContent = `Epoch ${epochK + 1} of ${m.n} · χ²/ν = ${e.rchi2.toFixed(3)} · flux scale ${e.scale.toFixed(3)}` +
+    (e.reference ? " (reference)" : "");
+  $("edl").href = withToken(`/api/epoch.pdf?k=${epochK}&dl=1`);
+  for (const tr of $("mtable").querySelectorAll("tr[data-k]")) tr.classList.toggle("sel", Number(tr.dataset.k) === epochK);
+  $("efig").parentElement.classList.add("loading");
+  $("efig").src = withToken(`/api/epoch.png?k=${epochK}&hd=1&v=${m.id}`);
+  // draw the neighbours in the background, so stepping through is quick
+  for (const j of [epochK + 1, epochK - 1]) if (j >= 0 && j < m.n) new Image().src = withToken(`/api/epoch.png?k=${j}&hd=1&v=${m.id}`);
+}
+$("efig").addEventListener("load", (e) => {
+  e.target.parentElement.classList.remove("loading");
+  e.target.style.width = `${e.target.naturalWidth / 2}px`;
+});
+$("eprev").onclick = () => showEpoch(epochK - 1);
+$("enext").onclick = () => showEpoch(epochK + 1);
+$("esel").onchange = () => showEpoch(Number($("esel").value));
+$("mtable").onclick = (ev) => {
+  const tr = ev.target.closest("tr[data-k]");
+  if (!tr) return;
+  showEpoch(Number(tr.dataset.k));
+  $("efig").scrollIntoView({ behavior: "smooth", block: "center" });
+};
+document.addEventListener("keydown", (ev) => {
+  if ($("view-multi").classList.contains("hidden") || !state || !state.multi) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if (ev.key === "ArrowLeft") { showEpoch(epochK - 1); ev.preventDefault(); }
+  if (ev.key === "ArrowRight") { showEpoch(epochK + 1); ev.preventDefault(); }
+});
 function renderMFiles() {
   $("mfiles-info").textContent = mFiles.length ? `${mFiles.length} files: ${mFiles.slice(0, 3).map((f) => f.name).join(", ")}${mFiles.length > 3 ? " …" : ""}`
     : "SDSS, DESI, 1D FITS or text, one file per epoch";

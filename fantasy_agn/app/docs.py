@@ -190,14 +190,19 @@ files = sorted(glob.glob("/data/sdss_rm/*.fits"))
 spectra = [fa.read(f).deredden().to_rest_frame() for f in files]
 me = fa.fit_epochs(spectra, fa.presets.hbeta(broad_components=2), n_jobs=-1)
 me.light_curve()           # broad fluxes, widths, continuum per epoch
-me.plot_light_curves(); me.plot_baldwin()</pre>
+me.plot_light_curves(); me.plot_baldwin()
+me.plot(epoch=5)           # the fit of one epoch (me.epochs[5] is its full result)</pre>
 <p>First every epoch is fitted on its own (these fits run in parallel, <code>n_jobs</code> processes),
 which gives the starting values; then all epochs are fitted together with a sparse Jacobian. The
 reference epoch (flux scale 1) is the one with the highest S/N. For many unrelated spectra use
 <code>fa.fit_many(spectra, model, n_jobs=-1)</code>, which returns one fit per spectrum.</p>
 <p>In scripts on macOS and Windows, put the code under <code>if __name__ == "__main__":</code>, otherwise
 the parallel part falls back to serial. In the app, the <b>Multi-epoch</b> view does all of this:
-drop the files (or give a pattern), choose the model and press <i>Fit all epochs</i>.</p>
+drop the files (or give a pattern), choose the model and press <i>Fit all epochs</i>. A progress
+bar shows the independent fits and the joint fit. Below the light curves, <i>Fit of each epoch</i>
+shows the data, model, components and residuals of every epoch: step with the arrows (or the
+← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
+one page per epoch.</p>
 """),
     ("params", "Parameters, limits and ties", """
 <p>Every parameter has a value, limits and a status (free, fixed or tied). Names are

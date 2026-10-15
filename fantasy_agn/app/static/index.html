@@ -340,11 +340,26 @@
         <div><h2>Light curves</h2><p id="minfo"></p></div></header>
       <div id="mtiles"></div>
       <figure><img id="mfig" alt="light curves"></figure>
-      <div class="tablewrap" style="margin-top:10px"><table class="grid" id="mtable"></table></div>
+      <div class="epochs">
+        <header class="epochs-head">
+          <h3>Fit of each epoch</h3>
+          <div class="epoch-nav">
+            <button class="iconbtn" id="eprev" title="Previous epoch (←)"><i data-icon="left"></i></button>
+            <select id="esel" aria-label="epoch"></select>
+            <button class="iconbtn" id="enext" title="Next epoch (→)"><i data-icon="arrow"></i></button>
+            <a class="tok small" id="edl" href="/api/epoch.pdf?k=0&dl=1"><i data-icon="download"></i>PDF</a>
+          </div>
+        </header>
+        <p class="hint small" id="einfo"></p>
+        <figure class="epochfig"><img id="efig" alt="fit of the selected epoch"></figure>
+      </div>
+      <p class="hint small">Click a row of the table to see the fit of that epoch.</p>
+      <div class="tablewrap" style="margin-top:6px"><table class="grid" id="mtable"></table></div>
     </div>
     <aside class="card-side downloads">
       <a class="btn outline tok" href="/api/lightcurve.csv" download><i data-icon="download"></i>Light curve (.csv)</a>
       <a class="btn outline tok" href="/api/figure.pdf?dl=1"><i data-icon="download"></i>Figure (PDF)</a>
+      <a class="btn outline tok" href="/api/epochs.pdf"><i data-icon="download"></i>All epoch fits (PDF)</a>
       <a class="btn outline tok" href="/api/session.py" download><i data-icon="code"></i>Session (Python)</a>
     </aside></section>
   </section>

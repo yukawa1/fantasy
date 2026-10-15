@@ -100,6 +100,7 @@ class Session:
     def __init__(self):
         from ..progress import set_hook
         self.lock = threading.RLock()
+        self._render_lock = threading.Lock()     # matplotlib drawing (requests run in threads)
         self.progress = None
         self.reset()
         set_hook(self._on_progress)
@@ -658,13 +659,65 @@ class Session:
         me = self.multi
         if me is None:
             return None
+        cached = self.__dict__.get("_multi_cache")
+        if cached is not None and cached[0] is me:        # polled often: computed once per result
+            return cached[1]
         lc = me.light_curve()
         mjd = [e.spectrum.mjd for e in me.epochs if e.spectrum.mjd is not None]
-        return {"n": len(me.epochs), "rchi2": float(me.chi2 / me.dof), "time": float(me.time),
-                "mjd": [min(mjd), max(mjd)] if mjd else None,
-                "columns": [str(c) for c in lc.columns],
-                "rows": [[(f"{v:.4g}" if isinstance(v, (float, np.floating)) else str(v)) for v in row]
-                         for row in lc.itertuples(index=False)]}
+        out = {"n": len(me.epochs), "rchi2": float(me.chi2 / me.dof), "time": float(me.time),
+               "id": id(me),
+               "mjd": [min(mjd), max(mjd)] if mjd else None,
+               "columns": [str(c) for c in lc.columns],
+               "rows": [[(f"{v:.4g}" if isinstance(v, (float, np.floating)) else str(v)) for v in row]
+                        for row in lc.itertuples(index=False)],
+               "epochs": [{"name": e.spectrum.name, "mjd": e.spectrum.mjd,
+                           "rchi2": float(e.chi2 / e.dof), "scale": float(getattr(e, "scale", 1.0)),
+                           "reference": k == me.reference}
+                          for k, e in enumerate(me.epochs)]}
+        self._multi_cache = (me, out)
+        return out
+
+    def epoch_figure(self, k, fmt="png", dpi=110):
+        """The fit of epoch ``k`` of the multi-epoch result (rendered images are cached)."""
+        from matplotlib.figure import Figure
+        from ..plotting import paper_style
+        me = self.multi
+        if me is None:
+            return None
+        k = int(k)
+        if not 0 <= k < len(me.epochs):
+            raise ValueError(f"epoch {k} does not exist (0-{len(me.epochs) - 1})")
+        key = (id(me), k, fmt, dpi)
+        cache = self.__dict__.setdefault("_epoch_figs", {})
+        if key in cache:
+            return cache[key]
+        with self._render_lock:
+            e = me.epochs[k]
+            fig = e.plot(fig=Figure(), title=f"epoch {k}: {e.spectrum.name}"
+                         + (f"  (MJD {e.spectrum.mjd:g})" if e.spectrum.mjd else ""))
+            buf = io.BytesIO()
+            with paper_style(fmt != "png" or dpi > 220):
+                fig.savefig(buf, format=fmt, dpi=dpi if fmt == "png" else None, bbox_inches="tight")
+        if len(cache) > 200:
+            cache.clear()
+        cache[key] = buf.getvalue()
+        return cache[key]
+
+    def epochs_pdf(self):
+        """All epoch fits, one page each."""
+        from matplotlib.backends.backend_pdf import PdfPages
+        from matplotlib.figure import Figure
+        from ..plotting import paper_style
+        me = self.multi
+        if me is None:
+            return None
+        buf = io.BytesIO()
+        with self._render_lock, paper_style(), PdfPages(buf) as pdf:
+            for k, e in enumerate(me.epochs):
+                fig = e.plot(fig=Figure(), title=f"epoch {k}: {e.spectrum.name}"
+                             + (f"  (MJD {e.spectrum.mjd:g})" if e.spectrum.mjd else ""))
+                pdf.savefig(fig, bbox_inches="tight")
+        return buf.getvalue()
 
     def light_curve_csv(self):
         me = self.multi

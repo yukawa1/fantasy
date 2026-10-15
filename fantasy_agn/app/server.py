@@ -16,6 +16,8 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     POST /api/upload                 body = a file (?filename=&batch=): keep it, return its path
     POST /api/multiepoch             JSON: joint fit of several epochs (code cell)
     GET  /api/lightcurve.csv
+    GET  /api/epoch.<png|pdf>?k=N     the fit of epoch N of the multi-epoch result
+    GET  /api/epochs.pdf             all epoch fits, one page each
     POST /api/templates              JSON {name}: download a stellar template set (as a code cell)
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
@@ -144,6 +146,24 @@ class Handler(BaseHTTPRequestHandler):
             ctype = {"png": "image/png", "pdf": "application/pdf",
                      "eps": "application/postscript"}[fmt]
             return self._send(data, ctype, filename=f"{s.figure_stem}.{fmt}" if dl else None)
+        if url.path.startswith("/api/epoch."):
+            fmt = url.path.rsplit(".", 1)[1]
+            if fmt not in ("png", "pdf"):
+                return self._error("unknown format", 404)
+            try:
+                data = s.epoch_figure(q.get("k", ["0"])[0], fmt,
+                                      dpi=300 if "dl" in q else (220 if "hd" in q else 110))
+            except ValueError as exc:
+                return self._error(str(exc), 404)
+            if data is None:
+                return self._error("no multi-epoch fit yet", 404)
+            return self._send(data, "image/png" if fmt == "png" else "application/pdf",
+                              filename=f"epoch_{q.get('k', ['0'])[0]}.{fmt}" if "dl" in q else None)
+        if url.path == "/api/epochs.pdf":
+            data = s.epochs_pdf()
+            if data is None:
+                return self._error("no multi-epoch fit yet", 404)
+            return self._send(data, "application/pdf", filename="epoch_fits.pdf")
         if url.path == "/api/lines.csv":
             csv = s.lines_csv()
             if csv is None:

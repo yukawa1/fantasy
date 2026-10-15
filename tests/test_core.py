@@ -1125,3 +1125,23 @@ def test_host_thread_safe_on_different_grids():
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert not bad
+
+
+def test_app_epoch_figures():
+    from fantasy_agn.app.session import Session
+    rng = np.random.default_rng(5)
+    spectra = []
+    for k in range(3):
+        m = _toy_truth()
+        wave = np.arange(4650, 5150, 1.0)
+        flux = m.evaluate(wave, {"medium": "vacuum"}) + rng.normal(0, 2.0, wave.size)
+        spectra.append(fa.Spectrum(wave, flux, np.full(wave.size, 2.0), rest_frame=True, mjd=50000 + k))
+    s = Session()
+    s.ns["me"] = fa.fit_epochs(spectra, _toy_model(), n_jobs=1, verbose=False)
+    st = s.multi_state()
+    assert st["n"] == 3 and len(st["epochs"]) == 3 and s.multi_state() is st     # cached
+    png = s.epoch_figure(1)
+    assert png[:4] == b"\x89PNG" and s.epoch_figure(1) is png
+    assert s.epochs_pdf()[:4] == b"%PDF"
+    with pytest.raises(ValueError):
+        s.epoch_figure(3)
