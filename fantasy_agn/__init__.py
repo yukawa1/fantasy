@@ -9,7 +9,7 @@ Quick start::
     result = fa.fit(spec, fa.presets.hbeta())
     result.plot()
     result.lines             # fluxes, widths, shifts, EWs with errors
-    result.measure("Hb")     # total broad H-beta: flux, FWHM, sigma, ...
+    result.measure("Hb", ["broad", "broad2"])   # broad H-beta: flux, FWHM, sigma, ...
     result.bh_mass()
 
 The application ``fantasy-app`` (or ``fa.app()``) opens a point-and-click
@@ -17,7 +17,7 @@ interface in the browser; in a Jupyter notebook ``fa.gui()`` shows it as widgets
 """
 __version__ = "2.0.0"
 
-from . import desi, presets, templates
+from . import desi, examples, presets, templates
 from .host import StellarPopulation
 from .components import (BalmerContinuum, BrokenPowerLaw, Component, Extinction, FeII,
                          HighOrderBalmer, HostGalaxy, Lines, Polynomial, PowerLaw)
@@ -46,7 +46,7 @@ __all__ = [
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
     "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "StellarPopulation",
     "Extinction",
-    "templates", "desi", "Component",
+    "templates", "desi", "examples", "Component",
     "Parameter", "ParameterSet", "LINES", "line_wavelength", "read_line_list",
     "fitzpatrick99",
 ]

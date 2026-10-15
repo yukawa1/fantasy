@@ -6,6 +6,12 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Installation for testers: `sh install/make_bundle.sh` builds `dist/FANTASY-<version>.zip`
+  (wheel, tested package versions, installers for macOS, Linux and Windows). The installer
+  sets everything up with uv and runs the self-test.
+- `fantasy` command: `fantasy test [--full]` (end-to-end self-test), `fantasy app`,
+  `fantasy info`, `fantasy examples DIR`, `fantasy python`.
+- Example spectra in the package: `fa.examples.path("type1")`, `fa.examples.path("seyfert2")`.
 - Variable projection: the least-squares iterations move only the nonlinear parameters
   (shifts, widths, E(B-V)); the amplitudes are solved exactly at every step. Same results,
   2-5x fewer iterations; a Seyfert 2 + BC03 host fit of a GAMA spectrum that crawled through

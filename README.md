@@ -28,9 +28,36 @@ Version 2 is a rewrite with these features:
 
 ## Installation
 
-The easiest way is the **FANTASY app** with its launcher: it uses
-[uv](https://docs.astral.sh/uv/) to set up Python 3.12 and the tested package versions
-(`uv.lock`) in an environment of its own, so nothing else on your computer matters:
+**Testers and new users**: unzip `FANTASY-2.0.0.zip` (built with `sh install/make_bundle.sh`)
+and run the installer:
+
+| system | install |
+|---|---|
+| macOS | double-click `Install FANTASY.command` |
+| Linux | `sh install.sh` |
+| Windows | double-click `install.bat` |
+
+The installer uses [uv](https://docs.astral.sh/uv/) (and offers to install it). It installs
+FANTASY with Python 3.12 and the tested package versions in an environment of its own, adds
+the `fantasy` command, and runs the self-test. Then:
+
+```console
+fantasy app              # the FANTASY app in the browser
+fantasy test [--full]    # check the installation (--full: templates and online services)
+fantasy info             # versions, processor cores, templates
+fantasy examples DIR     # example spectra and a first script
+fantasy python           # Python with FANTASY installed
+```
+
+Without the bundle, uv can install it from a wheel or from git:
+
+```console
+uv tool install --python 3.12 fantasy_agn-2.0.0-py3-none-any.whl
+uv tool install --python 3.12 "git+https://github.com/yukawa1/fantasy@v2"
+```
+
+**From a clone of the repository**, the launchers start the app directly with the locked
+versions (`uv.lock`):
 
 | system | start the app |
 |---|---|
@@ -38,14 +65,11 @@ The easiest way is the **FANTASY app** with its launcher: it uses
 | Linux | `launch/fantasy-app.sh` |
 | Windows | double-click `launch\fantasy-app.bat` |
 
-If uv is missing, the launcher offers to install it. The first start downloads Python
-and the packages (about a minute); afterwards it starts in a few seconds.
-
-As a Python package:
+As a Python package in your own environment:
 
 ```console
-pip install fantasy_agn            # core, then: fantasy-app  or  python -m fantasy_agn.app
-pip install "fantasy_agn[gui]"     # + Jupyter widgets (fa.gui())
+pip install fantasy_agn-2.0.0-py3-none-any.whl   # then: fantasy test
+pip install "fantasy_agn[gui]"                   # + Jupyter widgets (fa.gui())
 ```
 
 ## Quick start
@@ -59,7 +83,8 @@ spec = spec.deredden().to_rest_frame()   # Galactic E(B-V) looked up; z from the
 result = fa.fit(spec, fa.presets.hbeta())
 result.plot()
 result.lines                 # flux, FWHM, shift, EW of every line, with errors
-result.measure("Hb")         # total broad Hβ: flux, FWHM, sigma, shift, EW
+result.measure("Hb", ["broad", "broad2"])   # broad Hβ: flux, FWHM, sigma, shift, EW
+                             # (without components: summed over all, narrow included)
 result.bh_mass()             # single-epoch virial mass (Vestergaard & Peterson 2006)
 result.save("my_quasar")     # CSV tables + model spectrum
 ```

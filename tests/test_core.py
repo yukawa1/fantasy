@@ -1145,3 +1145,23 @@ def test_app_epoch_figures():
     assert s.epochs_pdf()[:4] == b"%PDF"
     with pytest.raises(ValueError):
         s.epoch_figure(3)
+
+
+def test_cli_info_examples(tmp_path, capsys):
+    from fantasy_agn.cli import main
+    assert main(["info"]) == 0
+    assert "processor cores" in capsys.readouterr().out
+    assert main(["examples", str(tmp_path)]) == 0
+    files = sorted(os.listdir(tmp_path))
+    assert "first_fit.py" in files and len([f for f in files if f.endswith(".fits")]) == 2
+    s = fa.read(fa.examples.path("seyfert2"))
+    assert s.wave.size > 1000 and s.z > 0
+
+
+def test_cli_selftest(monkeypatch, capsys):
+    """The offline self-test (without the template checks) passes."""
+    from fantasy_agn import cli
+    monkeypatch.setattr(cli, "_templates_ready", lambda name="emiles": False)
+    assert cli.selftest(full=False)
+    out = capsys.readouterr().out
+    assert "All checks passed (3 skipped)" in out
