@@ -12,6 +12,7 @@ format matplotlib supports, chosen by the file extension::
 import re
 from contextlib import contextmanager
 
+import matplotlib
 import numpy as np
 from matplotlib.ticker import MaxNLocator
 
@@ -287,13 +288,14 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
         ylabel = flux_label(s)
         ax.set_ylabel(ylabel.replace(" (", "\n(", 1) if narrow else ylabel)
         handles, labels = ax.get_legend_handles_labels()
+        # The legend sits above the axes; a title goes on top of it (as the
+        # legend title) so the two cannot overlap.
         ax.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0),
                   ncol=min(len(labels), 2 if narrow else 4),
-                  columnspacing=1.2, borderaxespad=0.3)
+                  columnspacing=1.2, borderaxespad=0.3, title=title or None,
+                  title_fontsize=matplotlib.rcParams["axes.titlesize"])
         if label_lines:
             _label_lines(ax, result, view, model, xlim)
-        if title:
-            ax.set_title(title)
 
         if rax is not None:
             r = (s.flux - model) / s.err
