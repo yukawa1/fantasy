@@ -830,7 +830,7 @@ def test_app_session_cells():
     s.run_cell(code)
     _wait(s)
     st = s.state()
-    assert st["done"] == ["read", "fit", "results"] and st["has_result"]
+    assert st["done"] == ["read", "model", "fit", "results"] and st["has_result"]
     assert any(r["label"].startswith("broad Hb FWHM") for r in st["results"])
     script = s.script()
     assert "fa.read(" in script and "fa.presets.hbeta(" in script and "1 / 0" in script
@@ -864,3 +864,49 @@ def test_app_server_requires_token():
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_app_model_editor_code():
+    from fantasy_agn.app.session import Session
+    s = Session()
+    s.run_cell(s.preset_code("hbeta", broad_components=1, outflow=False))
+    _wait(s)
+    assert s.model is not None and "model" in s.done()
+    s.run_cell(s.add_code({"type": "Lines", "name": "broad2", "lines": ["Hg", "Hb"], "role": "broad",
+                           "fwhm": [8000, 3000, 15000]}))
+    _wait(s)
+    assert "broad2" in [c.name for c in s.model.components]
+    code = s.params_code([{"name": "narrow.fwhm", "value": 500, "min": 100, "max": 900},
+                          {"name": "broad2.shift", "tie": "broad.shift"},
+                          {"name": "continuum.index", "value": -1.7, "fixed": True}])
+    assert "model.set('narrow.fwhm', value=500, min=100, max=900)" in code
+    assert "model.tie('broad2.shift', 'broad.shift')" in code and "model.fix('continuum.index', -1.7)" in code
+    s.run_cell(code)
+    _wait(s)
+    p = s.model.params
+    assert p["narrow.fwhm"].max == 900 and p["broad2.shift"].tie[0] == "broad.shift" and p["continuum.index"].fixed
+    s.run_cell(s.remove_code("heii"))
+    _wait(s)
+    assert "heii" not in [c.name for c in s.model.components]
+    st = s.state()["model"]
+    assert st["n_free"] == len(s.model.params.free_params())
+    for bad in ({"type": "Lines", "name": "x", "lines": ["NotALine"]},
+                {"type": "Lines", "name": "bad name!", "lines": ["Hb"]},
+                {"type": "Lines", "name": "broad2", "lines": ["Hb"]},
+                {"type": "Lines", "name": "y", "lines": ["Hb"], "fwhm": [100, 500, 900]},
+                {"type": "os.system"}):
+        with pytest.raises(ValueError):
+            s.add_code(bad)
+    with pytest.raises(ValueError):
+        s.params_code([{"name": "narrow.fwhm", "value": 500}])       # nothing changed
+
+
+def test_app_docs():
+    from fantasy_agn.app.docs import all_pages
+    pages = all_pages()
+    ids = [p["id"] for p in pages]
+    for pid in ("start", "model", "params", "lines", "api-models", "api-results"):
+        assert pid in ids
+    models = next(p for p in pages if p["id"] == "api-models")["html"]
+    assert "fa.presets.optical(" in models and "broad_components" in models
+    assert "&lt;" not in models.split("<pre>")[0][:0]          # rendered without raising

@@ -22,7 +22,7 @@ import numpy as np
 
 from .. import presets
 
-STEPS = ("read", "classify", "fit", "results")
+STEPS = ("read", "classify", "model", "fit", "results")
 UPLOADS = os.path.join(os.path.expanduser("~"), ".fantasy_agn", "uploads")
 
 # Models offered in the interface: label -> (preset, options)
@@ -104,6 +104,12 @@ class Session:
         return c if isinstance(c, Classification) else None
 
     @property
+    def model(self):
+        from ..model import Model
+        m = self.ns.get("model")
+        return m if isinstance(m, Model) else None
+
+    @property
     def result(self):
         from ..result import FitResult
         r = self.ns.get("r")
@@ -115,6 +121,8 @@ class Session:
             steps.append("read")
         if self.classification is not None:
             steps.append("classify")
+        if self.model is not None:
+            steps.append("model")
         if self.result is not None:
             steps += ["fit", "results"]
         return steps
@@ -130,6 +138,7 @@ class Session:
                     "models": list(MODELS), "info": self.info,
                     "spectrum": spec.name if spec is not None else None,
                     "has_result": self.result is not None,
+                    "model": self.model_state(),
                     "python": platform.python_version(),
                     "version": __import__("fantasy_agn").__version__}
 
@@ -258,6 +267,26 @@ class Session:
         self.warnings = [ln.strip().replace("WARNING: ", "")
                          for ln in r.summary(short=True).split("\n") if "WARNING" in ln]
 
+    def model_state(self):
+        """Components and parameters of ``model`` for the model editor."""
+        m = self.model
+        if m is None:
+            return None
+        comps = [{"name": c.name, "type": type(c).__name__, "kind": getattr(c, "kind", ""),
+                  "role": getattr(c, "role", None), "profile": getattr(c, "profile", None),
+                  "lines": list(getattr(c, "line_names", []) or [])[:40],
+                  "n_params": len(c.params)} for c in m.components]
+        params = []
+        for p in m.params:
+            params.append({"name": p.name, "value": p.value, "min": p.min, "max": p.max,
+                           "fixed": bool(p.fixed), "unit": p.unit, "linear": bool(p.linear),
+                           "description": p.description,
+                           "tie": p.tie[0] if p.tie else None,
+                           "factor": p.tie[1] if p.tie else 1.0})
+        return {"components": comps, "params": params,
+                "n_free": len(m.params.free_params()),
+                "wave_range": list(m.wave_range) if m.wave_range else None}
+
     # ------------------------------------------------- code for the buttons
     def read_code(self, path=None, data=None, filename=None, targetid=None, z=None):
         z = float(z) if z not in (None, "", 0, "0") else None
@@ -292,3 +321,125 @@ class Session:
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
         err = f', errors="{errors}"' if errors != "covariance" else ""
         return f"model = fa.presets.{name}({args})\nr = fa.fit(spec, model{err})\nr.key_results()"
+
+    # ------------------------------------------------- code for the model editor
+    @staticmethod
+    def preset_code(model="optical", broad_components=2, outflow=True):
+        name, kw = MODELS[model]
+        kw = dict(kw)
+        params = inspect.signature(getattr(presets, name)).parameters
+        if "broad_components" in params:
+            kw["broad_components"] = int(broad_components)
+        if "outflow" in params:
+            kw["outflow"] = bool(outflow)
+        args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
+        return f"model = fa.presets.{name}({args})\nmodel"
+
+    def fit_model_code(self, errors="covariance"):
+        """Fit the current model (from the model step or an edited cell)."""
+        if self.model is None:
+            raise ValueError("create a model first (step 3)")
+        err = f', errors="{errors}"' if errors != "covariance" else ""
+        return f"r = fa.fit(spec, model{err})\nr.key_results()"
+
+    @staticmethod
+    def remove_code(name):
+        return f"model.remove({str(name)!r})\nmodel"
+
+    def add_code(self, spec):
+        """Code that adds a component described by the editor form (validated)."""
+        from ..lines import LINES
+        kind = spec.get("type")
+        name = str(spec.get("name") or "").strip()
+        if name and not all(ch.isalnum() or ch == "_" for ch in name):
+            raise ValueError("component names may contain letters, digits and _ only")
+        if self.model is not None and name in [c.name for c in self.model.components]:
+            raise ValueError(f"there is already a component called {name!r}")
+
+        def limits(key):
+            v = spec.get(key)
+            if not v:
+                return None
+            vals = tuple(float(x) for x in v)
+            if len(vals) != 3 or not vals[1] <= vals[0] <= vals[2]:
+                raise ValueError(f"{key}: give start, min and max with min <= start <= max")
+            return vals
+
+        args = []
+        if kind == "Lines":
+            lines = [str(x) for x in spec.get("lines") or []]
+            bad = [x for x in lines if x not in LINES]
+            if not lines or bad:
+                raise ValueError(f"choose lines from the line list{': unknown ' + ', '.join(bad) if bad else ''}")
+            args += [repr(name or "lines"), repr(lines)]
+            role = spec.get("role")
+            if role in ("narrow", "broad", "outflow"):
+                args.append(f"role={role!r}")
+            prof = spec.get("profile") or "gaussian"
+            if prof != "gaussian":
+                if prof not in ("lorentzian", "voigt", "gauss-hermite"):
+                    raise ValueError("unknown profile")
+                args.append(f"profile={prof!r}")
+            for key in ("fwhm", "shift"):
+                lim = limits(key)
+                if lim:
+                    args.append(f"{key}={lim!r}")
+        elif kind in ("PowerLaw", "BrokenPowerLaw"):
+            args.append(repr(name or "continuum"))
+            if spec.get("pivot"):
+                args.append(f"pivot={float(spec['pivot']):g}")
+        elif kind == "Polynomial":
+            args += [repr(name or "poly"), f"order={int(spec.get('order') or 2)}"]
+        elif kind in ("FeII", "BalmerContinuum", "HighOrderBalmer", "StellarPopulation", "HostGalaxy"):
+            if name:
+                args.append(f"name={name!r}")
+            if kind == "FeII":
+                lim = limits("fwhm")
+                if lim:
+                    args.append(f"fwhm={lim!r}")
+        elif kind == "Extinction":
+            law = spec.get("law") or "F99"
+            if law not in ("F99", "calzetti"):
+                raise ValueError("law must be F99 or calzetti")
+            args.append(f"law={law!r}")
+        else:
+            raise ValueError(f"unknown component type {kind!r}")
+        prefix = "" if self.model is not None else "model = fa.Model()\n"
+        return f"{prefix}model.add(fa.{kind}({', '.join(args)}))\nmodel"
+
+    def params_code(self, changes):
+        """
+        Code for parameter edits: changes is a list of {name, value, min, max,
+        fixed, tie, factor}; only what differs from the current model is written.
+        """
+        m = self.model
+        if m is None:
+            raise ValueError("create a model first")
+        lines = []
+        for ch in changes:
+            p = m.params[ch["name"]]
+            name = repr(p.name)
+            tie = ch.get("tie") or None
+            factor = float(ch.get("factor") or 1.0)
+            new = {k: float(ch[k]) for k in ("value", "min", "max")
+                   if ch.get(k) not in (None, "") and float(ch[k]) != getattr(p, k)}
+            fixed = bool(ch.get("fixed"))
+            if tie:
+                if tie not in m.params.names:
+                    raise ValueError(f"{p.name}: unknown parameter {tie!r} to tie to")
+                if p.tie != (tie, factor, 0.0) and not (p.tie and p.tie[0] == tie and p.tie[1] == factor):
+                    lines.append(f"model.tie({name}, {tie!r}" + (f", factor={factor:g}" if factor != 1 else "") + ")")
+                continue
+            if p.tie or (p.fixed and not fixed):
+                lines.append(f"model.free({name})")
+            lim = {k: v for k, v in new.items() if k in ("min", "max")}
+            if fixed:
+                if lim:
+                    lines.append(f"model.set({name}, " + ", ".join(f"{k}={v:g}" for k, v in lim.items()) + ")")
+                if not p.fixed or "value" in new:
+                    lines.append(f"model.fix({name}" + (f", {new['value']:g}" if "value" in new else "") + ")")
+            elif new:
+                lines.append(f"model.set({name}, " + ", ".join(f"{k}={v:g}" for k, v in new.items()) + ")")
+        if not lines:
+            raise ValueError("nothing changed")
+        return "\n".join(lines) + "\nmodel"

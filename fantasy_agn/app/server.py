@@ -7,7 +7,10 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     POST /api/read                   JSON {path | targetid, z} or the file itself
                                      (body = file, ?filename=...&z=...)
     POST /api/classify
-    POST /api/fit                    JSON {model, broad_components, outflow, errors}
+    POST /api/fit                    JSON {errors} (fits `model`; without one: {model, broad_components, outflow})
+    POST /api/model                  JSON {action: preset|add|remove|params, ...}: code for the model editor
+    GET  /api/docs                   documentation pages (guides and API reference)
+    GET  /api/lines                  the line list
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
     GET  /api/lines.csv, /api/session.py
@@ -18,6 +21,7 @@ addressed to 127.0.0.1/localhost (against DNS rebinding); other web pages open
 in the browser cannot use it.
 """
 import json
+import math
 import mimetypes
 import os
 import secrets
@@ -27,12 +31,26 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .session import Session
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
+
+
+def _finite(obj):
+    """JSON has no inf/nan: replace them with None (null)."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_finite(v) for v in obj]
+    if hasattr(obj, "item") and not isinstance(obj, (str, bytes)):     # numpy scalars
+        return _finite(obj.item())
+    return obj
 MAX_UPLOAD = 200 * 1024 * 1024
 
 
 class Handler(BaseHTTPRequestHandler):
     session = None              # set by make_server
     token = None
+    _docs = None
     server_version = "FANTASY"
 
     def log_message(self, fmt, *args):          # quiet: only errors
@@ -42,7 +60,7 @@ class Handler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------ helpers
     def _send(self, body, ctype="application/json", status=200, filename=None):
         if isinstance(body, (dict, list)):
-            body = json.dumps(body, default=float).encode()
+            body = json.dumps(_finite(body), default=float, allow_nan=False).encode()
         elif isinstance(body, str):
             body = body.encode()
         self.send_response(status)
@@ -89,6 +107,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._error("forbidden", 403)
         if url.path == "/api/state":
             return self._send(s.state())
+        if url.path == "/api/docs":
+            if Handler._docs is None:
+                from .docs import all_pages
+                Handler._docs = all_pages()
+            return self._send(Handler._docs)
+        if url.path == "/api/lines":
+            from ..lines import LINES
+            return self._send([{"name": n, "wave": w} for n, w in sorted(LINES.items(), key=lambda kv: kv[1])])
         if url.path.startswith("/api/figure."):
             fmt = url.path.rsplit(".", 1)[1]
             if fmt not in ("png", "pdf", "eps"):
@@ -134,10 +160,30 @@ class Handler(BaseHTTPRequestHandler):
                 s.run_cell(s.classify_code())
             elif url.path == "/api/fit":
                 opts = json.loads(self._body() or b"{}")
-                s.run_cell(s.fit_code(model=opts.get("model", "optical"),
-                                      broad_components=opts.get("broad_components", 2),
-                                      outflow=opts.get("outflow", True),
-                                      errors=opts.get("errors", "covariance")))
+                errors = opts.get("errors", "covariance")
+                if errors not in ("covariance", "mc"):
+                    raise ValueError("errors must be covariance or mc")
+                if s.model is not None:
+                    s.run_cell(s.fit_model_code(errors))
+                else:
+                    s.run_cell(s.fit_code(model=opts.get("model", "optical"),
+                                          broad_components=opts.get("broad_components", 2),
+                                          outflow=opts.get("outflow", True), errors=errors))
+            elif url.path == "/api/model":
+                opts = json.loads(self._body() or b"{}")
+                action = opts.get("action")
+                if action == "preset":
+                    code = s.preset_code(opts.get("model", "optical"), opts.get("broad_components", 2),
+                                         opts.get("outflow", True))
+                elif action == "add":
+                    code = s.add_code(opts.get("component") or {})
+                elif action == "remove":
+                    code = s.remove_code(opts.get("name", ""))
+                elif action == "params":
+                    code = s.params_code(opts.get("changes") or [])
+                else:
+                    raise ValueError("unknown model action")
+                s.run_cell(code)
             elif url.path == "/api/reset":
                 s.reset()
             else:

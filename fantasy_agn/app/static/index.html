@@ -11,11 +11,16 @@
 <body>
 <header>
   <div class="brand">FANTASY <span>2.0</span></div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-view="analysis" role="tab">Analysis</button>
+    <button class="tab" data-view="model" role="tab">Model</button>
+    <button class="tab" data-view="docs" role="tab">Docs</button>
+  </nav>
   <nav id="stepper" aria-label="steps"></nav>
   <button id="reset" class="ghost" title="Start a new analysis">New analysis</button>
 </header>
 
-<main>
+<main id="main">
   <section id="codepanel" aria-label="code">
     <div class="codehead"><span id="pyver">Python · FANTASY 2.0</span>
       <a id="script" class="hidden tok" href="/api/session.py" download>⬇ session.py</a></div>
@@ -24,9 +29,10 @@
       <span>edit any cell · <kbd>Shift</kbd>+<kbd>Enter</kbd> runs it · variables: spec, c, model, r</span></div>
   </section>
 
-  <section id="work">
+  <!-- ============================== Analysis ============================== -->
+  <section id="view-analysis" class="view">
     <div class="card" id="card-read">
-      <h2><span class="num">1</span> Read a spectrum</h2>
+      <h2><span class="num">1</span> Read a spectrum <a class="help" data-doc="read" href="#">?</a></h2>
       <div id="drop" tabindex="0">
         <input type="file" id="file" accept=".fits,.fit,.fz,.txt,.dat,.csv,.json" hidden>
         <b>Drop a spectrum here</b> or <a href="#" id="browse">choose a file</a>
@@ -43,31 +49,41 @@
     </div>
 
     <div class="card" id="card-classify">
-      <h2><span class="num">2</span> Classify</h2>
+      <h2><span class="num">2</span> Classify <a class="help" data-doc="classify" href="#">?</a></h2>
       <p class="hint">Starlight, broad lines and narrow-line diagnostics (BPT, WHAN) decide the model.</p>
       <div class="row"><button id="btn-classify" class="primary" disabled>Classify</button>
         <span id="badge" class="badge hidden"></span></div>
     </div>
 
-    <div class="card" id="card-fit">
-      <h2><span class="num">3</span> Fit</h2>
+    <div class="card" id="card-model">
+      <h2><span class="num">3</span> Model <a class="help" data-doc="model" href="#">?</a></h2>
       <div class="row">
-        <label>Model <select id="model"></select></label>
+        <label>Start from <select id="preset"></select></label>
         <label>Broad components <input id="ncomp" type="number" min="1" max="4" value="2"></label>
-      </div>
-      <div class="row">
         <label class="check"><input id="outflow" type="checkbox" checked> outflow wing</label>
+        <button id="btn-preset" class="primary" disabled>Create model</button>
+      </div>
+      <div id="model-summary" class="hidden">
+        <div id="model-chips"></div>
+        <a href="#" id="open-editor">Edit components and parameters →</a>
+      </div>
+    </div>
+
+    <div class="card" id="card-fit">
+      <h2><span class="num">4</span> Fit <a class="help" data-doc="fit" href="#">?</a></h2>
+      <div class="row">
         <label>Errors <select id="errors">
           <option value="covariance">fast (covariance)</option>
           <option value="mc">Monte Carlo</option></select></label>
         <button id="btn-fit" class="primary" disabled>Fit</button>
+        <span class="hint" id="fit-hint"></span>
       </div>
     </div>
 
     <div id="message" role="status"></div>
 
     <div class="card hidden" id="card-results">
-      <h2><span class="num">4</span> Results</h2>
+      <h2><span class="num">5</span> Results <a class="help" data-doc="results" href="#">?</a></h2>
       <table id="results"></table>
       <div id="warnings"></div>
       <div class="downloads">
@@ -84,6 +100,89 @@
         <a class="tok" href="/api/figure.png?dl=1">⬇ PNG (300 dpi)</a>
       </figcaption>
     </figure>
+  </section>
+
+  <!-- ============================== Model editor ============================== -->
+  <section id="view-model" class="view hidden">
+    <div id="no-model" class="card">
+      <h2>No model yet</h2>
+      <p class="hint">Create one in step 3 of <a href="#" data-goto="analysis">Analysis</a>
+        (start from a preset), or start empty and add components below.</p>
+    </div>
+
+    <div class="card" id="components-card">
+      <h2>Components <a class="help" data-doc="model" href="#">?</a> <span class="hint" id="model-info"></span></h2>
+      <table class="grid" id="components"></table>
+    </div>
+
+    <div class="card">
+      <h2>Add a component</h2>
+      <div class="row">
+        <label>Type <select id="ctype">
+          <option value="Lines">emission lines (Lines)</option>
+          <option value="PowerLaw">power law</option>
+          <option value="BrokenPowerLaw">broken power law</option>
+          <option value="Polynomial">polynomial</option>
+          <option value="FeII">Fe II template</option>
+          <option value="BalmerContinuum">Balmer continuum</option>
+          <option value="HighOrderBalmer">high-order Balmer lines</option>
+          <option value="StellarPopulation">stellar population (host)</option>
+          <option value="HostGalaxy">host galaxy (PCA)</option>
+          <option value="Extinction">extinction</option>
+        </select></label>
+        <label>Name <input id="cname" type="text" placeholder="e.g. broad3" class="narrow"></label>
+      </div>
+      <div class="ctype-fields" data-for="Lines">
+        <div class="row">
+          <label>Role <select id="crole"><option>narrow</option><option selected>broad</option><option>outflow</option></select></label>
+          <label>Profile <select id="cprofile"><option>gaussian</option><option>lorentzian</option><option>voigt</option><option>gauss-hermite</option></select></label>
+        </div>
+        <div class="row">
+          <label>Lines <input id="cline" type="text" list="linelist" placeholder="type a line, e.g. Hb, [OIII]5007" class="narrow"></label>
+          <button id="cline-add" class="small">add line</button>
+          <span id="clines" class="chips"></span>
+        </div>
+        <datalist id="linelist"></datalist>
+        <div class="row lim">
+          <span>FWHM (km/s)</span><input id="fwhm0" type="number" placeholder="start"><input id="fwhm1" type="number" placeholder="min"><input id="fwhm2" type="number" placeholder="max">
+          <span>shift (km/s)</span><input id="shift0" type="number" placeholder="start"><input id="shift1" type="number" placeholder="min"><input id="shift2" type="number" placeholder="max">
+        </div>
+      </div>
+      <div class="ctype-fields hidden" data-for="PowerLaw BrokenPowerLaw">
+        <div class="row"><label>Pivot / break (Å) <input id="cpivot" type="number" placeholder="5100"></label></div>
+      </div>
+      <div class="ctype-fields hidden" data-for="Polynomial">
+        <div class="row"><label>Order <input id="corder" type="number" min="0" max="8" value="2"></label></div>
+      </div>
+      <div class="ctype-fields hidden" data-for="FeII">
+        <div class="row lim"><span>FWHM (km/s)</span><input id="ffwhm0" type="number" placeholder="start"><input id="ffwhm1" type="number" placeholder="min"><input id="ffwhm2" type="number" placeholder="max"></div>
+      </div>
+      <div class="ctype-fields hidden" data-for="Extinction">
+        <div class="row"><label>Law <select id="claw"><option value="F99">Fitzpatrick 1999</option><option value="calzetti">Calzetti 2000</option></select></label></div>
+      </div>
+      <div class="row"><button id="btn-add" class="primary">Add component</button></div>
+    </div>
+
+    <div class="card" id="params-card">
+      <h2>Parameters <a class="help" data-doc="params" href="#">?</a></h2>
+      <div class="row">
+        <label>Filter <input id="pfilter" type="text" placeholder="e.g. broad, fwhm, [OIII]" class="narrow"></label>
+        <label class="check"><input id="pfluxes" type="checkbox"> show line fluxes</label>
+        <button id="btn-apply" class="primary" disabled>Apply changes</button>
+        <button id="btn-discard" disabled>Discard</button>
+      </div>
+      <datalist id="paramlist"></datalist>
+      <div class="tablewrap"><table class="grid" id="params"></table></div>
+    </div>
+  </section>
+
+  <!-- ============================== Docs ============================== -->
+  <section id="view-docs" class="view hidden">
+    <aside id="docnav">
+      <input id="docsearch" type="search" placeholder="Search the documentation">
+      <div id="doclist"></div>
+    </aside>
+    <article id="doc"></article>
   </section>
 </main>
 <script src="/static/app.js"></script>

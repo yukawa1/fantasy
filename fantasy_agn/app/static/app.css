@@ -119,3 +119,63 @@ figure { margin: 0; background: var(--card); border: 1px solid var(--line); bord
 figure img { width: 100%; height: auto; display: block; }
 figcaption { margin-top: 6px; }
 .hidden { display: none !important; }
+
+/* ---------- tabs and views ---------- */
+.tabs { display: flex; gap: 4px; }
+.tab { border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; color: var(--muted); font-weight: 600; }
+.tab.active { background: #fff1e8; color: var(--accent); }
+main.docs { grid-template-columns: 1fr; }
+main.docs #codepanel { display: none; }
+.help {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  border: 1px solid #cfd4da; color: var(--muted); font-size: 12px; text-decoration: none; margin-left: 2px;
+}
+.help:hover { border-color: var(--accent); color: var(--accent); }
+button.small { padding: 4px 10px; font-size: 13px; }
+input.narrow { width: 220px !important; }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; background: #eef1f4; border-radius: 999px;
+  padding: 2px 4px 2px 10px; font-size: 13px;
+}
+.chip button { border: 0; background: transparent; padding: 0 6px; color: var(--muted); }
+#model-chips { margin: 4px 0 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+#model-chips .chip { padding-right: 10px; }
+.row.lim input { width: 76px; }
+.row.lim span { color: #374151; font-size: 14px; }
+
+/* ---------- editor tables ---------- */
+table.grid { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+table.grid th { text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid var(--line); padding: 4px 6px; position: sticky; top: 0; background: var(--card); }
+table.grid td { border-bottom: 1px solid #f0f1f3; padding: 3px 6px; vertical-align: middle; }
+table.grid td.name { font-family: Menlo, Consolas, monospace; font-size: 12.5px; white-space: nowrap; }
+table.grid input[type=number], table.grid input[type=text] { width: 96px; padding: 3px 5px; font-size: 13px; }
+table.grid input.tie { width: 150px; }
+table.grid tr.changed td { background: #fff8e6; }
+table.grid tr.tied td.name { color: var(--muted); }
+table.grid .unit { color: var(--muted); font-size: 12px; }
+.tablewrap { max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+td .lines { color: var(--muted); font-size: 12.5px; }
+.del { border: 0; background: transparent; color: #b42318; font-size: 15px; padding: 2px 8px; }
+
+/* ---------- docs ---------- */
+#view-docs { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
+#view-docs.hidden { display: none; }
+@media (max-width: 900px) { #view-docs { grid-template-columns: 1fr; } }
+#docnav { position: sticky; top: 64px; }
+#docsearch { width: 100%; margin-bottom: 10px; font: inherit; padding: 7px 9px; border: 1px solid #cfd4da; border-radius: 7px; }
+#doclist .sec { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 4px; }
+#doclist a { display: block; padding: 3px 8px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+#doclist a.active, #doclist a:hover { background: #fff1e8; color: var(--accent); }
+#doc { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 26px; max-width: 920px; line-height: 1.55; }
+#doc h1 { font-size: 22px; margin-top: 0; }
+#doc h3 { font-size: 16px; margin: 20px 0 6px; }
+#doc pre { background: var(--code-bg); color: var(--code-ink); padding: 10px 12px; border-radius: 8px; overflow: auto; font-size: 12.5px; }
+#doc code { font-family: Menlo, Consolas, monospace; font-size: 12.5px; background: #f1f2f4; padding: 1px 4px; border-radius: 4px; }
+#doc pre code { background: none; padding: 0; }
+#doc table.doc { border-collapse: collapse; margin: 8px 0; }
+#doc table.doc td, #doc table.doc th { border-bottom: 1px solid var(--line); padding: 4px 12px 4px 0; text-align: left; vertical-align: top; }
+#doc .api { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 14px; }
+#doc .api h3 code { background: #fff1e8; color: #7a3300; font-size: 13px; white-space: pre-wrap; }
+#doc mark { background: #ffe8a3; }
+#doc kbd { background: #f1f2f4; border: 1px solid #cfd4da; color: var(--ink); }

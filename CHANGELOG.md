@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- App: **Model** tab (start from a preset, add/remove components with a form, edit
+  parameter values, limits, fixed and ties in a table; every change is written as code)
+  and **Docs** tab (guides, line list and an API reference generated from the docstrings,
+  with search). Steps are now read → classify → model → fit → results.
 - **FANTASY app** (`fantasy-app`, `python -m fantasy_agn.app`, `fa.app()`): a local web
   application (standard library server, no extra dependencies) with the steps
   read → classify → fit → results and an editable code panel: buttons generate code into
