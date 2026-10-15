@@ -6,6 +6,14 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- `fa.classify(spec)`: classifies a spectrum before fitting: stellar continuum
+  (E-MILES + featureless power law, dust screen), broad-line test (ΔBIC, S/N, FWHM),
+  BPT [NII]/[SII]/[OI] diagrams (Kauffmann 2003; Kewley 2001, 2006) and WHAN
+  (Cid Fernandes 2011). Classes: type1, type1_host, seyfert2, liner, composite,
+  starforming, retired, passive; `.model()` gives the recommended preset, `.plot()`
+  the diagnostic diagrams. Validated against MPA-JHU on 11 SDSS galaxies.
+- New presets `type2` (host + featureless continuum + narrow lines + outflow) and
+  `galaxy` (stellar populations + narrow lines).
 - `presets.optical(physical=True)`: physically motivated decomposition after QSFit
   (Calderone et al. 2017): one AGN power law (α_λ = −1.7, Selsing et al. 2016;
   `slope=None` fits it within −2.33…−1.0), stellar host, velocity-broadened Balmer

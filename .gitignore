@@ -11,3 +11,4 @@ dist/
 examples/sdss_rm/
 .claude/
 examples/desi/
+examples/classes/

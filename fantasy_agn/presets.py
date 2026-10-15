@@ -14,7 +14,8 @@ from .components import (BalmerContinuum, BrokenPowerLaw, Extinction, FeII, High
 from .model import Model
 import numpy as np
 
-__all__ = ("hbeta", "halpha", "optical", "mgii", "civ", "available", "auto", "variants",
+__all__ = ("hbeta", "halpha", "optical", "mgii", "civ", "type2", "galaxy", "available", "auto",
+           "variants",
            "outflow_kinematics",
            "PRESETS")
 
@@ -379,8 +380,68 @@ def civ(broad_components=1, broad_profile="gaussian", wave_range=(1450, 1720)):
     return m
 
 
+TYPE2_NARROW = ["[OII]3726", "[OII]3729", "[NeIII]3869", "[NeIII]3968", "He", "Hd", "Hg",
+                "[OIII]4363", "HeII4686", "Hb", "[OIII]4959", "[OIII]5007", "[NI]5198", "[NI]5200",
+                "HeI5876", "[OI]6300", "[OI]6364", "[NII]6548", "Ha", "[NII]6583", "HeI6678",
+                "[SII]6716", "[SII]6731"]
+_NARROW_RATIOS = {"[OIII]4959": ("[OIII]5007", OIII_RATIO), "[NII]6548": ("[NII]6583", NII_RATIO),
+                  "[OI]6364": ("[OI]6300", OI_RATIO), "[NeIII]3968": ("[NeIII]3869", NEIII_RATIO)}
+
+
+def _narrow_galaxy(m, outflow):
+    m.add(Lines("narrow", TYPE2_NARROW, role="narrow", ratios=_NARROW_RATIOS,
+                fwhm=(300, 50, 1200), shift=(0, -600, 600)))
+    if outflow:
+        m.add(Lines("outflow", ["Hb", "[OIII]4959", "[OIII]5007", "[NII]6548", "Ha", "[NII]6583"],
+                    role="outflow", ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO),
+                                            "[NII]6548": ("[NII]6583", NII_RATIO)},
+                    **OUTFLOW))
+
+
+def type2(outflow=True, host=True, featureless=True, coronal=False, extinction=False,
+          wave_range=(3700, 6900)):
+    """
+    Type 2 AGN (Seyfert 2, LINER, composite): stellar-population host (with its
+    Balmer absorption, which matters for H-beta), an optional weak featureless
+    AGN continuum (power law, alpha_lambda = -1.7: scattered light), narrow
+    lines from [OII]3727 to [SII]6731 with shared kinematics and an outflow
+    wing on H-beta, [OIII], [NII] and H-alpha. No broad lines.
+
+    :param featureless: add the featureless power-law continuum.
+    :param coronal: add coronal lines (see :func:`optical`).
+    :param extinction: fit an intrinsic E(B-V) of the emission (not the host).
+    """
+    m = Model(_host(host))
+    if featureless:
+        m.add(PowerLaw("continuum", pivot=5100))
+        m.fix("continuum.index", PHYSICAL_SLOPE)
+    _narrow_galaxy(m, outflow)
+    if coronal:
+        _coronal(m, wave_range)
+    if extinction:
+        m.add(Extinction(law=extinction if isinstance(extinction, str) else "F99"))
+    m.wave_range = wave_range
+    return m
+
+
+def galaxy(host=True, outflow=False, extinction=False, wave_range=(3700, 6900)):
+    """
+    Star-forming, retired or passive galaxy: stellar populations (sigma*, v*,
+    age, metallicity) and narrow emission lines with shared kinematics, no
+    AGN continuum. ``outflow=True`` adds a broad wing to the strong lines
+    (galactic winds).
+    """
+    m = Model(_host(host))
+    _narrow_galaxy(m, outflow)
+    if extinction:
+        m.add(Extinction(law=extinction if isinstance(extinction, str) else "F99"))
+    m.wave_range = wave_range
+    return m
+
+
 DEFAULT_RANGES = {"optical": (3700, 6900)}   # presets whose default window depends on options
-PRESETS = {"optical": optical, "hbeta": hbeta, "halpha": halpha, "mgii": mgii, "civ": civ}
+PRESETS = {"optical": optical, "hbeta": hbeta, "halpha": halpha, "mgii": mgii, "civ": civ,
+           "type2": type2, "galaxy": galaxy}
 
 
 def available(spectrum):

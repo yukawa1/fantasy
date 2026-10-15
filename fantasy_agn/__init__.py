@@ -21,6 +21,7 @@ from .host import StellarPopulation
 from .components import (BalmerContinuum, BrokenPowerLaw, Component, Extinction, FeII,
                          HighOrderBalmer, HostGalaxy, Lines, Polynomial, PowerLaw)
 from .extinction import fitzpatrick99
+from .classify import Classification, classify
 from .compare import Comparison, compare
 from .fitting import fit, guess
 from .gui import gui
@@ -33,6 +34,7 @@ from .spectrum import Spectrum, read
 
 __all__ = [
     "read", "Spectrum", "Model", "fit", "guess", "fit_epochs", "compare", "Comparison",
+    "classify", "Classification",
     "presets", "gui",
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
     "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "StellarPopulation",

@@ -720,3 +720,76 @@ def test_balmer_decrement_warning():
     assert "Halpha/Hbeta" in r.summary(short=True)
     assert fa.fit(spec, fa.Model(fa.PowerLaw("continuum", pivot=5100),
                                  fa.Lines("broad", ["Hb"])), verbose=False).balmer_decrement() is None
+
+
+def _synthetic_galaxy(n2, o3, s2, o1, ha=2000.0, broad_ha=0.0, seed=0):
+    """Old stellar population (sigma* 150 km/s) plus narrow lines with given log ratios."""
+    x = np.arange(3750.0, 6950.0, 1.0)
+    ctx = {"medium": "vacuum", "resolution": 150.0}
+    host = fa.StellarPopulation()
+    p = np.zeros(len(host.params))
+    p[host.n_templates // 2] = 1.0
+    p[host.n_templates:host.n_templates + 2] = 0.0, 150.0
+    stars = host.evaluate(x, p, ctx)[0]
+    stars *= 100.0 / np.interp(5100, x, stars)
+    hb = ha / 2.86
+    flux = {"Hb": hb, "[OIII]5007": hb * 10 ** o3, "[OIII]4959": hb * 10 ** o3 / 2.98,
+            "Ha": ha, "[NII]6583": ha * 10 ** n2, "[NII]6548": ha * 10 ** n2 / 3.05,
+            "[SII]6716": 0.55 * ha * 10 ** s2, "[SII]6731": 0.45 * ha * 10 ** s2,
+            "[OI]6300": ha * 10 ** o1, "[OI]6364": ha * 10 ** o1 / 3.0}
+    narrow = fa.Lines("n", list(flux), fwhm=(300, 50, 1000))
+    q = np.array(list(flux.values()) + [0.0, 300.0])
+    y = stars + narrow.evaluate(x, q, ctx)[0]
+    if broad_ha:
+        b = fa.Lines("b", ["Hb", "Ha"])
+        y = y + b.evaluate(x, np.array([broad_ha / 3.0, broad_ha, 0.0, 5000.0]), ctx)[0]
+    err = np.full(x.size, 0.8)
+    y = y + np.random.default_rng(seed).normal(0, 0.8, x.size)
+    return fa.Spectrum(x, y, err, medium="vacuum", resolution=150.0, rest_frame=True, z=0.03,
+                       name="synthetic")
+
+
+@needs_templates
+@pytest.mark.parametrize("ratios, label", [
+    ((-0.6, -0.3, -0.5, -1.6), "starforming"),
+    ((0.0, 1.0, -0.3, -1.0), "seyfert2"),
+    ((0.25, 0.2, 0.05, -0.5), "liner"),
+])
+def test_classify_narrow_line_galaxies(ratios, label):
+    c = fa.classify(_synthetic_galaxy(*ratios))
+    assert c.label == label, c
+    m = c.measurements
+    assert abs(m["log_nii_ha"] - ratios[0]) < 0.08 and abs(m["log_oiii_hb"] - ratios[1]) < 0.1
+    assert m["host_fraction_5100"] > 0.9 and abs(m["sigma_star"] - 150) < 40
+    assert c.model().__class__.__name__ == "Model"
+
+
+@needs_templates
+def test_classify_type1_and_passive():
+    c = fa.classify(_synthetic_galaxy(0.0, 0.9, -0.3, -1.0, broad_ha=12000.0))
+    assert c.label == "type1_host" and abs(c.measurements["broad_fwhm"] - 5000) < 600
+    passive = fa.classify(_synthetic_galaxy(0.0, 0.0, -0.3, -1.0, ha=5.0))
+    assert passive.label == "passive"
+    fig = c.plot()
+    assert len(fig.axes) == 4
+
+
+def test_bpt_boundaries():
+    from fantasy_agn.classify import kauffmann03, kewley01, kewley06
+    assert kauffmann03(-0.5) < kewley01(-0.5)                  # composite region exists
+    assert np.isclose(kewley01(-0.5), 0.61 / -0.97 + 1.19)
+    assert kewley06(0.0, "sii") == 0.76 and kewley06(0.0, "oi") == 1.30
+
+
+SDSS_CLASSES = {"spec-0630-52050-0245.fits": "starforming", "spec-2139-53878-0330.fits": "seyfert2",
+                "spec-1614-53120-0408.fits": "liner", "spec-0394-51913-0625.fits": "passive",
+                "spec-2293-53730-0278.fits": "type1_host", "spec-0615-52347-0108.fits": "type1"}
+
+
+@needs_templates
+@pytest.mark.parametrize("fname, label", SDSS_CLASSES.items())
+def test_classify_sdss(fname, label):
+    path = os.path.join(os.path.dirname(__file__), "..", "examples", "classes", fname)
+    if not os.path.exists(path):
+        pytest.skip("SDSS class examples not downloaded")
+    assert fa.classify(fa.read(path).to_rest_frame()).label == label
