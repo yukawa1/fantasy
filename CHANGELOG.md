@@ -6,6 +6,17 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Presets for every class of `classify()`: `seyfert2`, `composite`, `liner`, `starforming`,
+  `passive` (= `retired`), chosen by fitting SDSS examples of each class one ingredient at a
+  time (host dust; BC03 young populations for star-forming galaxies; two narrow-line systems
+  and an outflow wing incl. [SII] for Seyfert 2s; Case B + gas extinction for H II regions;
+  free AGN line fluxes). χ²/ν: star-forming 6.9 → 2.8 and 6.2 → 2.2, composite 4.6 → 1.5,
+  Seyfert 2 2.1 → 1.3, 2.0 → 1.1, 4.1 → 2.1. `classify()` and the app recommend them.
+- Lines: H9–H12, [NII] 5755, [SIII] 6312.
+
+### Fixed
+- SDSS spectra: the instrumental resolution now follows the wavelength (from `wdisp`;
+  ~170 km/s at 3800 Å, ~130 km/s at 8000 Å) instead of one median value.
 - BC03 (Bruzual & Charlot 2003, GALAXEV) stellar populations for the host: `host="bc03"`
   in the presets, `StellarPopulation(templates="bc03")`, `classify(templates=...)`; app:
   host-galaxy menu (E-MILES, BC03, PCA, none) and template choice in the model editor.

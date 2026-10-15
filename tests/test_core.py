@@ -1002,7 +1002,7 @@ def test_app_preset_options():
     assert s.preset_code("optical", 2, True, coronal=True, red=True, oi6046=False).startswith(
         "model = fa.presets.optical(broad_components=2, outflow=True, coronal=True, red=True)")
     assert "red" not in s.preset_code("hbeta", 1, False, coronal=True, red=True)      # hbeta has no red side
-    assert "coronal" not in s.preset_code("galaxy", 1, False, coronal=True)
+    assert "coronal" not in s.preset_code("galaxy (simple)", 1, False, coronal=True)
     assert "physical=True" in s.preset_code("optical (physical)", 2, True, coronal=True)
 
 
@@ -1036,3 +1036,31 @@ def test_templates_download_automatically(monkeypatch, tmp_path):
     with pytest.raises(Exception):
         templates.download("fsps")
     assert not list(tmp_path.rglob("*fsps*"))                     # no half-written file left
+
+
+def test_class_presets():
+    for name in ("seyfert2", "composite", "liner", "starforming", "passive"):
+        m = getattr(fa.presets, name)(host="pca")
+        assert m.wave_range == (3700, 7500.0) and "narrow" in [c.name for c in m.components]
+        assert getattr(fa.presets, name)(host="pca", red=False).wave_range == (3700, 6900)
+    sy = fa.presets.seyfert2(host="pca")
+    assert "narrow_hi.[OIII]5007.flux" in sy.params.names and "outflow.[SII]6716.flux" in sy.params.names
+    assert sy.params["continuum.index"].fixed
+    sf = fa.presets.starforming(host="pca", wolf_rayet=True)
+    p = sf.params
+    assert p["narrow.Ha.flux"].tie[0] == "narrow.Hb.flux" and abs(p["narrow.Ha.flux"].tie[1] - 2.86) < 1e-9
+    assert p["narrow.H10.flux"].tie is not None and "extinction.ebv" in p.names
+    assert "wolf_rayet.WR4650.flux" in p.names and "continuum.amp" not in p.names
+    assert "broad.Ha.flux" in fa.presets.liner(host="pca", broad=True).params.names
+    assert fa.presets.passive(host="pca").params["narrow.fwhm"].max == 600
+    assert fa.presets.retired is fa.presets.passive
+    from fantasy_agn.classify import Classification
+    assert Classification.RECOMMENDED["seyfert2"][0] == "seyfert2"
+    assert Classification.RECOMMENDED["retired"][0] == "passive"
+
+
+def test_sdss_resolution_curve():
+    s = fa.read(os.path.join(EXAMPLES, "spec-1059-52618-0453.fits"))
+    w, f = s.resolution_curve
+    assert f[np.argmin(abs(w - 3900))] > f[np.argmin(abs(w - 8000))] + 20      # blue end is worse
+    assert abs(np.median(f) - s.resolution) < 15

@@ -95,9 +95,9 @@ diagram (Cid Fernandes et al. 2011).</li>
 <tr><th>class</th><th>meaning</th><th>recommended model</th></tr>
 <tr><td>type1</td><td>broad lines, AGN-dominated</td><td>optical</td></tr>
 <tr><td>type1_host</td><td>broad lines, host ≥ 50% at 5100 Å</td><td>optical (physical)</td></tr>
-<tr><td>seyfert2, liner, composite</td><td>narrow-line AGN</td><td>type2</td></tr>
-<tr><td>starforming</td><td>below the Kauffmann line</td><td>galaxy</td></tr>
-<tr><td>retired, passive</td><td>EW(Hα) &lt; 3 Å / &lt; 0.5 Å</td><td>galaxy</td></tr>
+<tr><td>seyfert2, liner, composite</td><td>narrow-line AGN</td><td>seyfert2, liner, composite</td></tr>
+<tr><td>starforming</td><td>below the Kauffmann line</td><td>starforming</td></tr>
+<tr><td>retired, passive</td><td>EW(Hα) &lt; 3 Å / &lt; 0.5 Å</td><td>passive</td></tr>
 </table>
 <p><code>c.uncertain</code> is set when a ratio is within its error of a boundary or a
 diagnostic is missing. <code>c.plot()</code> shows the BPT and WHAN diagrams,
@@ -122,8 +122,17 @@ model</pre>
 <i>Also include</i> boxes of step 3. Look at the residuals: strong positive residuals at 3759, 5721, 6087 Å mean
 coronal lines.</td></tr>
 <tr><td><code>mgii</code>, <code>civ</code></td><td>UV lines with UV FeII</td></tr>
-<tr><td><code>type2</code></td><td>stellar host, weak featureless continuum, narrow lines, outflow wing</td></tr>
-<tr><td><code>galaxy</code></td><td>stellar populations and narrow lines</td></tr>
+<tr><td><code>seyfert2</code>, <code>composite</code></td><td>stellar populations with dust, weak featureless
+continuum (scattered light), narrow lines [O II] 3727&ndash;[O II] 7330 in two kinematic systems (high ionisation:
+[Ne III], [O III], He II, [Ar III]; low: Balmer, [N II], [S II], [O I]&hellip;), outflow wing incl. [S II]</td></tr>
+<tr><td><code>liner</code></td><td>old stellar population with dust, one (possibly broad) narrow-line system;
+<code>broad=True</code> for a LINER 1.9</td></tr>
+<tr><td><code>starforming</code></td><td>BC03 young + old populations with dust, high-order Balmer series, He I,
+auroral lines ([O III] 4363, [N II] 5755, [S III] 6312, [O II] 7320), Case B Balmer ratios + gas E(B-V), wing on
+the strong lines; <code>wolf_rayet=True</code> for WR galaxies</td></tr>
+<tr><td><code>passive</code> (<code>retired</code>)</td><td>stellar populations with dust; weak lines with
+limited widths</td></tr>
+<tr><td><code>type2</code>, <code>galaxy</code></td><td>the simpler earlier versions</td></tr>
 </table>
 <h3>Components</h3>
 <table class="doc">
@@ -146,6 +155,29 @@ km/s. Line names come from the line list (see <i>Line list</i>); add your own as
 <p>In the <b>Model</b> tab you can do all of this without typing: choose a preset, add
 components from a form, remove them, and edit the parameter table. Each change is
 written as code into a cell.</p>
+"""),
+    ("classes", "Models for each class", """
+<p>The presets for narrow-line galaxies were chosen by fitting SDSS examples of every class with
+models that differ in one ingredient at a time, and keeping what the data support (BIC) and what
+gives physical results (σ★ against the SDSS value, Balmer decrement, line ratios against MPA-JHU).</p>
+<table class="doc">
+<tr><th>ingredient</th><th>result</th><th>used in</th></tr>
+<tr><td>dust screen on the starlight</td><td>χ²/ν 4.6 → 1.5 (composite), 4.2 → 2.6 (Seyfert 2); σ★ close
+to SDSS, ages no longer at the 15 Gyr limit</td><td>all</td></tr>
+<tr><td>young populations (BC03 from 1 Myr)</td><td>ΔBIC ≈ −8000 for star-forming galaxies; with E-MILES
+(≥ 63 Myr) σ★ runs to its limit</td><td>starforming</td></tr>
+<tr><td>two narrow-line systems</td><td>ΔBIC −74, −374, −97 (Seyfert 2); −8 composite; +10 LINER</td>
+<td>seyfert2, composite</td></tr>
+<tr><td>outflow wing incl. [S II]</td><td>ΔBIC −90 to −360 (Seyfert 2, composite), −400 to −1800
+(star-forming); +16 LINER</td><td>all but liner, passive</td></tr>
+<tr><td>Case B Balmer ratios + gas E(B-V)</td><td>physical E(B-V) for H II regions; for AGN it changed
+[O III]/Hβ by up to 0.1 dex and [N II]/Hα by 0.15 dex (LINER, weak Hβ)</td><td>starforming</td></tr>
+<tr><td>weak broad Hα in a LINER</td><td>not detected (S/N 3.5, width at the limit)</td><td>liner(broad=True)</td></tr>
+</table>
+<p>For AGN the line fluxes are free; the Balmer decrement then measures the reddening
+(observed Hα/Hβ against 3.1). Passive galaxies get weak lines with limited widths, so that they cannot
+absorb template mismatch. The sample was small (8 galaxies), so treat these as good defaults, not rules:
+look at the residuals and compare alternatives with <code>fa.compare</code>.</p>
 """),
     ("params", "Parameters, limits and ties", """
 <p>Every parameter has a value, limits and a status (free, fixed or tied). Names are

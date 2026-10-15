@@ -31,12 +31,17 @@ MODELS = {
     "optical (physical)": ("optical", {"physical": True}),
     "hbeta": ("hbeta", {}),
     "halpha": ("halpha", {}),
-    "type2": ("type2", {}),
-    "galaxy": ("galaxy", {}),
+    "seyfert2": ("seyfert2", {}),
+    "liner": ("liner", {}),
+    "composite": ("composite", {}),
+    "starforming": ("starforming", {}),
+    "passive / retired": ("passive", {}),
+    "type2 (simple)": ("type2", {}),
+    "galaxy (simple)": ("galaxy", {}),
 }
-CLASS_MODEL = {"type1": "optical", "type1_host": "optical (physical)", "seyfert2": "type2",
-               "liner": "type2", "composite": "type2", "unknown": "type2",
-               "starforming": "galaxy", "retired": "galaxy", "passive": "galaxy"}
+CLASS_MODEL = {"type1": "optical", "type1_host": "optical (physical)", "seyfert2": "seyfert2",
+               "liner": "liner", "composite": "composite", "unknown": "type2 (simple)",
+               "starforming": "starforming", "retired": "passive / retired", "passive": "passive / retired"}
 MAX_OUTPUT = 6000
 
 
@@ -367,7 +372,11 @@ class Session:
         opts = dict(broad_components=int(broad_components), outflow=bool(outflow))
         opts.update({k: bool(v) for k, v in extra.items() if v is not None})
         for k, v in opts.items():
-            if k in params and (k in ("broad_components", "outflow") or v):
+            if k not in params:
+                continue
+            # write an option when it differs from the preset's default (e.g. red=False
+            # for the class presets, which fit to 7500 A by default)
+            if k in ("broad_components", "outflow") or v != params[k].default:
                 kw[k] = v
         if host not in (None, "", "default") and "host" in params:
             if host == "none":

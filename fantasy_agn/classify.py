@@ -158,9 +158,9 @@ class Classification:
     """
 
     RECOMMENDED = {"type1": ("optical", {}), "type1_host": ("optical", {"physical": True}),
-                   "seyfert2": ("type2", {}), "liner": ("type2", {}),
-                   "composite": ("type2", {}), "starforming": ("galaxy", {}),
-                   "retired": ("galaxy", {}), "passive": ("galaxy", {}),
+                   "seyfert2": ("seyfert2", {}), "liner": ("liner", {}),
+                   "composite": ("composite", {}), "starforming": ("starforming", {}),
+                   "retired": ("passive", {}), "passive": ("passive", {}),
                    "unknown": ("type2", {})}
 
     def __init__(self, spectrum, label, uncertain, reason, measurements, stellar, lines,

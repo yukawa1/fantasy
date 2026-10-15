@@ -297,16 +297,24 @@ def _read_sdss(path):
         with np.errstate(divide="ignore"):
             # Bad pixels have ivar = 0; they get an infinite error and are skipped.
             err = np.where(ivar > 0, 1 / np.sqrt(np.where(ivar > 0, ivar, 1)), np.inf)
-        resolution = 0.0
+        resolution, curve = 0.0, None
         if "wdisp" in names:
+            # wdisp: Gaussian sigma of the line-spread function in pixels; the
+            # resolution changes along the spectrum (~170 km/s FWHM at 3800 A,
+            # ~130 km/s at 8000 A), so keep the whole curve
             wdisp = col("wdisp")
             dloglam = np.median(np.diff(col("loglam")))
-            sig_kms = wdisp * dloglam * np.log(10) * C_KMS
+            fwhm_kms = 2.3548 * wdisp * dloglam * np.log(10) * C_KMS
             ok = (wdisp > 0) & np.isfinite(err)
-            resolution = float(2.3548 * np.median(sig_kms[ok])) if ok.any() else 0.0
+            if ok.any():
+                resolution = float(np.median(fwhm_kms[ok]))
+                if ok.sum() > 20:
+                    from scipy.ndimage import median_filter
+                    smooth = median_filter(np.interp(wave, wave[ok], fwhm_kms[ok]), 25, mode="nearest")
+                    curve = (wave, smooth)
         return dict(wave=wave, flux=flux, err=err, z=z, name=_name(path), medium="vacuum",
                     resolution=resolution, flux_unit=1e-17, ra=h0.get("PLUG_RA"),
-                    dec=h0.get("PLUG_DEC"), mjd=h0.get("MJD"),
+                    dec=h0.get("PLUG_DEC"), mjd=h0.get("MJD"), resolution_curve=curve,
                     meta={"plate": h0.get("PLATEID"), "fiber": h0.get("FIBERID")})
 
 

@@ -675,7 +675,10 @@ function setState(s) {
   state = s;
   clockOffset = s.now - Date.now() / 1000;
   if (!$("preset").options.length) $("preset").innerHTML = s.models.map((m) => `<option>${esc(m)}</option>`).join("");
-  if (newRecommendation) { $("preset").value = s.recommended.model; $("ncomp").value = s.recommended.broad_components; }
+  if (newRecommendation) {
+    $("preset").value = s.recommended.model; $("ncomp").value = s.recommended.broad_components;
+    presetDefaults();
+  }
   renderPresetOptions();
   renderHost();
   $("pyver").innerHTML = `<span class="dotok"></span>Python ${esc(s.python)}`;
@@ -768,7 +771,9 @@ $("host").addEventListener("change", renderHost);
 $("btn-tpl").onclick = () => post("/api/templates", { name: $("btn-tpl").dataset.name });
 // which options the chosen preset supports (optical has all three, hbeta/halpha only coronal lines)
 const PRESET_OPTS = { "optical": ["coronal", "oi6046", "red"], "optical (physical)": ["coronal", "oi6046", "red"],
-                      "hbeta": ["coronal"], "halpha": ["coronal"], "type2": ["coronal"], "galaxy": [] };
+                      "hbeta": ["coronal"], "halpha": ["coronal"], "seyfert2": ["coronal", "red"],
+                      "liner": ["red"], "composite": ["red"], "starforming": ["red"], "passive / retired": ["red"],
+                      "type2 (simple)": ["coronal"], "galaxy (simple)": [] };
 function renderPresetOptions() {
   const ok = PRESET_OPTS[$("preset").value] || [];
   for (const [id, k] of [["opt-coronal", "coronal"], ["opt-oi", "oi6046"], ["opt-red", "red"]]) {
@@ -778,7 +783,9 @@ function renderPresetOptions() {
   $("opts-hint").textContent = ok.length < 3 ? `${$("preset").value}: ` +
     (ok.length ? "only coronal lines can be added to this model" : "no optional line groups") : "";
 }
-$("preset").addEventListener("change", renderPresetOptions);
+const RED_DEFAULT = ["seyfert2", "liner", "composite", "starforming", "passive / retired"];
+function presetDefaults() { $("opt-red").checked = RED_DEFAULT.includes($("preset").value); }
+$("preset").addEventListener("change", () => { presetDefaults(); renderPresetOptions(); });
 $("btn-preset").onclick = () => modelAction(Object.assign({ action: "preset" }, presetOptions()));
 $("btn-fit").onclick = () => post("/api/fit", Object.assign({ errors: $("errors").value }, presetOptions()));
 $("reset").onclick = () => { lastFigure = -1; modelSig = null; view = null; post("/api/reset"); };

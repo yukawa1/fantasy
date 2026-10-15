@@ -14,7 +14,8 @@ from .components import (BalmerContinuum, BrokenPowerLaw, Extinction, FeII, High
 from .model import Model
 import numpy as np
 
-__all__ = ("hbeta", "halpha", "optical", "mgii", "civ", "type2", "galaxy", "available", "auto",
+__all__ = ("hbeta", "halpha", "optical", "mgii", "civ", "type2", "galaxy", "seyfert2", "liner",
+           "composite", "starforming", "passive", "retired", "available", "auto",
            "variants",
            "outflow_kinematics",
            "PRESETS")
@@ -451,9 +452,190 @@ def galaxy(host=True, outflow=False, extinction=False, wave_range=(3700, 6900)):
     return m
 
 
-DEFAULT_RANGES = {"optical": (3700, 6900)}   # presets whose default window depends on options
+# ---------------------------------------------------------------------------
+# Narrow-line galaxies: one preset per class of fantasy_agn.classify. The
+# choices follow fits of SDSS examples of every class (see the documentation):
+# a dust screen on the starlight (chi2/nu 4.6 -> 1.5 for a composite), young
+# populations for star-forming galaxies (BC03 from 1 Myr; dBIC ~ -8000), two
+# narrow-line systems and an outflow wing including [SII] for Seyfert 2s
+# (dBIC -70 to -370 each), free line fluxes for AGN (Case B ties moved
+# [OIII]/Hb by up to 0.1 dex), Case B + gas extinction for HII regions.
+# ---------------------------------------------------------------------------
+# H8 3889 includes HeI 3889 (0.4 A apart, not separable)
+NARROW_FULL = ["[OII]3726", "[OII]3729", "[NeIII]3869", "H8", "[NeIII]3968", "He",
+               "[SII]4069", "[SII]4076", "Hd", "Hg", "[OIII]4363", "HeI4471", "HeII4686", "Hb",
+               "[OIII]4959", "[OIII]5007", "[NI]5198", "[NI]5200", "[NII]5755", "HeI5876",
+               "[OI]6300", "[SIII]6312", "[OI]6364", "[NII]6548", "Ha", "[NII]6583", "HeI6678",
+               "[SII]6716", "[SII]6731", "HeI7065", "[ArIII]7136", "[OII]7320", "[OII]7330"]
+HIGH_IONISATION = {"[NeIII]3869", "[NeIII]3968", "[OIII]4363", "HeII4686", "[OIII]4959",
+                   "[OIII]5007", "[ArIII]7136"}
+HIGH_BALMER = ["H12", "H11", "H10", "H9"]
+# Case B recombination, 10^4 K, 100 cm^-3 (Storey & Hummer 1995), relative to H-beta
+CASE_B = {"Ha": 2.86, "Hg": 0.468, "Hd": 0.259, "He": 0.159, "H8": 0.105, "H9": 0.0731,
+          "H10": 0.0530, "H11": 0.0397, "H12": 0.0305}
+SF_AGES = (0.001, 0.003, 0.006, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 13.0)
+WING_LINES = ["[NeIII]3869", "Hb", "[OIII]4959", "[OIII]5007", "[NII]6548", "Ha", "[NII]6583",
+              "[SII]6716", "[SII]6731"]
+_ALL_RATIOS = dict(_NARROW_RATIOS)
+
+
+def _window(red, wave_range):
+    return wave_range or (3700, RED_END if red else 6900)
+
+
+def _inside(names, wave_range):
+    from .lines import line_wavelength
+    return [n for n in names if wave_range[0] < line_wavelength(n) < wave_range[1]]
+
+
+def _lines(name, names, case_b=None, **kw):
+    ratios = {a: b for a, b in _ALL_RATIOS.items() if a in names and b[0] in names}
+    if case_b and "Hb" in names:
+        ratios.update({a: ("Hb", v) for a, v in case_b.items() if a in names})
+    return Lines(name, names, ratios=ratios, **kw)
+
+
+def _stars(host, young=False):
+    """Stellar populations with a dust screen (needed for the continuum shape)."""
+    from .host import StellarPopulation
+    if host == "pca":
+        return HostGalaxy()
+    templates = "emiles" if host in (True, "stellar") else host
+    kw = dict(reddening=True)
+    if young:
+        kw["ages"] = SF_AGES
+    return StellarPopulation(templates=templates, **kw)
+
+
+def _agn_narrow(m, wave_range, two_systems, outflow, narrow_fwhm=(300, 50, 1200)):
+    names = _inside(NARROW_FULL, wave_range)
+    if two_systems:
+        m.add(_lines("narrow", [n for n in names if n not in HIGH_IONISATION], role="narrow",
+                     fwhm=narrow_fwhm, shift=(0, -600, 600)))
+        m.add(_lines("narrow_hi", [n for n in names if n in HIGH_IONISATION], role="narrow",
+                     fwhm=(400, 50, 1500), shift=(0, -600, 600)))
+    else:
+        m.add(_lines("narrow", names, role="narrow", fwhm=narrow_fwhm, shift=(0, -600, 600)))
+    if outflow:
+        m.add(_lines("outflow", _inside(WING_LINES, wave_range), role="outflow",
+                     fwhm=(1000, 500, 2500), shift=(-200, -1500, 500)))
+
+
+def seyfert2(host=True, outflow=True, two_systems=True, featureless=True, coronal=False,
+             red=True, wave_range=None):
+    """
+    Seyfert 2 galaxy: stellar populations with dust (E-MILES; ``host='bc03'``
+    for BC03), a weak featureless continuum (scattered AGN light, power law
+    with alpha_lambda = -1.7), narrow lines from [OII]3727 to [OII]7330 in two
+    kinematic systems (high ionisation: [NeIII], [OIII], HeII, [ArIII]; low
+    ionisation: Balmer, [NII], [SII], [OI], ...), and an outflow wing on
+    [NeIII], H-beta, [OIII], H-alpha, [NII] and [SII]. Line fluxes are free:
+    the Balmer decrement measures the reddening afterwards.
+
+    :param two_systems: separate kinematics for high- and low-ionisation lines.
+    :param red: extend the fit to 7500 A (HeI 7065, [ArIII] 7136, [OII] 7320, 7330).
+    :param coronal: add coronal lines ([FeVII], [FeX], [FeXIV]).
+    """
+    wave_range = _window(red, wave_range)
+    m = Model(_stars(host))
+    if featureless:
+        m.add(PowerLaw("continuum", pivot=5100))
+        m.fix("continuum.index", PHYSICAL_SLOPE)
+    _agn_narrow(m, wave_range, two_systems, outflow)
+    if coronal:
+        _coronal(m, wave_range)
+    m.wave_range = wave_range
+    return m
+
+
+def composite(host=True, outflow=True, two_systems=True, featureless=True, red=True,
+              wave_range=None):
+    """
+    Composite galaxy (between the Kauffmann 2003 and Kewley 2001 lines): star
+    formation and an AGN. Like :func:`seyfert2` (stellar populations with dust,
+    weak featureless continuum, two narrow-line systems, outflow wing).
+    """
+    return seyfert2(host=host, outflow=outflow, two_systems=two_systems, featureless=featureless,
+                    red=red, wave_range=wave_range)
+
+
+def liner(host=True, broad=False, outflow=False, featureless=True, red=True, wave_range=None):
+    """
+    LINER: a dominant old stellar population with dust, a weak featureless
+    continuum and one narrow-line system that may be broad (FWHM up to 1500
+    km/s). The Balmer lines are weak against the stellar absorption, so their
+    fluxes stay free. ``broad=True`` adds a broad H-beta/H-alpha (LINER 1.9);
+    ``outflow=True`` an outflow wing.
+    """
+    wave_range = _window(red, wave_range)
+    m = Model(_stars(host))
+    if featureless:
+        m.add(PowerLaw("continuum", pivot=5100))
+        m.fix("continuum.index", PHYSICAL_SLOPE)
+    _agn_narrow(m, wave_range, False, outflow, narrow_fwhm=(400, 50, 1500))
+    if broad:
+        m.add(Lines("broad", _inside(["Hb", "Ha"], wave_range), role="broad",
+                    fwhm=(2500, 1200, 8000), shift=(0, -2000, 2000)))
+    m.wave_range = wave_range
+    return m
+
+
+def starforming(host="bc03", outflow=True, extinction=True, wolf_rayet=False, red=True,
+                wave_range=None):
+    """
+    Star-forming galaxy: young and old stellar populations with dust (BC03
+    from 1 Myr; E-MILES starts at 63 Myr and cannot follow young continua),
+    narrow lines including the high-order Balmer series, He I, the auroral
+    lines [OIII]4363, [NII]5755, [SIII]6312 and [OII]7320,7330 (electron
+    temperatures), Balmer lines tied to Case B so that the Balmer decrement
+    gives the gas extinction E(B-V) (``extinction``), and a broad wing on the
+    strong lines (galactic winds, unresolved velocity structure).
+
+    :param wolf_rayet: add the Wolf-Rayet bumps at 4650 and 5808 A.
+    """
+    wave_range = _window(red, wave_range)
+    m = Model(_stars(host, young=True))
+    names = _inside(HIGH_BALMER + NARROW_FULL, wave_range)
+    cb = CASE_B if extinction else None
+    m.add(_lines("narrow", names, case_b=cb, role="narrow", fwhm=(150, 20, 800), shift=(0, -400, 400)))
+    if outflow:
+        m.add(_lines("outflow", _inside(WING_LINES, wave_range), case_b=cb, role="outflow",
+                     fwhm=(600, 200, 2500), shift=(0, -800, 400)))
+    if wolf_rayet:
+        # blue bump (NIII 4640, CIII 4650, HeII 4686) and red bump (CIV 5801, 5812)
+        bumps = [(n, w) for n, w in (("WR4650", 4652.0), ("WR5808", 5810.0))
+                 if wave_range[0] < w < wave_range[1]]
+        m.add(Lines("wolf_rayet", bumps, role="broad", tie_kinematics=False,
+                    fwhm=(1500, 500, 4000), shift=(0, -1000, 1000)))
+    if extinction:
+        m.add(Extinction(law="calzetti" if extinction == "calzetti" else "F99"))
+    m.wave_range = wave_range
+    return m
+
+
+def passive(host=True, red=True, wave_range=None):
+    """
+    Passive or retired galaxy (EW(H-alpha) < 3 A): stellar populations with
+    dust for sigma*, v*, age and metallicity, plus weak narrow lines with
+    limited widths (so that they cannot absorb template mismatch). The
+    retired galaxies of the WHAN diagram are ionised by old stars.
+    """
+    wave_range = _window(red, wave_range)
+    m = Model(_stars(host))
+    names = _inside(["[OII]3726", "[OII]3729", "Hb", "[OIII]4959", "[OIII]5007", "[OI]6300",
+                     "[OI]6364", "[NII]6548", "Ha", "[NII]6583", "[SII]6716", "[SII]6731"], wave_range)
+    m.add(_lines("narrow", names, role="narrow", fwhm=(300, 50, 600), shift=(0, -400, 400)))
+    m.wave_range = wave_range
+    return m
+
+
+retired = passive
+
+DEFAULT_RANGES = {"optical": (3700, 6900), "seyfert2": (3700, 7500), "liner": (3700, 7500),
+                  "composite": (3700, 7500), "starforming": (3700, 7500), "passive": (3700, 7500)}   # presets whose default window depends on options
 PRESETS = {"optical": optical, "hbeta": hbeta, "halpha": halpha, "mgii": mgii, "civ": civ,
-           "type2": type2, "galaxy": galaxy}
+           "type2": type2, "galaxy": galaxy, "seyfert2": seyfert2, "liner": liner,
+           "composite": composite, "starforming": starforming, "passive": passive}
 
 
 def available(spectrum):
