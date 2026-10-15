@@ -6,6 +6,11 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- More lines: narrow H8, [NeIII]3968 (tied to 3869) + Hε, [SII]4069,4076,
+  [NI]5198,5200 and HeI6678 in `optical`; [NI]5198,5200 in `hbeta`; broad HeI4471
+  (`hbeta`, `optical`) and HeI6678 (`optical`). Optional `coronal=True` ([FeVII]3759,
+  5159, 5721, 6087, [FeXIV]5303, [FeX]6375 with their own kinematics) and
+  `oi6046=True` (broad OI 6046, `optical`).
 - `Lines(max_ratios={line: (reference, r)})`: upper limits on flux ratios
   (kept linear: the reference line is fitted as an excess above flux/r). The
   `halpha` preset uses it for the outflow wing: [NII]6583/Hα ≤ 3 and FWHM ≤ 2000 km/s,

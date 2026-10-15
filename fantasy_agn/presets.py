@@ -40,10 +40,15 @@ def broad_fwhm_ranges(n):
         b = min(hi, edges[k + 1] * BROAD_OVERLAP)
         out.append((float(np.sqrt(a * b)), float(a), float(b)))
     return out
+# Coronal lines: usually broader and blueshifted relative to the narrow lines.
+CORONAL = dict(fwhm=(600, 150, 2000), shift=(0, -1000, 500))
+CORONAL_LINES = ["[FeVII]3759", "[FeVII]5159", "[FeXIV]5303", "[FeVII]5721", "[FeVII]6087",
+                 "[FeX]6375"]
 OUTFLOW = dict(fwhm=(900, 300, 2500), shift=(-300, -2000, 200))
 
 OIII_RATIO = 1 / 2.98   # Storey & Zeippen 2000
 NII_RATIO = 1 / 3.05
+NEIII_RATIO = 1 / 3.32   # [NeIII]3968/3869
 OI_RATIO = 1 / 3.0
 NII_HA_MAX = 3.0            # upper limit of [NII]6583/H-alpha in an outflow wing
 HA_OUTFLOW_FWHM = (900, 300, 2000)
@@ -82,6 +87,14 @@ def _host(kind):
     raise ValueError("host must be True/'stellar', 'pca' or False")
 
 
+def _coronal(model, wave_range):
+    """Coronal lines inside the window, with their own (shared) kinematics."""
+    from .lines import line_wavelength
+    lines = [ln for ln in CORONAL_LINES if wave_range[0] < line_wavelength(ln) < wave_range[1]]
+    if lines:
+        model.add(Lines("coronal", lines, role="narrow", **CORONAL))
+
+
 def _broad(model, name, lines, n, profile="gaussian"):
     """
     n broad Gaussian components for the same lines, named name, name2, name3, ...
@@ -101,12 +114,13 @@ def _broad(model, name, lines, n, profile="gaussian"):
 
 
 def hbeta(broad_components=2, feii=True, outflow=False, host=False, heii=True,
-          continuum="powerlaw", extinction=False,
+          continuum="powerlaw", extinction=False, coronal=False,
           broad_profile="gaussian", wave_range=(4150, 5550)):
     """
     H-beta region (4150-5550 A): power law, optical FeII, narrow H-gamma,
     [OIII]4363, H-beta and [OIII]4959,5007 (fixed 1:2.98 ratio), broad
-    H-gamma and H-beta with shared kinematics, broad HeII4686.
+    H-gamma and H-beta with shared kinematics, narrow [NI]5198,5200, broad
+    HeI4471 and HeII4686.
 
     :param broad_components: number of broad components (1, 2, 3, ...).
     :param broad_profile: 'gaussian', 'lorentzian', 'voigt' or 'gauss-hermite'.
@@ -115,20 +129,26 @@ def hbeta(broad_components=2, feii=True, outflow=False, host=False, heii=True,
     :param host: fit a host galaxy simultaneously: True/'stellar' (stellar
         population templates with sigma* and v*) or 'pca' (Yip+2004 eigenspectra).
     :param continuum: 'powerlaw' or 'broken' (slope change at 4600 A).
+    :param coronal: add the coronal lines [FeVII]5159 and [FeXIV]5303 (own
+        kinematics), seen in many Seyferts.
     """
     m = Model(_continuum(continuum, 5100, 4600))
     if host:
         m.add(_host(host))
     if feii:
         m.add(FeII(fwhm=(2500, 1000, 8000), shift=(0, -2000, 2000)))
-    m.add(Lines("narrow", ["Hg", "[OIII]4363", "Hb", "[OIII]4959", "[OIII]5007"], role="narrow",
+    m.add(Lines("narrow", ["Hg", "[OIII]4363", "Hb", "[OIII]4959", "[OIII]5007", "[NI]5198",
+                           "[NI]5200"], role="narrow",
                 ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO)}, **NARROW))
     if outflow:
         m.add(Lines("outflow", ["[OIII]4959", "[OIII]5007"], role="outflow",
                     ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO)}, **OUTFLOW))
     _broad(m, "broad", ["Hg", "Hb"], broad_components, broad_profile)
     if heii:
-        m.add(Lines("heii", ["HeII4686"], role="broad", fwhm=(4000, 1000, 15000), shift=(0, -4000, 2000)))
+        m.add(Lines("heii", ["HeI4471", "HeII4686"], role="broad", fwhm=(4000, 1000, 15000),
+                    shift=(0, -4000, 2000)))
+    if coronal:
+        _coronal(m, wave_range)
     if extinction:
         m.add(Extinction(law=extinction if isinstance(extinction, str) else "F99"))
     m.wave_range = wave_range
@@ -136,7 +156,7 @@ def hbeta(broad_components=2, feii=True, outflow=False, host=False, heii=True,
 
 
 def halpha(broad_components=2, outflow=False, host=False, continuum="powerlaw",
-           extinction=False, hei=True,
+           extinction=False, hei=True, coronal=False,
           broad_profile="gaussian", wave_range=(6200, 6900)):
     """
     H-alpha region (6200-6900 A): power law, narrow [OI]6300,6364,
@@ -156,6 +176,7 @@ def halpha(broad_components=2, outflow=False, host=False, continuum="powerlaw",
     :param hei: add HeI6678, narrow (narrow-line kinematics) and broad
         (kinematics of the main broad H-alpha component, so it cannot absorb
         the red wing of H-alpha).
+    :param coronal: add the coronal line [FeX]6375 (own kinematics).
     """
     m = Model(_continuum(continuum, 6500, 6500))
     if host:
@@ -184,6 +205,8 @@ def halpha(broad_components=2, outflow=False, host=False, continuum="powerlaw",
         m.add(Lines("broad_hei", ["HeI6678"], role="broad", **BROAD))
         m.tie("broad_hei.fwhm", "broad.fwhm")
         m.tie("broad_hei.shift", "broad.shift")
+    if coronal:
+        _coronal(m, wave_range)
     if extinction:
         m.add(Extinction(law=extinction if isinstance(extinction, str) else "F99"))
     m.wave_range = wave_range
@@ -212,13 +235,19 @@ def outflow_kinematics(source):
 
 
 def optical(broad_components=2, feii=True, outflow=False, host=False, continuum="broken",
-            balmer=True, extinction=False,
+            balmer=True, extinction=False, coronal=False, oi6046=False,
           broad_profile="gaussian", wave_range=(3700, 6900)):
     """
     Full optical range (3700-6900 A): broken power law, Balmer continuum and
-    high-order Balmer lines, FeII, narrow lines from [OII]3727 to [SII]6731,
-    broad H-delta/H-gamma/H-beta (shared kinematics), broad H-alpha (own
-    kinematics) and broad HeI/HeII.
+    high-order Balmer lines, FeII, narrow lines from [OII]3727 to [SII]6731
+    (including H8, [NeIII]3968 + H-epsilon, [SII]4069,4076, [NI]5198,5200 and
+    HeI6678), broad H-delta/H-gamma/H-beta (shared kinematics), broad H-alpha
+    (own kinematics) and broad HeI4471, HeII4686, HeI5876, HeI6678 (shared
+    kinematics).
+
+    :param coronal: add the coronal lines [FeVII]3759,5159,5721,6087, [FeXIV]5303
+        and [FeX]6375 (shared kinematics of their own).
+    :param oi6046: add broad OI6046 (strong in objects with strong FeII).
 
     :param extinction: True (Fitzpatrick 1999) or 'calzetti': fit an intrinsic
         E(B-V) of the AGN; fluxes and luminosities are then dereddened.
@@ -238,19 +267,29 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
         m.add(_host(host))
     if feii:
         m.add(FeII(fwhm=(2500, 1000, 8000), shift=(0, -2000, 2000)))
-    narrow = ["[OII]3726", "[OII]3729", "[NeIII]3869", "Hd", "Hg", "[OIII]4363", "Hb",
-              "[OIII]4959", "[OIII]5007", "HeI5876", "[OI]6300", "[OI]6364",
-              "[NII]6548", "Ha", "[NII]6583", "[SII]6716", "[SII]6731"]
+    narrow = ["[OII]3726", "[OII]3729", "[NeIII]3869", "H8", "[NeIII]3968", "He",
+              "[SII]4069", "[SII]4076", "Hd", "Hg", "[OIII]4363", "Hb",
+              "[OIII]4959", "[OIII]5007", "[NI]5198", "[NI]5200", "HeI5876", "[OI]6300",
+              "[OI]6364", "[NII]6548", "Ha", "[NII]6583", "HeI6678", "[SII]6716", "[SII]6731"]
     m.add(Lines("narrow", narrow, role="narrow", ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO),
                                           "[NII]6548": ("[NII]6583", NII_RATIO),
-                                          "[OI]6364": ("[OI]6300", OI_RATIO)}, **NARROW))
+                                          "[OI]6364": ("[OI]6300", OI_RATIO),
+                                          "[NeIII]3968": ("[NeIII]3869", NEIII_RATIO)},
+                **NARROW))
     if outflow:
         m.add(Lines("outflow", ["[OIII]4959", "[OIII]5007"], role="outflow",
                     ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO)}, **OUTFLOW))
     _broad(m, "broad", ["Hd", "Hg", "Hb"], broad_components, broad_profile)
     _broad(m, "broad_ha", ["Ha"], broad_components, broad_profile)
-    m.add(Lines("broad_he", ["HeII4686", "HeI5876"], role="broad", fwhm=(4000, 1000, 15000),
+    m.add(Lines("broad_he", ["HeI4471", "HeII4686", "HeI5876", "HeI6678"], role="broad",
+                fwhm=(4000, 1000, 15000),
                 shift=(0, -4000, 2000)))
+    if oi6046:
+        m.add(Lines("broad_oi", ["OI6046"], role="broad", **BROAD))
+        m.tie("broad_oi.fwhm", "broad.fwhm")
+        m.tie("broad_oi.shift", "broad.shift")
+    if coronal:
+        _coronal(m, wave_range)
     if balmer:
         _balmer(m)
     if extinction:

@@ -654,3 +654,18 @@ def test_broken_powerlaw_free_break():
         assert np.max(np.abs(num - J[:, i])) < 1e-5 * np.max(np.abs(num)) + 1e-10
     fixed = fa.BrokenPowerLaw(pivot=5030.0)
     assert np.allclose(fixed.evaluate(x, p[:3], {})[0], f)
+
+
+def test_preset_new_lines():
+    m = fa.presets.optical(coronal=True, oi6046=True)
+    names = m.params.names
+    for ln in ("H8", "He", "[SII]4069", "[SII]4076", "[NI]5198", "[NI]5200", "HeI6678"):
+        assert f"narrow.{ln}.flux" in names
+    assert m.params["narrow.[NeIII]3968.flux"].tie is not None
+    assert "broad_he.HeI4471.flux" in names and "broad_oi.OI6046.flux" in names
+    assert "coronal.[FeVII]6087.flux" in names and "coronal.[FeX]6375.flux" in names
+    assert "coronal" not in [c.name for c in fa.presets.optical().components]
+    hb = [c for c in fa.presets.hbeta(coronal=True).components if c.name == "coronal"][0]
+    assert hb.line_names == ["[FeVII]5159", "[FeXIV]5303"]
+    # library wavelengths are vacuum (air converted)
+    assert abs(fa.LINES["[FeVII]6087"] - 6088.7) < 0.1
