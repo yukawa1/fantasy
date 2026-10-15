@@ -417,36 +417,66 @@ class BalmerContinuum(Component):
     """
     Balmer continuum (Grandi 1982; Dietrich et al. 2002): optically thick
     Planck function below the Balmer edge (3646 A). ``amp`` is the flux density
-    just blueward of the edge. Temperature and optical depth are fixed by
-    default (15000 K, tau=1), as is common practice.
+    just blueward of the edge (before broadening). Temperature and optical
+    depth are fixed by default (15000 K, tau=1), as is common practice. The
+    edge is smeared by the velocities of the emitting gas: the shape is
+    convolved with a Gaussian of FWHM ``fwhm`` (km/s; default 5000, fixed, as
+    in QSFit, Calderone et al. 2017); fwhm=0 gives a sharp edge.
     """
     kind = "continuum"
-    numeric_derivatives = ("temperature", "tau")
+    numeric_derivatives = ("temperature", "tau", "fwhm")
     EDGE = 3646.0
 
     def __init__(self, name="balmer_cont", temperature=15000.0, tau=1.0,
-                 fix_shape=True):
+                 fix_shape=True, fwhm=5000.0, fix_fwhm=True):
         super().__init__(name)
         self._par("amp", 1.0, 0.0, np.inf, linear=True, unit="flux/A",
                   description="flux density at the Balmer edge")
         self._par("temperature", temperature, 5000.0, 50000.0, fixed=fix_shape, unit="K")
         self._par("tau", tau, 0.1, 10.0, fixed=fix_shape)
+        self._par("fwhm", fwhm, 0.0, 20000.0, fixed=fix_fwhm, unit="km/s",
+                  description="velocity broadening of the edge")
+        self._cache = {}
 
     @staticmethod
     def _planck(lam, T):
         hc_k = 1.4387769e8  # h c / k in A K
         return lam ** -5.0 / np.expm1(hc_k / (lam * T))
 
-    def shape(self, x, T, tau):
+    def shape(self, x, T, tau, fwhm=0.0):
         edge = self.EDGE
-        s = (self._planck(x, T) / self._planck(edge, T)
-             * -np.expm1(-tau * (x / edge) ** 3) / -np.expm1(-tau))
-        return np.where(x <= edge, s, 0.0)
+        if fwhm <= 0:
+            s = (self._planck(x, T) / self._planck(edge, T)
+                 * -np.expm1(-tau * (x / edge) ** 3) / -np.expm1(-tau))
+            return np.where(x <= edge, s, 0.0)
+        key = (float(T), float(tau), float(fwhm), x.size, float(x[0]), float(x[-1]))
+        if key not in self._cache:
+            sigma = fwhm / C_KMS / FWHM_PER_SIGMA            # in ln(lambda)
+            step = 2e-5                                      # fixed: smooth in fwhm
+            lo, hi = np.log(min(x.min(), edge) / (1 + 6 * sigma)), np.log(max(x.max(), edge) * (1 + 6 * sigma))
+            grid = np.arange(lo, hi + step, step)
+            sharp = self.shape(np.exp(grid), T, tau, 0.0)
+            half = int(np.ceil(5 * sigma / step))
+            u = np.arange(-half, half + 1) * step
+            kern = np.exp(-0.5 * (u / sigma) ** 2)
+            smooth = np.convolve(sharp, kern / kern.sum(), mode="same")
+            if len(self._cache) > 8:
+                self._cache.clear()
+            self._cache[key] = np.interp(np.log(x), grid, smooth)
+        return self._cache[key]
 
     def evaluate(self, x, p, ctx):
-        amp, T, tau = p
-        s = self.shape(x, T, tau)
-        return amp * s, np.column_stack([s, np.full_like(x, np.nan), np.full_like(x, np.nan)])
+        amp, T, tau, fwhm = p
+        s = self.shape(x, T, tau, fwhm)
+        nan = np.full_like(x, np.nan)
+        return amp * s, np.column_stack([s, nan, nan, nan])
+
+    def __deepcopy__(self, memo):
+        import copy
+        new = copy.copy(self)
+        new.params = copy.deepcopy(self.params, memo)
+        new._cache = {}
+        return new
 
 
 # Emission-line windows (vacuum, A) removed from the galaxy eigenspectra, which

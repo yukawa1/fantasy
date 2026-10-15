@@ -669,3 +669,18 @@ def test_preset_new_lines():
     assert hb.line_names == ["[FeVII]5159", "[FeXIV]5303"]
     # library wavelengths are vacuum (air converted)
     assert abs(fa.LINES["[FeVII]6087"] - 6088.7) < 0.1
+
+
+def test_balmer_continuum_broadening():
+    x = np.arange(3000.0, 4500.0, 1.0)
+    sharp = fa.BalmerContinuum(fwhm=0.0)
+    smooth = fa.BalmerContinuum()
+    f0 = sharp.evaluate(x, np.array([1.0, 15000.0, 1.0, 0.0]), {})[0]
+    f1 = smooth.evaluate(x, np.array([1.0, 15000.0, 1.0, 5000.0]), {})[0]
+    assert f0[x > 3650].max() == 0 and f1[(x > 3650) & (x < 3670)].min() > 0.05
+    # flux is conserved (to the edge of the grid) and far below the edge nothing changes
+    assert abs(f0.sum() - f1.sum()) < 0.01 * f0.sum()
+    assert np.allclose(f0[x < 3300], f1[x < 3300], rtol=0.02)
+    import copy
+    c = copy.deepcopy(smooth)
+    assert c._cache == {} and c.params is not smooth.params
