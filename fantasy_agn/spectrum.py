@@ -222,17 +222,29 @@ class Spectrum:
     @classmethod
     def read(cls, path, format="auto", **kw):
         """
-        Read a spectrum file. format: 'auto', 'sdss', 'desi', 'gama', 'fits1d'
-        (linear or log-linear WCS in the primary HDU) or 'text' (2-3 columns:
-        wave, flux, [err]). Extra keywords override what is read (e.g. z=0.1).
-        DESI coadd files hold many targets: pass targetid=... or index=..., and
-        optionally redrock=... for the redshift (see fantasy_agn.desi).
+        Read a spectrum file. format: 'auto', 'sdss', 'desi', 'ozdes', 'gama',
+        'fits1d' (linear or log-linear WCS in the primary HDU) or 'text' (2-3
+        columns: wave, flux, [err]). Extra keywords override what is read (e.g.
+        z=0.1). DESI coadd files hold many targets: pass targetid=... or
+        index=..., and optionally redrock=... for the redshift (see
+        fantasy_agn.desi). OzDES DR2 files hold the stack and every epoch: pass
+        epoch=... for one epoch (see fantasy_agn.ozdes).
         """
         if format == "auto":
             format = _detect_format(path)
         if format == "desi":
             from .desi import read as read_desi
             return read_desi(path, **kw)
+        if format in ("ozdes", "ozdes-ssa"):
+            from . import ozdes
+            if format == "ozdes":
+                args = ozdes.read_original(path, kw.pop("epoch", None))
+            else:
+                if kw.pop("epoch", None) is not None:
+                    raise ValueError("a public OzDES file holds a single spectrum (no epochs)")
+                args = ozdes.read_public(path)
+            args.update(kw)
+            return cls(**args)
         reader = {"sdss": _read_sdss, "gama": _read_gama, "fits1d": _read_fits1d,
                   "text": _read_text}[format]
         args = reader(path)
@@ -277,7 +289,14 @@ def _detect_format(path):
             names = [c.lower() for c in hdul[1].columns.names]
             if "loglam" in names and "flux" in names:
                 return "sdss"
-        if "WMIN" in h0 or ("GAMA" in str(h0.get("SURVEY", "")).upper()):
+        from .ozdes import is_original, is_public
+        if is_public(hdul):
+            return "ozdes-ssa"
+        if is_original(hdul):
+            return "ozdes"
+        data = hdul[0].data
+        if ("GAMA" in str(h0.get("SURVEY", "")).upper()
+                or ("WMIN" in h0 and data is not None and data.ndim == 2)):
             return "gama"
     return "fits1d"
 

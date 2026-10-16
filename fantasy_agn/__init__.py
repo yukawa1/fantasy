@@ -17,7 +17,7 @@ interface in the browser; in a Jupyter notebook ``fa.gui()`` shows it as widgets
 """
 __version__ = "2.0.0"
 
-from . import desi, examples, presets, templates
+from . import desi, examples, ozdes, presets, templates
 from .host import StellarPopulation
 from .components import (BalmerContinuum, BrokenPowerLaw, Component, Extinction, FeII,
                          HighOrderBalmer, HostGalaxy, Lines, Polynomial, PowerLaw)
@@ -46,7 +46,7 @@ __all__ = [
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
     "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "StellarPopulation",
     "Extinction",
-    "templates", "desi", "examples", "Component",
+    "templates", "desi", "ozdes", "examples", "Component",
     "Parameter", "ParameterSet", "LINES", "line_wavelength", "read_line_list",
     "fitzpatrick99",
 ]

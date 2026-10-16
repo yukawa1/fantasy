@@ -44,12 +44,26 @@ Python 3.12 and the tested package versions, in an environment of its own.</p>
 """),
     ("read", "Reading spectra", """
 <p><code>fa.read(path)</code> recognises SDSS <code>spec-*.fits</code>, DESI coadd files,
-SPARCL downloads, 1D FITS spectra and text files with columns wavelength, flux and
+SPARCL downloads, OzDES and GAMA files, 1D FITS spectra and text files with columns wavelength, flux and
 (optionally) error. It reads the redshift, the wavelength medium (air/vacuum), the
 instrumental resolution and the flux unit when the file has them.</p>
 <pre>spec = fa.read("spec-0615-52347-0108.fits").to_rest_frame()
 spec = fa.read("my_spectrum.txt", z=0.123).to_rest_frame()
 spec = fa.desi.fetch(39627963565609635).to_rest_frame()   # DESI DR1 via Data Lab</pre>
+<h3>OzDES</h3>
+<p>OzDES DR2 files (2dF/AAOmega) hold the stacked spectrum and every exposure with its variance
+and bad-pixel mask; <code>fa.ozdes.download(name, folder)</code> gets them from VizieR.</p>
+<pre>path = fa.ozdes.download("SVA1_COADD-2937976373", "ozdes/")[0]
+spec = fa.read(path)                    # the stack
+spec = fa.read(path, epoch=4)           # one exposure
+nights = fa.ozdes.read_epochs(path, skip_qc=True, combine="night")   # for fit_epochs</pre>
+<p>OzDES spectra are <b>not flux calibrated</b>: fluxes are in counts and differ between
+nights, so FANTASY does not compute luminosities or black-hole masses for them. Widths,
+shifts, EWs and line ratios are fine; for light curves use the multi-epoch fit with
+intercalibration and also share what does not vary (e.g. <code>outflow.*</code>,
+<code>feii.fwhm</code>, <code>feii.shift</code>). Single 40-min exposures are noisy:
+<code>combine="night"</code> averages the exposures of each night. Spectra from the Data
+Central SSA service have no errors; FANTASY estimates the noise from the spectrum.</p>
 <h3>Galactic extinction</h3>
 <p>Correct the Milky Way extinction before measuring fluxes and luminosities. Without it
 fluxes and L5100 are too low by 5&ndash;20% for E(B-V) = 0.015&ndash;0.06 (typical at high

@@ -77,7 +77,7 @@ pip install "fantasy_agn[gui]"                   # + Jupyter widgets (fa.gui())
 ```python
 import fantasy_agn as fa
 
-spec = fa.read("spec-1059-52618-0453.fits")          # SDSS, DESI, 1D FITS or text columns
+spec = fa.read("spec-1059-52618-0453.fits")          # SDSS, DESI, OzDES, GAMA, 1D FITS or text
 spec = spec.deredden().to_rest_frame()   # Galactic E(B-V) looked up; z from the file
 
 result = fa.fit(spec, fa.presets.hbeta())
@@ -122,6 +122,23 @@ DESI coadd files hold many targets; the B, R and Z arms are merged with inverse-
 weights in their overlaps, masked pixels are skipped, and the instrumental resolution is
 taken from each target's resolution matrix. Because it changes by about a factor of two
 from blue to red, every line is corrected with the resolution at its own wavelength.
+
+### OzDES spectra
+
+```python
+path = fa.ozdes.download("SVA1_COADD-2937976373", "ozdes/")[0]   # original DR2 file (VizieR)
+spec = fa.read(path)                     # the stack; fa.read(path, epoch=4): one exposure
+nights = fa.ozdes.read_epochs(path, skip_qc=True, combine="night")
+me = fa.fit_epochs([n.deredden().to_rest_frame() for n in nights], fa.presets.hbeta(outflow=True),
+                   shared=("narrow.*", "outflow.*", "feii.fwhm", "feii.shift"))
+```
+
+OzDES DR2 files (2dF/AAOmega, R ≈ 1400) hold the stack and every exposure with variance and
+bad-pixel mask. They are **not flux calibrated** (counts, not even relatively between nights),
+so luminosities and black-hole masses are not computed; widths, shifts, EWs, line ratios and
+intercalibrated light curves are. `combine="night"` averages the (usually three) exposures of
+each night. Flux-only spectra from the Data Central SSA service are read too
+(`fa.ozdes.search`, `download(..., source="ssa")`); their noise is estimated from the data.
 
 ### Ready-made models
 

@@ -1165,3 +1165,76 @@ def test_cli_selftest(monkeypatch, capsys):
     assert cli.selftest(full=False)
     out = capsys.readouterr().out
     assert "All checks passed (3 skipped)" in out
+
+
+def _ozdes_files(tmp_path, n_epochs=4):
+    """Synthetic OzDES DR2 files: an original multi-epoch file and a public (SSA) one."""
+    from astropy.io import fits
+    rng = np.random.default_rng(2)
+    n, crval, cdelt, crpix = 5000, 6295.027832, 1.037739939825, 2470
+    wave = crval + (np.arange(n) + 1 - crpix) * cdelt
+    z = 0.3
+    line = lambda a: a * np.exp(-0.5 * ((wave - 4862.68 * (1 + z)) / 40.0) ** 2) \
+        + 0.8 * np.exp(-0.5 * ((wave - 5008.24 * (1 + z)) / 6.0) ** 2)
+    hdr = dict(CRVAL1=crval, CDELT1=cdelt, CRPIX1=crpix, CTYPE1="wavelength", CUNIT1="angstrom")
+    h0 = fits.PrimaryHDU(10 + line(3.0) + rng.normal(0, 0.1, n))
+    h0.header.update(hdr, Z=z, QOP=4, RA=37.2, DEC=-5.2, VERCOADD="v27", SOURCE="TESTQSO")
+    hdus = [h0, fits.ImageHDU(np.full(n, 0.01), name="VARIANCE"),
+            fits.ImageHDU(np.zeros(n, np.uint8), name="BADPIX")]
+    mjds = [56652.43, 56652.46, 56917.6, 56920.6][:n_epochs]
+    for k, mjd in enumerate(mjds):
+        sc = 0.5 + 0.1 * k                          # counts differ between exposures
+        f = fits.ImageHDU((10 + line(2.0 + k)) / sc + rng.normal(0, 0.2, n), name=f"SPECTRUM_{mjd}")
+        f.header.update(hdr, UTMJD=mjd, QC="ok" if k != 2 else "poorConditions", INCOADD=True,
+                        EXPOSED=2400.0, FLXSCALE=sc)
+        mask = np.zeros(n, np.uint8)
+        mask[100:110] = 1
+        hdus += [f, fits.ImageHDU(np.full(n, 0.04), name=f"VARIANCE_{mjd}"),
+                 fits.ImageHDU(mask, name=f"BADPIX_{mjd}")]
+    orig = tmp_path / "TESTQSO.fits"
+    fits.HDUList(hdus).writeto(orig)
+    pub = fits.PrimaryHDU(10 + line(3.0) + rng.normal(0, 0.1, n))
+    pub.header.update(hdr, Z=z, RA=37.2, DEC=-5.2, OBJECT="TESTQSO", SURVEY="ozdes_dr2", TMID=56652.45,
+                      TXEL=1, WMIN="3732.85", WMAX="8920.51")
+    public = tmp_path / "TESTQSO_56652.4500.fits"
+    pub.writeto(public)
+    return str(orig), str(public)
+
+
+def test_ozdes_original_file(tmp_path):
+    orig, _ = _ozdes_files(tmp_path)
+    s = fa.read(orig)
+    assert s.z == pytest.approx(0.3) and s.flux_unit is None and s.mjd is None
+    assert s.meta["n_epochs"] == 4 and s.medium == "vacuum"
+    assert s.wave[2469] == pytest.approx(6295.027832)          # CRPIX1 is 1-based
+    e = fa.read(orig, epoch=1)
+    assert e.mjd == pytest.approx(56652.46) and e.meta["qc"] == "ok"
+    assert np.all(np.isinf(e.err[100:110])) and np.allclose(e.err[200], 0.2)   # mask and variance
+    assert len(fa.ozdes.read_epochs(orig)) == 4
+    assert len(fa.ozdes.read_epochs(orig, skip_qc=True)) == 3
+    nights = fa.ozdes.read_epochs(orig, combine="night")
+    assert [n.meta.get("n_exposures", 1) for n in nights] == [2, 1, 1]
+    # the two exposures of the first night are put on one scale before averaging
+    a, b = fa.read(orig, epoch=0), fa.read(orig, epoch=1)
+    i = 300
+    expect = (a.flux[i] * 0.5 / (0.5 * 0.2) ** 2 + b.flux[i] * 0.6 / (0.6 * 0.2) ** 2) / (
+        1 / (0.5 * 0.2) ** 2 + 1 / (0.6 * 0.2) ** 2)
+    assert nights[0].flux[i] == pytest.approx(expect)
+    with pytest.raises(IndexError):
+        fa.read(orig, epoch=4)
+    with pytest.raises(ValueError):                             # luminosities need calibrated flux
+        r = fa.fit(s.to_rest_frame(), fa.presets.hbeta(broad_components=1, feii=False), verbose=False)
+        r.luminosity()
+
+
+def test_ozdes_public_file(tmp_path):
+    _, public = _ozdes_files(tmp_path)
+    s = fa.read(public)
+    assert s.meta["err_estimated"] and s.mjd == pytest.approx(56652.45) and s.flux_unit is None
+    good = np.isfinite(s.err)
+    assert np.median(s.err[good]) == pytest.approx(0.1, rel=0.25)   # noise estimated from the data
+    with pytest.raises(ValueError):
+        fa.read(public, epoch=0)
+    # GAMA files (also with WMIN) are still recognised as GAMA
+    g = fa.read(os.path.join(EXAMPLES, "G09_Y1_GS1_080.fit"))
+    assert g.medium == "air"

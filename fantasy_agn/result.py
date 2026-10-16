@@ -68,12 +68,16 @@ class FitResult:
         sig = self._sigma()
         idx = np.nonzero(sig > 0)[0]
         grad = np.zeros(value.shape + (self.full.size,))
+        lo = np.array([p.min for p in self.model.params], float)
+        hi = np.array([p.max for p in self.model.params], float)
         for i in idx:
+            # steps stay within the parameter limits (a width must not become negative)
             h = 0.1 * sig[i]
             a, b = self.full.copy(), self.full.copy()
-            a[i] += h
-            b[i] -= h
-            grad[..., i] = (np.asarray(func(a)) - np.asarray(func(b))) / (2 * h)
+            a[i] = min(a[i] + h, hi[i])
+            b[i] = max(b[i] - h, lo[i])
+            if a[i] > b[i]:
+                grad[..., i] = (np.asarray(func(a)) - np.asarray(func(b))) / (a[i] - b[i])
         g = grad[..., idx]
         C = self.cov[np.ix_(idx, idx)]
         var = np.einsum("...i,ij,...j->...", g, C, g)
@@ -179,6 +183,8 @@ class FitResult:
 
     def _profile_stats(self, prof, lam0, v, lam, full):
         """flux, FWHM, sigma, centroid shift and EW of a profile on velocity grid v."""
+        if not np.all(np.isfinite(prof)):        # e.g. a width stepped past its limit
+            return np.full(5, np.nan)
         flux = prof.sum() * (lam[1] - lam[0])
         peak = np.argmax(prof)
         half = prof[peak] / 2

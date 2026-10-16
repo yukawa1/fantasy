@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- OzDES DR2 spectra: `fa.read` reads the original multi-exposure files (stack, or
+  `epoch=k`) and Data Central SSA files (noise estimated from the data);
+  `fa.ozdes.read_epochs(path, skip_qc=True, combine="night")`, `fa.ozdes.search`,
+  `fa.ozdes.download` (original files from VizieR). Not flux calibrated: `flux_unit` is None.
 - Installation for testers: `sh install/make_bundle.sh` builds `dist/FANTASY-<version>.zip`
   (wheel, tested package versions, installers for macOS, Linux and Windows). The installer
   sets everything up with uv and runs the self-test.
@@ -43,6 +47,13 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- `fit_epochs`: an epoch whose own fit found no narrow lines gave an infinite starting
+  flux scale (NaN in the joint fit). Starting scales and their limits now come from the
+  flux levels when needed (uncalibrated spectra can differ by more than 0.3-3x). The joint
+  fit stops when chi2 improves by < 0.1 over 20 iterations instead of crawling to 300.
+- Error propagation keeps its finite-difference steps within the parameter limits (a width
+  stepped below zero gave NaN and an IndexError in `measure`).
+- Data Central spectra (header keyword WMIN) were mistaken for GAMA files.
 - App: a wide light-curve table stretched the page, so the figures were drawn several
   times too large; figures are now shown at their natural size (rendered at 2x for sharp
   screens).

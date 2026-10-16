@@ -32,6 +32,18 @@ def _is_shared(name, patterns):
     return any(name == p or fnmatch.fnmatchcase(name, g) for p, g in zip(patterns, glob))
 
 
+def _level_ratios(data):
+    """Median flux level of each epoch relative to the first, on common wavelengths."""
+    x0, y0 = data[0][0], data[0][1]
+    out = [1.0]
+    for x, y, *_ in data[1:]:
+        common = (x >= max(x0.min(), x.min())) & (x <= min(x0.max(), x.max()))
+        ref = np.interp(x[common], x0, y0)
+        r = np.median(y[common]) / np.median(ref) if common.sum() > 10 and np.median(ref) > 0 else 1.0
+        out.append(float(r) if np.isfinite(r) and r > 0 else 1.0)
+    return np.array(out)
+
+
 class _JointProblem:
     def __init__(self, model, spectra, masks, shared, intercalibrate):
         self.model = model
@@ -59,9 +71,13 @@ class _JointProblem:
             for k in range(self.n):
                 joint[names[p.name][k]].tie = (names[target][k], factor, offset)
         self.scale_names = []
+        self.scale_guess = _level_ratios(self.data) if intercalibrate else None
         if intercalibrate:
             for k in range(self.n):
-                joint.add(Parameter(f"scale@{k}", 1.0, 0.3, 3.0, fixed=(k == 0),
+                # limits around the flux-level ratio: uncalibrated spectra (e.g. OzDES,
+                # in counts) can differ between nights by much more than calibrated ones
+                g = self.scale_guess[k]
+                joint.add(Parameter(f"scale@{k}", g, g / 3.0, g * 3.0, fixed=(k == 0),
                                     description="flux calibration factor"))
                 self.scale_names.append(f"scale@{k}")
         self.joint = joint
@@ -186,7 +202,11 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
         lin = [i for i, p in enumerate(model.params) if p.linear and
                _is_shared(p.name, shared) and ref[i] > 0]
         for k, si in enumerate(prob.scale_index):
-            full0[si] = np.median(per_epoch[k, lin] / ref[lin]) if lin else 1.0
+            # from the shared (narrow-line) amplitudes; if those are unusable (e.g. not
+            # detected in this epoch's own fit), from the flux levels
+            s0 = np.median(per_epoch[k, lin] / ref[lin]) if lin else np.nan
+            g = prob.scale_guess[k]
+            full0[si] = s0 if np.isfinite(s0) and g / 3 < s0 < g * 3 else g
     scales = np.array([full0[si] for si in prob.scale_index]) if intercalibrate else np.ones(len(spectra))
     for i, p in enumerate(model.params):
         vals = per_epoch[:, i] / (scales if p.linear else 1.0)
@@ -254,16 +274,20 @@ class _LMResult:
     pass
 
 
-def _levenberg_marquardt(prob, theta, max_iter=300, ftol=1e-10):
+def _levenberg_marquardt(prob, theta, max_iter=1000, ftol=1e-10, window=20, min_gain=0.1):
     """
     Bounded Levenberg-Marquardt using the normal equations J^T J, which stay
     small (free parameters squared) however many epochs there are. Parameters
     on a bound with the gradient pushing outward are held fixed for the step.
+    Converged when a step no longer improves chi2, or when chi2 improved by less
+    than ``min_gain`` over the last ``window`` iterations (statistically
+    irrelevant; with many epochs the last digits can take hundreds of steps).
     """
     lb, ub = prob.lb, prob.ub
     r, J = prob._evaluate(theta)
     cost = float(r @ r)
     lam, nfev, converged = 1e-3, 1, False
+    costs = [cost]
     for _ in range(max_iter):
         g = J.T @ r
         A = (J.T @ J).toarray()
@@ -296,7 +320,8 @@ def _levenberg_marquardt(prob, theta, max_iter=300, ftol=1e-10):
         theta, r, J, cost = trial, rt, Jt, ct
         report("joint fit", nfev, None, f"chi2 = {cost:.1f}")
         lam = max(lam / 3, 1e-12)
-        if improvement <= ftol * cost:
+        costs.append(cost)
+        if improvement <= ftol * cost or (len(costs) > window and costs[-window - 1] - cost < min_gain):
             converged = True
             break
     res = _LMResult()
