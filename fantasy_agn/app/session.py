@@ -417,21 +417,40 @@ class Session:
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
         err = f', errors="{errors}"' if errors != "covariance" else ""
         code = f"model = fa.presets.{name}({args})\nr = fa.fit(spec, model{err})"
-        c = self.classification
-        borderline = (c is not None and c.spectrum is self.spec and c.measurements.get("host_borderline")
-                      and name in ("optical", "hbeta", "halpha") and "host" not in kw
-                      and not kw.get("physical") and host_choice in (None, "", "default"))
-        if borderline:
-            m = c.measurements
-            args_h = ", ".join(f"{k}={v!r}" for k, v in dict(kw, host=True).items())
-            code += (f"\n# possible starlight (host {m['host_fraction_5100']:.0%} at 5100 A, sigma* S/N "
-                     f"{m['sigma_star_snr']:.1f}): keep the host if the BIC prefers it"
-                     f"\nmodel_host = fa.presets.{name}({args_h})"
-                     f"\nr_host = fa.fit(spec, model_host{err})"
-                     f"\nprint(f'with host: dBIC = {{r_host.bic - r.bic:.0f}}')"
-                     f"\nif r_host.bic < r.bic - 10:"
-                     f"\n    model, r = model_host, r_host")
+        if host_choice in (None, "", "default"):
+            code += self._host_check_code(name, kw, err)
         return code + "\nr.key_results()"
+
+    def _host_check_code(self, name, kw, err):
+        """
+        For a borderline host (classification: some starlight, sigma* not confirmed)
+        and a type-1 preset without host: also fit with the host and keep it if the
+        BIC prefers it. Empty otherwise.
+        """
+        c = self.classification
+        if not (c is not None and c.spectrum is self.spec and c.measurements.get("host_borderline")
+                and name in ("optical", "hbeta", "halpha") and "host" not in kw and not kw.get("physical")):
+            return ""
+        m = c.measurements
+        args_h = ", ".join(f"{k}={v!r}" for k, v in dict(kw, host=True).items())
+        return (f"\n# possible starlight (host {m['host_fraction_5100']:.0%} at 5100 A, sigma* S/N "
+                f"{m['sigma_star_snr']:.1f}): keep the host if the BIC prefers it"
+                f"\nmodel_host = fa.presets.{name}({args_h})"
+                f"\nr_host = fa.fit(spec, model_host{err})"
+                f"\nprint(f'with host: dBIC = {{r_host.bic - r.bic:.0f}}')"
+                f"\nif r_host.bic < r.bic - 10:"
+                f"\n    model, r = model_host, r_host")
+
+    def _unedited_preset(self):
+        """(name, kwargs) if the current model is still the preset made in step 3, else None."""
+        made = self.__dict__.get("_preset_made")
+        m = self.model
+        if made is None or m is None:
+            return None
+        name, kw = made
+        fresh = getattr(presets, name)(**kw)
+        sig = lambda mod: [(p.name, p.value, p.min, p.max, p.fixed, p.tie) for p in mod.params]
+        return made if sig(fresh) == sig(m) else None
 
     # ------------------------------------------------- code for the model editor
     @staticmethod
@@ -466,6 +485,9 @@ class Session:
     def preset_code(self, model="optical", broad_components=2, outflow=True, **extra):
         name, kw = self._preset_args(model, broad_components, outflow, **extra)
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
+        # remembered for the host check at fit time; an explicit host choice turns it off
+        host_choice = extra.get("host")
+        self._preset_made = (name, kw) if host_choice in (None, "", "default") else None
         return f"model = fa.presets.{name}({args})\nmodel"
 
     def _need_rest_frame(self):
@@ -479,7 +501,11 @@ class Session:
             raise ValueError("create a model first (step 3)")
         self._need_rest_frame()
         err = f', errors="{errors}"' if errors != "covariance" else ""
-        return f"r = fa.fit(spec, model{err})\nr.key_results()"
+        code = f"r = fa.fit(spec, model{err})"
+        made = self._unedited_preset()               # an edited model is fitted as it is
+        if made is not None:
+            code += self._host_check_code(made[0], made[1], err)
+        return code + "\nr.key_results()"
 
     @staticmethod
     def remove_code(name):

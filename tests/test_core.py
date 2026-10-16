@@ -1291,3 +1291,19 @@ def test_app_borderline_host_compares_both():
     assert "model_host" not in s.fit_code(model="optical", host="none")       # an explicit choice wins
     c.measurements["host_borderline"] = False
     assert "model_host" not in s.fit_code(model="optical")
+
+
+def test_app_host_check_after_create_model():
+    """Classify -> Create model -> Fit also compares with the host; an edited model does not."""
+    from fantasy_agn.app.session import Session
+    from fantasy_agn.classify import Classification
+    s = Session()
+    spec = fa.read(fa.examples.path("type1")).to_rest_frame()
+    c = Classification.__new__(Classification)
+    c.spectrum, c.label = spec, "type1"
+    c.measurements = {"host_borderline": True, "host_fraction_5100": 0.2, "sigma_star_snr": 3.0}
+    s.ns.update(spec=spec, c=c)
+    exec(s.preset_code("optical", 2, True, host="default").split("\n")[0], s.ns)
+    assert "model_host" in s.fit_model_code()
+    s.ns["model"].set("narrow.fwhm", max=900)                  # edited: fitted as it is
+    assert "model_host" not in s.fit_model_code()
