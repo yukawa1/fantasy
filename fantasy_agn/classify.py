@@ -10,14 +10,20 @@ much of the light is starlight, and what ionises the narrow-line gas?
    before line ratios are measured (Balmer absorption under H-beta).
 2. Emission lines on the starlight-subtracted spectrum, twice: narrow lines
    (with an outflow wing) only, and with broad H-beta/H-alpha added. A broad
-   line counts when it lowers the BIC by more than ``broad_dbic``, its flux
-   has S/N > ``broad_snr`` (20) and its FWHM is between 1200 km/s and the
-   upper limit. Without a broad-line region the "broad" component turns into
-   a shallow, very wide bump (FWHM ~ 10000 km/s, S/N <~ 10) that absorbs
-   residuals of the stellar subtraction; on SDSS test spectra real broad
-   H-alpha had S/N 40-80 and the spurious components S/N 2-11. Candidates
-   with S/N 5-20 and FWHM < 10000 km/s do not change the class but are
-   reported as a possible weak broad line (type 1.8/1.9).
+   line counts when it lowers the BIC by more than ``broad_dbic`` (25), its
+   flux has S/N > ``broad_snr`` (5), its equivalent width exceeds
+   ``broad_ew`` (30 A) and its FWHM is 1200-12000 km/s. Without a broad-line
+   region the "broad" component turns into a shallow, very wide bump that
+   absorbs residuals of the stellar subtraction. The thresholds come from 300
+   SDSS quasars at z < 0.35 and 650 narrow-line galaxies (MPA-JHU classes):
+   76% of the quasars and 0.9% of the galaxies pass (calibration/ in the
+   repository). Spurious bumps are wide (median FWHM 11000 km/s) and weak
+   (EW 9 A, 99%: 42 A); real broad lines have FWHM 2300-9500 km/s and EW
+   14-210 A (10-90%). The broad flux S/N is a poor criterion on its own: the
+   broad line trades flux with the outflow wing and the continuum, so real
+   broad lines often have S/N < 20. Candidates that miss only the EW or FWHM
+   condition do not change the class but are reported as a possible weak broad
+   line (type 1.8/1.9).
 3. Narrow-line diagnostics: the BPT diagram [OIII]/Hb vs [NII]/Ha (Kauffmann
    et al. 2003; Kewley et al. 2001), the [SII] and [OI] diagrams with the
    Seyfert/LINER lines of Kewley et al. (2006), and the WHAN diagram
@@ -50,7 +56,8 @@ __all__ = ("classify", "Classification", "kauffmann03", "kewley01", "kewley06")
 
 C_KMS = 299792.458
 PASSIVE_EW, RETIRED_EW = 0.5, 3.0
-BROAD_FWHM_MAX = 15000.0
+BROAD_FWHM_MAX = 15000.0          # fit limit of the broad component
+BROAD_FWHM_RANGE = (1200.0, 12000.0)   # accepted as a broad-line region
 # The outflow wing must be broader than the narrow core, otherwise the two can
 # split into a "Balmer" and a "forbidden" system and bias the line ratios.
 NARROW_FWHM_MAX = 800.0
@@ -324,7 +331,7 @@ class Classification:
 
 
 # ------------------------------------------------------------- classify
-def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
+def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, broad_ew=30.0,
              min_snr=3.0, templates="emiles", verbose=False):
     """
     Classify a rest-frame spectrum before choosing a model (see the module
@@ -333,8 +340,9 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
     :param spectrum: Spectrum; moved to the rest frame if it is not.
     :param wave_range: range for the stellar continuum fit (clipped to the data).
     :param broad_dbic: minimum BIC improvement for broad lines.
-    :param broad_snr: minimum S/N of the broad H-alpha (or H-beta) flux (default 20,
-        see the module documentation).
+    :param broad_snr: minimum S/N of the broad H-alpha (or H-beta) flux.
+    :param broad_ew: minimum equivalent width (A) of the broad line
+        (thresholds: see the module documentation).
     :param min_snr: minimum S/N for a narrow line to enter a diagnostic.
     :param templates: stellar population templates for the starlight ('emiles',
         'bc03', ...; see fantasy_agn.templates).
@@ -372,7 +380,7 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
     masks = _MASK_NARROW
     stellar, smooth, cont, r_n, r_b = stages(masks)
     bline, dbic, snr, fwhm, bflux = broad_stats(r_n, r_b)
-    if dbic > broad_dbic and snr > broad_snr:
+    if dbic > broad_dbic and snr > broad_snr and BROAD_FWHM_RANGE[0] < fwhm < BROAD_FWHM_RANGE[1]:
         # broad lines: repeat with wide masks so that their wings do not
         # leak into the stellar fit
         masks = _MASK_BROAD
@@ -389,10 +397,12 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
         meas["broad_ew"] = bflux / c_b if c_b > 0 else np.nan
     else:
         meas["broad_ew"] = 0.0
-    width_ok = 1200 < fwhm < 0.95 * BROAD_FWHM_MAX
-    broad = dbic > broad_dbic and snr > broad_snr and width_ok
+    width_ok = BROAD_FWHM_RANGE[0] < fwhm < BROAD_FWHM_RANGE[1]
+    ew_b = meas["broad_ew"]
+    broad = (dbic > broad_dbic and snr > broad_snr and width_ok
+             and np.isfinite(ew_b) and ew_b > broad_ew)
     weak_broad = (not broad and dbic > broad_dbic and snr > WEAK_BROAD_SNR
-                  and 1200 < fwhm < WEAK_BROAD_FWHM_MAX)
+                  and BROAD_FWHM_RANGE[0] < fwhm < WEAK_BROAD_FWHM_MAX)
     meas["weak_broad"] = bool(weak_broad)
     r = r_b if broad else r_n
 
@@ -434,7 +444,7 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=20.0,
         label = "type1_host" if np.isfinite(host) and host >= 0.5 else "type1"
         reason = (f"broad {bline} detected (FWHM {meas['broad_fwhm']:.0f} km/s, "
                   f"dBIC {dbic:.0f}, S/N {meas['broad_snr']:.0f})")
-        uncertain = dbic < 2 * broad_dbic or meas["broad_snr"] < 2 * broad_snr
+        uncertain = dbic < 2 * broad_dbic or meas["broad_snr"] < 2 * broad_snr or ew_b < 1.5 * broad_ew
     else:
         ew = meas["ew_ha"]
         x, y = meas["log_nii_ha"], meas["log_oiii_hb"]

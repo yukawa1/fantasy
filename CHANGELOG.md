@@ -47,6 +47,11 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- `classify` missed the broad lines of about half of the low-redshift quasars: its broad-flux
+  S/N > 20 condition failed when the broad line trades flux with the outflow wing. Recalibrated
+  on 300 SDSS quasars and 650 narrow-line galaxies (calibration/): a broad line now needs
+  dBIC > 25, S/N > 5, EW > 30 A and FWHM 1200-12000 km/s. Quasars found: 47% -> 76% (the rest
+  show no broad line); galaxies wrongly called type 1: 0.9%.
 - `fit_epochs`: an epoch whose own fit found no narrow lines gave an infinite starting
   flux scale (NaN in the joint fit). Starting scales and their limits now come from the
   flux levels when needed (uncalibrated spectra can differ by more than 0.3-3x). The joint
