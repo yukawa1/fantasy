@@ -136,7 +136,7 @@ def _broad(model, name, lines, n, profile="gaussian", fwhm_max=None):
     return model
 
 
-def hbeta(broad_components=2, feii=True, outflow=False, host=False, heii=True,
+def hbeta(broad_components=2, feii=True, outflow=True, host=False, heii=True,
           continuum="powerlaw", extinction=False, coronal=False,
           broad_profile="gaussian", wave_range=(4150, 5550)):
     """
@@ -148,7 +148,11 @@ def hbeta(broad_components=2, feii=True, outflow=False, host=False, heii=True,
     :param broad_components: number of broad components (1, 2, 3, ...).
     :param broad_profile: 'gaussian', 'lorentzian', 'voigt' or 'gauss-hermite'.
         Compare ``result.bic`` between fits to decide how many the data support.
-    :param outflow: add a blueshifted [OIII] wing component.
+    :param outflow: add a blueshifted [OIII] wing component (default: on; in
+        the calibration on SDSS spectra (calibration/report.md) the BIC preferred it for 60-70% of the quasars).
+    :param feii: optical FeII template; its velocity shift is tied to the main
+        broad H-beta component (preferred by the BIC for 72% of the quasars, and
+        the free shift ended at its limit in a quarter of the fits).
     :param host: fit a host galaxy simultaneously: True/'stellar' (stellar
         population templates with sigma* and v*) or 'pca' (Yip+2004 eigenspectra).
     :param continuum: 'powerlaw' or 'broken' (slope change at 4600 A).
@@ -167,6 +171,8 @@ def hbeta(broad_components=2, feii=True, outflow=False, host=False, heii=True,
         m.add(Lines("outflow", ["[OIII]4959", "[OIII]5007"], role="outflow",
                     ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO)}, **OUTFLOW))
     _broad(m, "broad", ["Hg", "Hb"], broad_components, broad_profile)
+    if feii:
+        m.tie("feii.shift", "broad.shift")
     if heii:
         m.add(Lines("heii", ["HeI4471", "HeII4686"], role="broad", fwhm=(4000, 1000, 15000),
                     shift=(0, -4000, 2000)))
@@ -186,7 +192,11 @@ def halpha(broad_components=2, outflow=False, host=False, continuum="powerlaw",
     [NII]6548,6583 (1:3.05), H-alpha, HeI6678, [SII]6716,6731, broad H-alpha
     and broad HeI6678.
 
-    :param outflow: add an outflow wing to [NII] and H-alpha:
+    :param outflow: add an outflow wing to [NII] and H-alpha. Off by default:
+        in the calibration (calibration/report.md) the BIC preferred a free wing
+        for 61% of the quasars, but its width ended at a limit in a quarter of
+        the fits, since nothing in this window constrains it. Prefer the
+        [OIII] kinematics:
 
         - True: free kinematics (FWHM <= 2000 km/s) and [NII]6583/H-alpha <= 3.
           In this window nothing else constrains the wing, which can then
@@ -257,7 +267,7 @@ def outflow_kinematics(source):
     return out
 
 
-def optical(broad_components=2, feii=True, outflow=False, host=False, continuum="broken",
+def optical(broad_components=2, feii=True, outflow=True, host=False, continuum="broken",
             balmer=True, extinction=False, coronal=False, oi6046=False, red=False,
           broad_profile="gaussian", wave_range=None, physical=False, slope=PHYSICAL_SLOPE,
           broad_fwhm_max=None):
@@ -269,6 +279,12 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
     (own kinematics) and broad HeI4471, HeII4686, HeI5876, HeI6678 (shared
     kinematics).
 
+    :param outflow: an [OIII]/[NeIII] wing (default: on; the BIC preferred it for
+        87% of the quasars in the calibration on SDSS spectra (calibration/report.md)).
+    :param host: also see ``physical``. For quasars at z < 0.35 whose host
+        fraction at 5100 A exceeds 0.5 (``fa.classify`` -> 'type1_host'), a
+        stellar host lowered the median reduced chi2 from 1.33 to 1.01 and the
+        BIC for 85% of them; below a host fraction of 0.3 it did not help.
     :param coronal: add the coronal lines [FeVII]3759,5159,5721,6087, [FeXIV]5303
         and [FeX]6375 (shared kinematics of their own).
     :param oi6046: add broad OI6046 (strong in objects with strong FeII).
@@ -367,10 +383,17 @@ def optical(broad_components=2, feii=True, outflow=False, host=False, continuum=
     return m
 
 
-def mgii(broad_components=1, feii=True, balmer_continuum=True, broad_profile="gaussian", wave_range=(2650, 3050)):
+def mgii(broad_components=1, feii=True, balmer_continuum=True, narrow=False, broad_profile="gaussian",
+         wave_range=(2650, 3050)):
     """
     MgII region (2650-3050 A): power law, Balmer continuum, UV FeII and broad
     MgII2798 (doublet blend).
+
+    :param narrow: add a narrow MgII component. Off by default: in the
+        calibration on 200 SDSS quasars (calibration/report.md) its width ended
+        at the upper limit in half of the fits (it became part of the broad
+        line) and the BIC preferred the model without it for 77%. One broad
+        component was preferred for 80%.
     """
     m = Model(PowerLaw("continuum", pivot=3000))
     if balmer_continuum:
@@ -378,17 +401,28 @@ def mgii(broad_components=1, feii=True, balmer_continuum=True, broad_profile="ga
     if feii:
         m.add(FeII("feii_uv", kind="uv", fwhm=(3000, 1000, 10000), shift=(0, -2000, 2000)))
     _broad(m, "broad", ["MgII2798"], broad_components, broad_profile)
-    m.add(Lines("narrow", ["MgII2798"], role="narrow", **NARROW))
+    if narrow:
+        m.add(Lines("narrow", ["MgII2798"], role="narrow", **NARROW))
     m.wave_range = wave_range
     return m
 
 
-def civ(broad_components=1, broad_profile="gaussian", wave_range=(1450, 1720)):
-    """CIV region (1450-1720 A): power law, broad CIV1549, HeII1640 and OIII]1663."""
+def civ(broad_components=2, broad_profile="gaussian", wave_range=(1450, 1720)):
+    """
+    CIV region (1450-1720 A): power law, broad CIV1549 (two components by
+    default: preferred by the BIC for 95% of 150 SDSS quasars in the
+    calibration), HeII1640 and OIII]1663 with the shift of the main broad CIV
+    component (a free shift ended at its -3000 km/s limit in half of the
+    fits, absorbing the red shelf of CIV).
+
+    Narrow absorption lines are common here and dominate chi2: use
+    ``spec.mask_absorption()`` before fitting.
+    """
     m = Model(PowerLaw("continuum", pivot=1450))
     _broad(m, "broad", ["CIV1549"], broad_components, broad_profile)
     m.add(Lines("heii", ["HeII1640", "OIII]1663"], role="broad", fwhm=(3000, 1000, 15000),
                 shift=(0, -3000, 3000)))
+    m.tie("heii.shift", "broad.shift")
     m.wave_range = wave_range
     return m
 
@@ -548,12 +582,15 @@ def seyfert2(host=True, outflow=True, two_systems=True, featureless=True, corona
     return m
 
 
-def composite(host=True, outflow=True, two_systems=True, featureless=True, red=True,
+def composite(host=True, outflow=False, two_systems=True, featureless=True, red=True,
               wave_range=None):
     """
     Composite galaxy (between the Kauffmann 2003 and Kewley 2001 lines): star
     formation and an AGN. Like :func:`seyfert2` (stellar populations with dust,
-    weak featureless continuum, two narrow-line systems, outflow wing).
+    weak featureless continuum, two narrow-line systems). No outflow wing by
+    default: in the calibration on 100 SDSS composites the BIC preferred the
+    model without it for 76%, and its width ended at the 2500 km/s limit in
+    half of the fits (it absorbed template mismatch, not gas).
     """
     return seyfert2(host=host, outflow=outflow, two_systems=two_systems, featureless=featureless,
                     red=red, wave_range=wave_range)
@@ -580,7 +617,7 @@ def liner(host=True, broad=False, outflow=False, featureless=True, red=True, wav
     return m
 
 
-def starforming(host="bc03", outflow=True, extinction=True, wolf_rayet=False, red=True,
+def starforming(host="bc03", outflow=False, extinction=True, wolf_rayet=False, red=True,
                 wave_range=None):
     """
     Star-forming galaxy: young and old stellar populations with dust (BC03
@@ -588,8 +625,10 @@ def starforming(host="bc03", outflow=True, extinction=True, wolf_rayet=False, re
     narrow lines including the high-order Balmer series, He I, the auroral
     lines [OIII]4363, [NII]5755, [SIII]6312 and [OII]7320,7330 (electron
     temperatures), Balmer lines tied to Case B so that the Balmer decrement
-    gives the gas extinction E(B-V) (``extinction``), and a broad wing on the
-    strong lines (galactic winds, unresolved velocity structure).
+    gives the gas extinction E(B-V) (``extinction``). ``outflow=True`` adds a
+    broad wing on the strong lines (galactic winds); off by default, since in
+    the calibration on 150 SDSS star-forming galaxies the BIC preferred the
+    model without it for 84%.
 
     :param wolf_rayet: add the Wolf-Rayet bumps at 4650 and 5808 A.
     """

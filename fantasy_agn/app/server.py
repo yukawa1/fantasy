@@ -196,11 +196,13 @@ class Handler(BaseHTTPRequestHandler):
                     opts = json.loads(self._body() or b"{}")
                     code = s.read_code(path=opts.get("path"), targetid=opts.get("targetid"),
                                        z=opts.get("z"), deredden=opts.get("deredden", True),
-                                       ebv=opts.get("ebv"), rest_frame=opts.get("rest_frame", True))
+                                       ebv=opts.get("ebv"), rest_frame=opts.get("rest_frame", True),
+                                       mask_absorption=bool(opts.get("mask_absorption")))
                 else:
                     code = s.read_code(data=self._body(), filename=q.get("filename"), z=q.get("z"),
                                        deredden=q.get("deredden", "1") == "1", ebv=q.get("ebv"),
-                                       rest_frame=q.get("rest_frame", "1") == "1")
+                                       rest_frame=q.get("rest_frame", "1") == "1",
+                                       mask_absorption=q.get("mask_absorption", "0") == "1")
                 s.run_cell(code)
             elif url.path == "/api/classify":
                 s.run_cell(s.classify_code())

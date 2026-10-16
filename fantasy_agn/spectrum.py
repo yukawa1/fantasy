@@ -174,6 +174,54 @@ class Spectrum:
             new.user_mask |= (self.wave >= lo) & (self.wave <= hi)
         return new
 
+    def mask_absorption(self, nsigma=3.5, window_kms=1500.0, max_width_kms=1000.0, grow=1):
+        """
+        Exclude narrow absorption lines from fits: intervening and associated
+        absorbers (CIV, SiIV, MgII doublets, ...) that cut into broad emission
+        lines and otherwise dominate chi2 (common in CIV and MgII spectra).
+
+        A pixel is part of an absorber when it lies in a run of at least two
+        pixels more than 2 sigma below the local continuum (a running median
+        over ``window_kms``, recomputed without the absorbers), the deepest
+        more than ``nsigma`` below it, and the run is narrower than
+        ``max_width_kms``; runs are widened by ``grow`` pixels. In pure noise
+        this masks about one pixel in 10^5. Broad absorption (BAL troughs) is
+        wider and is not masked. Returns a new spectrum;
+        ``spec.meta['absorbers']`` lists the masked ranges.
+        """
+        from scipy.ndimage import generic_filter, median_filter
+        new = self.copy()
+        good = self.good
+        if good.sum() < 20:
+            return new
+        idx = np.nonzero(good)[0]
+        w, f, e = self.wave[idx], self.flux[idx], self.err[idx]
+        dv = np.median(np.diff(np.log(w))) * C_KMS                    # km/s per pixel
+        size = max(5, int(round(window_kms / dv)) | 1)
+        ref = median_filter(f, size=size, mode="nearest")
+        for _ in range(2):                                            # leave the troughs out
+            clipped = np.where((f - ref) / e < -2.0, np.nan, f)
+            ref = generic_filter(clipped, np.nanmedian, size=size, mode="nearest")
+            ref = np.where(np.isfinite(ref), ref, median_filter(f, size=size, mode="nearest"))
+        dev = (f - ref) / e
+        low = dev < -2.0
+        ranges, k = [], 0
+        while k < idx.size:
+            if not low[k]:
+                k += 1
+                continue
+            j = k
+            while j < idx.size and low[j]:
+                j += 1
+            if j - k >= 2 and dev[k:j].min() < -nsigma and (j - k) * dv <= max_width_kms:
+                a, b = max(k - grow, 0), min(j - 1 + grow, idx.size - 1)
+                ranges.append((float(w[a]), float(w[b])))
+            k = j
+        for lo, hi in ranges:
+            new.user_mask |= (self.wave >= lo) & (self.wave <= hi)
+        new.meta = dict(self.meta, absorbers=ranges)
+        return new
+
     def to_air(self):
         if self.medium == "air":
             return self.copy()

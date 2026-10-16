@@ -6,6 +6,14 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Presets calibrated on 1500 SDSS spectra (calibration/, tested on a held-out 30%): [OIII]
+  outflow wing on by default in `optical` and `hbeta`; FeII shift tied to broad Hb in `hbeta`;
+  `mgii` without narrow MgII (`narrow=True` to add it); `civ` with two broad components and the
+  HeII shift tied to CIV; `composite` and `starforming` without outflow wing by default;
+  `classify` recommends `optical(host=True)` for host-dominated quasars. App: the outflow box
+  follows each preset's default; MgII, CIV and "optical + host" in the model menu.
+- `spec.mask_absorption()` masks narrow absorption lines (CIV, MgII absorbers); app option
+  "Mask narrow absorption" in step 1.
 - OzDES DR2 spectra: `fa.read` reads the original multi-exposure files (stack, or
   `epoch=k`) and Data Central SSA files (noise estimated from the data);
   `fa.ozdes.read_epochs(path, skip_qc=True, combine="night")`, `fa.ozdes.search`,
@@ -47,6 +55,7 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- Figures: pixels excluded from the fit were joined by straight lines across the masked gaps.
 - `classify` missed the broad lines of about half of the low-redshift quasars: its broad-flux
   S/N > 20 condition failed when the broad line trades flux with the outflow wing. Recalibrated
   on 300 SDSS quasars and 650 narrow-line galaxies (calibration/): a broad line now needs

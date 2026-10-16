@@ -28,9 +28,12 @@ UPLOADS = os.path.join(os.path.expanduser("~"), ".fantasy_agn", "uploads")
 # Models offered in the interface: label -> (preset, options)
 MODELS = {
     "optical": ("optical", {}),
+    "optical + host": ("optical", {"host": True}),
     "optical (physical)": ("optical", {"physical": True}),
     "hbeta": ("hbeta", {}),
     "halpha": ("halpha", {}),
+    "mgii": ("mgii", {}),
+    "civ": ("civ", {}),
     "seyfert2": ("seyfert2", {}),
     "liner": ("liner", {}),
     "composite": ("composite", {}),
@@ -39,10 +42,23 @@ MODELS = {
     "type2 (simple)": ("type2", {}),
     "galaxy (simple)": ("galaxy", {}),
 }
-CLASS_MODEL = {"type1": "optical", "type1_host": "optical (physical)", "seyfert2": "seyfert2",
+CLASS_MODEL = {"type1": "optical", "type1_host": "optical + host", "seyfert2": "seyfert2",
                "liner": "liner", "composite": "composite", "unknown": "type2 (simple)",
                "starforming": "starforming", "retired": "passive / retired", "passive": "passive / retired"}
 MAX_OUTPUT = 6000
+
+
+def model_defaults():
+    """Per model in the menu: the preset's default outflow and number of broad components."""
+    out = {}
+    for label, (name, kw) in MODELS.items():
+        params = inspect.signature(getattr(presets, name)).parameters
+        d = {}
+        for k in ("outflow", "broad_components"):
+            if k in params:
+                d[k] = kw.get(k, params[k].default)
+        out[label] = d
+    return out
 
 
 _SUP = str.maketrans("-0123456789", "\u207b\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079")
@@ -182,7 +198,7 @@ class Session:
                     "figure_stem": self.figure_stem,
                     "results": [{"label": a, "value": b} for a, b in self.results],
                     "warnings": self.warnings, "recommended": self.recommended,
-                    "models": list(MODELS), "info": self.info,
+                    "models": list(MODELS), "model_defaults": model_defaults(), "info": self.info,
                     "spectrum": spec.name if spec is not None else None,
                     "has_result": self.result is not None,
                     "model": self.model_state(),
@@ -346,7 +362,7 @@ class Session:
 
     # ------------------------------------------------- code for the buttons
     def read_code(self, path=None, data=None, filename=None, targetid=None, z=None,
-                  deredden=True, ebv=None, rest_frame=True):
+                  deredden=True, ebv=None, rest_frame=True, mask_absorption=False):
         """
         Code that reads a spectrum, optionally corrects Galactic extinction
         (E(B-V) looked up automatically, or ``ebv``) and moves it to the rest frame.
@@ -375,9 +391,15 @@ class Session:
             code += f".to_rest_frame({'z=' + repr(z) if z else ''})"
         elif z:
             code += f"\nspec.z = {z!r}"
+        if mask_absorption:
+            code += ".mask_absorption()" if rest_frame or not z else ""
+            if not rest_frame and z:
+                code += "\nspec = spec.mask_absorption()"
         lines = [code]
         if deredden:
             lines.append('print("Galactic E(B-V) =", round(spec.meta["ebv"], 4), "from", spec.meta["ebv_source"])')
+        if mask_absorption:
+            lines.append('print(len(spec.meta["absorbers"]), "narrow absorption lines masked")')
         lines.append("spec")
         return "\n".join(lines)
 

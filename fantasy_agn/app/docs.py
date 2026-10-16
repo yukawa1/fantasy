@@ -126,7 +126,8 @@ model.remove("feii")
 model</pre>
 <h3>Presets</h3>
 <table class="doc">
-<tr><td><code>hbeta</code></td><td>4150–5550 Å: power law, FeII, narrow and broad Hβ/Hγ, [O III], HeII</td></tr>
+<tr><td><code>hbeta</code></td><td>4150–5550 Å: power law, FeII (shift tied to broad Hβ), narrow and broad Hβ/Hγ, [O III]
+with an outflow wing, HeII</td></tr>
 <tr><td><code>halpha</code></td><td>6200–6900 Å: Hα, [N II], [S II], [O I], HeI; outflow can follow [O III]</td></tr>
 <tr><td><code>optical</code></td><td>3700–6900 Å: everything above, Balmer continuum, high-order Balmer lines;
 <code>physical=True</code>: one power law (α<sub>λ</sub> = −1.7), stellar host, broad FWHM ≤ 15000 km/s</td></tr>
@@ -135,15 +136,18 @@ model</pre>
 <code>red=True</code>: fit to 7500 Å with He I 7065, [Ar III] 7136, [O II] 7320, 7330. In the app these are the
 <i>Also include</i> boxes of step 3. Look at the residuals: strong positive residuals at 3759, 5721, 6087 Å mean
 coronal lines.</td></tr>
-<tr><td><code>mgii</code>, <code>civ</code></td><td>UV lines with UV FeII</td></tr>
+<tr><td><code>mgii</code>, <code>civ</code></td><td>UV lines: MgII with UV FeII (one broad component, no narrow MgII by
+default); CIV with two broad components. Mask narrow absorption lines first (<code>spec.mask_absorption()</code>, or
+<i>Mask narrow absorption</i> in step 1 of the app).</td></tr>
 <tr><td><code>seyfert2</code>, <code>composite</code></td><td>stellar populations with dust, weak featureless
 continuum (scattered light), narrow lines [O II] 3727&ndash;[O II] 7330 in two kinematic systems (high ionisation:
-[Ne III], [O III], He II, [Ar III]; low: Balmer, [N II], [S II], [O I]&hellip;), outflow wing incl. [S II]</td></tr>
+[Ne III], [O III], He II, [Ar III]; low: Balmer, [N II], [S II], [O I]&hellip;), outflow wing incl. [S II]
+(<code>seyfert2</code>; off for <code>composite</code>)</td></tr>
 <tr><td><code>liner</code></td><td>old stellar population with dust, one (possibly broad) narrow-line system;
 <code>broad=True</code> for a LINER 1.9</td></tr>
 <tr><td><code>starforming</code></td><td>BC03 young + old populations with dust, high-order Balmer series, He I,
-auroral lines ([O III] 4363, [N II] 5755, [S III] 6312, [O II] 7320), Case B Balmer ratios + gas E(B-V), wing on
-the strong lines; <code>wolf_rayet=True</code> for WR galaxies</td></tr>
+auroral lines ([O III] 4363, [N II] 5755, [S III] 6312, [O II] 7320), Case B Balmer ratios + gas E(B-V);
+<code>outflow=True</code> for a wing on the strong lines, <code>wolf_rayet=True</code> for WR galaxies</td></tr>
 <tr><td><code>passive</code> (<code>retired</code>)</td><td>stellar populations with dust; weak lines with
 limited widths</td></tr>
 <tr><td><code>type2</code>, <code>galaxy</code></td><td>the simpler earlier versions</td></tr>
@@ -217,6 +221,35 @@ bar shows the independent fits and the joint fit. Below the light curves, <i>Fit
 shows the data, model, components and residuals of every epoch: step with the arrows (or the
 ← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
 one page per epoch.</p>
+"""),
+    ("calibration", "How the presets were calibrated", """
+<p>The defaults of the presets and of the classifier come from fits of <b>1500 SDSS DR17 spectra</b>, random within
+nine groups: quasars at z &lt; 0.35 (300), with H&beta; at 0.35&ndash;0.75 (200), MgII (200) and CIV (150), and
+MPA-JHU Seyfert 2s (150), LINERs (150), composites (100), star-forming (150) and passive galaxies (100). Each was
+fitted with its preset and alternatives; start values and limits were taken from 70% of the sample and the
+changes tested on the other 30%. The scripts and reports are in <code>calibration/</code> of the repository.</p>
+<table class="doc">
+<tr><th>change</th><th>why (held-out 30%)</th></tr>
+<tr><td>[O III] outflow wing on in <code>optical</code> and <code>hbeta</code></td><td>BIC better for 82% / 66%;
+median reduced &chi;&sup2; 1.35&rarr;1.25 and 1.02&rarr;0.96</td></tr>
+<tr><td>stellar host for host-dominated quasars (<code>classify</code> &rarr; type1_host &rarr;
+<code>optical(host=True)</code>)</td><td>with the classifier's choice: median &chi;&sup2;/&nu; 1.10, limits per fit
+2.9&rarr;1.8, BIC better for 82%</td></tr>
+<tr><td>FeII shift tied to broad H&beta; (<code>hbeta</code>)</td><td>BIC better for 72%; the free shift ended at its
+limit in a quarter of the fits</td></tr>
+<tr><td>no narrow MgII</td><td>BIC better for 77%; parameters at a limit 1.1&rarr;0.3 per fit</td></tr>
+<tr><td>two broad CIV components, He II 1640 shift tied to CIV</td><td>BIC better for 98%; &chi;&sup2;/&nu;
+1.76&rarr;1.52</td></tr>
+<tr><td>no outflow wing for <code>composite</code> and <code>starforming</code></td><td>BIC better for 83% / 76%,
+three times faster; the wing had absorbed template mismatch (width at the 2500 km/s limit)</td></tr>
+<tr><td>broad-line test of <code>classify</code>: &Delta;BIC &gt; 25, S/N &gt; 5, EW &gt; 30 &Aring;, FWHM
+1200&ndash;12000 km/s</td><td>type 1 found in 76% of the quasars (was 47%; the rest show no broad line),
+0.9% of the narrow-line galaxies</td></tr>
+</table>
+<p>Unchanged after the tests: <code>seyfert2</code> (outflow and two narrow-line systems), <code>liner</code>,
+<code>passive</code>, the <code>halpha</code> outflow (off: a free wing in the H&alpha; window is not constrained;
+take it from an [O III] fit) and the He I and FeII kinematics of <code>optical</code> (tying them made the fits
+worse). CIV spectra often contain narrow absorbers: <code>spec.mask_absorption()</code> removes them.</p>
 """),
     ("params", "Parameters, limits and ties", """
 <p>Every parameter has a value, limits and a status (free, fixed or tied). Names are

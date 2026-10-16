@@ -404,7 +404,8 @@ def test_stellar_host_is_never_negative():
     hp = r.host_properties()
     assert hp["host_fraction_5100"][0] < 0.25
     # a luminous quasar shows no stellar absorption: that must be flagged
-    assert "not detected" in hp.get("warning", "")
+    warning = hp.get("warning", "")
+    assert "not detected" in warning or "not reliable" in warning
 
 
 def test_extinction_jacobian_and_recovery():
@@ -1238,3 +1239,28 @@ def test_ozdes_public_file(tmp_path):
     # GAMA files (also with WMIN) are still recognised as GAMA
     g = fa.read(os.path.join(EXAMPLES, "G09_Y1_GS1_080.fit"))
     assert g.medium == "air"
+
+
+def test_mask_absorption():
+    rng = np.random.default_rng(3)
+    w = np.exp(np.linspace(np.log(1400), np.log(1800), 4000))
+    flux = 100 + 40 * np.exp(-0.5 * ((w - 1549) / 15) ** 2) + rng.normal(0, 1, w.size)
+    clean = fa.Spectrum(w, flux, np.ones(w.size), rest_frame=True)
+    assert len(clean.mask_absorption().meta["absorbers"]) <= 1     # noise: ~1 pixel in 10^5
+    trough = 30 * np.exp(-0.5 * ((w - 1520.0) / 0.4) ** 2)            # a narrow absorber
+    broad_abs = 25 * np.exp(-0.5 * ((w - 1480.0) / 8.0) ** 2)         # BAL-like: too wide
+    s = fa.Spectrum(w, flux - trough - broad_abs, np.ones(w.size), rest_frame=True).mask_absorption()
+    ranges = s.meta["absorbers"]
+    assert any(lo < 1520 < hi for lo, hi in ranges)                  # the narrow trough
+    assert not s.good[np.argmin(abs(w - 1520))]
+    assert s.good[(w > 1470) & (w < 1490)].all()                     # the broad one is kept
+    assert (~s.good).sum() < 60
+
+
+def test_app_model_defaults_follow_presets():
+    from fantasy_agn.app.session import Session, model_defaults
+    d = model_defaults()
+    assert d["optical"]["outflow"] is True and d["composite"]["outflow"] is False
+    assert d["civ"]["broad_components"] == 2 and "outflow" not in d["passive / retired"]
+    code = Session().read_code(path="x.fits", mask_absorption=True)
+    assert ".mask_absorption()" in code

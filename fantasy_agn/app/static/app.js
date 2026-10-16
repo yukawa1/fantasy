@@ -650,6 +650,8 @@ function renderMulti() {
     $("mmodel").innerHTML = '<option value="current">current model (step 3)</option>' +
       state.models.map((m) => `<option>${esc(m)}</option>`).join("");
     $("mmodel").value = "hbeta";
+    applyModelDefaults("hbeta", $("moutflow"), null);
+    $("mmodel").addEventListener("change", () => applyModelDefaults($("mmodel").value, $("moutflow"), null));
     $("mjobs").value = Math.max(1, (state.cpus || 2) - 1);
     $("mcpus").textContent = `${state.cpus} processor cores on this computer; the independent fits run in parallel.`;
   }
@@ -845,7 +847,7 @@ async function post(path, body, headers) {
 }
 function prepOptions() {
   return { deredden: $("dered").checked, ebv: $("dered").checked && $("ebv").value !== "" ? Number($("ebv").value) : null,
-           rest_frame: $("restframe").checked };
+           rest_frame: $("restframe").checked, mask_absorption: $("absorb").checked };
 }
 function renderPrepHint() {
   const o = prepOptions();
@@ -853,10 +855,11 @@ function renderPrepHint() {
   parts.push(o.deredden ? (o.ebv !== null ? `extinction corrected with E(B-V) = ${o.ebv}` :
     "E(B-V) looked up at the position (file, SFD maps or the IRSA dust service online)") : "Galactic extinction not corrected");
   parts.push(o.rest_frame ? "rest frame" : "observed frame (the models need the rest frame)");
+  if (o.mask_absorption) parts.push("narrow absorption lines masked");
   $("prep-hint").textContent = parts.join(" · ");
   $("ebv").disabled = !o.deredden;
 }
-for (const id of ["dered", "ebv", "restframe"]) $(id).addEventListener("input", renderPrepHint);
+for (const id of ["dered", "ebv", "restframe", "absorb"]) $(id).addEventListener("input", renderPrepHint);
 renderPrepHint();
 function readJSON() {
   const z = $("z").value;
@@ -867,7 +870,8 @@ function readJSON() {
 }
 function readFile(file) {
   const o = prepOptions();
-  const q = new URLSearchParams({ filename: file.name, deredden: o.deredden ? "1" : "0", rest_frame: o.rest_frame ? "1" : "0" });
+  const q = new URLSearchParams({ filename: file.name, deredden: o.deredden ? "1" : "0", rest_frame: o.rest_frame ? "1" : "0",
+                                  mask_absorption: o.mask_absorption ? "1" : "0" });
   if ($("z").value) q.set("z", $("z").value);
   if (o.ebv !== null) q.set("ebv", o.ebv);
   $("message").textContent = `uploading ${file.name} …`;
@@ -903,8 +907,9 @@ function renderHost() {
 $("host").addEventListener("change", renderHost);
 $("btn-tpl").onclick = () => post("/api/templates", { name: $("btn-tpl").dataset.name });
 // which options the chosen preset supports (optical has all three, hbeta/halpha only coronal lines)
-const PRESET_OPTS = { "optical": ["coronal", "oi6046", "red"], "optical (physical)": ["coronal", "oi6046", "red"],
-                      "hbeta": ["coronal"], "halpha": ["coronal"], "seyfert2": ["coronal", "red"],
+const PRESET_OPTS = { "optical": ["coronal", "oi6046", "red"], "optical + host": ["coronal", "oi6046", "red"],
+                      "optical (physical)": ["coronal", "oi6046", "red"],
+                      "hbeta": ["coronal"], "halpha": ["coronal"], "mgii": [], "civ": [], "seyfert2": ["coronal", "red"],
                       "liner": ["red"], "composite": ["red"], "starforming": ["red"], "passive / retired": ["red"],
                       "type2 (simple)": ["coronal"], "galaxy (simple)": [] };
 function renderPresetOptions() {
@@ -917,7 +922,22 @@ function renderPresetOptions() {
     (ok.length ? "only coronal lines can be added to this model" : "no optional line groups") : "";
 }
 const RED_DEFAULT = ["seyfert2", "liner", "composite", "starforming", "passive / retired"];
-function presetDefaults() { $("opt-red").checked = RED_DEFAULT.includes($("preset").value); }
+// the preset's own defaults (outflow wing, broad components), sent by the server
+function applyModelDefaults(model, outflowBox, ncompBox) {
+  const d = (state && state.model_defaults && state.model_defaults[model]) || {};
+  if (outflowBox) {
+    outflowBox.disabled = d.outflow === undefined;
+    if (d.outflow !== undefined) outflowBox.checked = !!d.outflow;
+  }
+  if (ncompBox) {
+    ncompBox.disabled = d.broad_components === undefined;
+    if (d.broad_components !== undefined) ncompBox.value = d.broad_components;
+  }
+}
+function presetDefaults() {
+  $("opt-red").checked = RED_DEFAULT.includes($("preset").value);
+  applyModelDefaults($("preset").value, $("outflow"), null);
+}
 $("preset").addEventListener("change", () => { presetDefaults(); renderPresetOptions(); });
 $("btn-preset").onclick = () => modelAction(Object.assign({ action: "preset" }, presetOptions()));
 $("btn-fit").onclick = () => post("/api/fit", Object.assign({ errors: $("errors").value }, presetOptions()));

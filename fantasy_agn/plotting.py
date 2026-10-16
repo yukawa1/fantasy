@@ -270,7 +270,8 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
                 label="Data", zorder=2)
         unused = view & ~sel
         if unused.any():
-            ax.plot(s.wave[unused], s.flux[unused], color="0.75", lw=0.5,
+            # NaN where fitted, so that masked stretches are not joined across the gaps
+            ax.plot(wave, np.where(unused[view], s.flux[view], np.nan), color="0.75", lw=0.5,
                     drawstyle="steps-mid", zorder=1, label="Not fitted")
         if components:
             for kind, label, flux, ls in _curves(result, group):

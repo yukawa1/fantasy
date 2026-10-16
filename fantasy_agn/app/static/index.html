@@ -75,6 +75,8 @@
             <input id="ebv" type="number" step="0.001" min="0" placeholder="auto"></label>
           <label class="check" title="Divide the wavelengths by 1+z; the models are defined in the rest frame">
             <input id="restframe" type="checkbox" checked> Move to rest frame</label>
+          <label class="check" title="Exclude narrow absorption lines (intervening and associated absorbers), common in CIV and MgII quasar spectra">
+            <input id="absorb" type="checkbox"> Mask narrow absorption</label>
           <button id="btn-read" class="btn primary">Read spectrum <i data-icon="arrow"></i></button>
         </div>
         <p class="hint small" id="prep-hint"></p>

@@ -144,13 +144,14 @@ each night. Flux-only spectra from the Data Central SSA service are read too
 
 | preset | range [Å] | components |
 |---|---|---|
-| `fa.presets.hbeta()` | 4150–5550 | power law, FeII, narrow Hγ/[OIII]4363/Hβ/[OIII]4959,5007, broad Hγ+Hβ (1, 2, 3 … components), broad HeII |
+| `fa.presets.hbeta()` | 4150–5550 | power law, FeII (shift tied to broad Hβ), narrow Hγ/[OIII]4363/Hβ/[OIII]4959,5007, [OIII] outflow wing, broad Hγ+Hβ (1, 2, 3 … components), broad HeII |
 | `fa.presets.halpha()` | 6200–6900 | power law, narrow [OI], [NII], Hα, [SII], broad Hα (1, 2, 3 … components) |
-| `fa.presets.optical()` | 3700–6900 | broken power law, high-order Balmer lines, and all of the above plus [OII], [NeIII], Hδ, HeI |
-| `fa.presets.mgii()` | 2650–3050 | power law, Balmer continuum, UV FeII, broad + narrow MgII |
-| `fa.presets.civ()` | 1450–1720 | power law, broad CIV, HeII1640, OIII]1663 |
+| `fa.presets.optical()` | 3700–6900 | broken power law, high-order Balmer lines, and all of the above plus [OII], [NeIII], Hδ, HeI; `host=True` for host-dominated quasars |
+| `fa.presets.mgii()` | 2650–3050 | power law, Balmer continuum, UV FeII, broad MgII (`narrow=True` adds narrow MgII) |
+| `fa.presets.civ()` | 1450–1720 | power law, broad CIV (2 components), HeII1640, OIII]1663; use `spec.mask_absorption()` first |
 
-Options include `broad_components=1, 2, 3, …` (compare `result.bic` to choose), `outflow=True` (blueshifted [OIII] wing),
+The defaults (outflow wings, numbers of broad components, ties) were calibrated on 1500 SDSS spectra (`calibration/`).
+Options include `broad_components=1, 2, 3, …` (compare `result.bic` to choose), `outflow=False` (no [OIII] wing),
 `host=True` (host galaxy fitted together with the AGN) and `feii=False`.
 `fa.presets.available(spec)` lists the presets your spectrum covers.
 

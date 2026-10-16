@@ -164,7 +164,7 @@ class Classification:
     ``measurements`` (dict), ``model()`` (recommended Model) and ``plot()``.
     """
 
-    RECOMMENDED = {"type1": ("optical", {}), "type1_host": ("optical", {"physical": True}),
+    RECOMMENDED = {"type1": ("optical", {}), "type1_host": ("optical", {"host": True}),
                    "seyfert2": ("seyfert2", {}), "liner": ("liner", {}),
                    "composite": ("composite", {}), "starforming": ("starforming", {}),
                    "retired": ("passive", {}), "passive": ("passive", {}),
