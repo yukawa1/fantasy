@@ -1264,3 +1264,12 @@ def test_app_model_defaults_follow_presets():
     assert d["civ"]["broad_components"] == 2 and "outflow" not in d["passive / retired"]
     code = Session().read_code(path="x.fits", mask_absorption=True)
     assert ".mask_absorption()" in code
+
+
+def test_app_new_spectrum_drops_previous_model():
+    """A model built for one spectrum must not be fitted to the next one."""
+    from fantasy_agn.app.session import Session
+    s = Session()
+    assert "model = None" not in s.read_code(path="a.fits")
+    s.ns["model"] = fa.presets.seyfert2()
+    assert "model = None" in s.read_code(path="b.fits")

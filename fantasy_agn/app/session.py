@@ -396,6 +396,9 @@ class Session:
             if not rest_frame and z:
                 code += "\nspec = spec.mask_absorption()"
         lines = [code]
+        if self.model is not None:
+            # the model of the previous spectrum would otherwise be fitted to this one
+            lines.append("model = None   # new spectrum: create its model in step 3 (or Fit uses the recommended one)")
         if deredden:
             lines.append('print("Galactic E(B-V) =", round(spec.meta["ebv"], 4), "from", spec.meta["ebv_source"])')
         if mask_absorption:

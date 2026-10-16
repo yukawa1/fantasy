@@ -59,6 +59,9 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- App: after reading a new spectrum, Fit still used the model created for the previous one
+  (e.g. a Seyfert 2 model, without FeII, for a quasar). Reading a spectrum now clears the
+  model (`model = None` in the session), so Fit uses the model recommended for the new one.
 - Figures: pixels excluded from the fit were joined by straight lines across the masked gaps.
 - `classify` missed the broad lines of about half of the low-redshift quasars: its broad-flux
   S/N > 20 condition failed when the broad line trades flux with the outflow wing. Recalibrated
