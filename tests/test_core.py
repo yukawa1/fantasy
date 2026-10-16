@@ -1273,3 +1273,21 @@ def test_app_new_spectrum_drops_previous_model():
     assert "model = None" not in s.read_code(path="a.fits")
     s.ns["model"] = fa.presets.seyfert2()
     assert "model = None" in s.read_code(path="b.fits")
+
+
+def test_app_borderline_host_compares_both():
+    from types import SimpleNamespace
+    from fantasy_agn.app.session import Session
+    from fantasy_agn.classify import Classification
+    s = Session()
+    spec = fa.read(fa.examples.path("type1")).to_rest_frame()
+    c = Classification.__new__(Classification)
+    c.spectrum, c.label = spec, "type1"
+    c.measurements = {"host_borderline": True, "host_fraction_5100": 0.17, "sigma_star_snr": 3.8}
+    s.ns.update(spec=spec, c=c)
+    code = s.fit_code(model="optical")
+    assert "model_host = fa.presets.optical(broad_components=2, outflow=True, host=True)" in code
+    assert "if r_host.bic < r.bic - 10:" in code
+    assert "model_host" not in s.fit_code(model="optical", host="none")       # an explicit choice wins
+    c.measurements["host_borderline"] = False
+    assert "model_host" not in s.fit_code(model="optical")

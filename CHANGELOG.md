@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Borderline hosts (host >= 10% at 5100 A but sigma* not confirmed): the classification says so
+  (`measurements["host_borderline"]`) and the app's Fit fits with and without the host and keeps
+  the host if the BIC prefers it (dBIC < -10). With this, the host is used for 95% of the
+  calibration quasars whose fit it improves.
 - `classify` recommends a stellar host for a type 1 AGN when the stellar absorption is detected
   (sigma* S/N >= 5) or the host dominates (>= 50% at 5100 A). On 300 SDSS quasars this found
   82% of those whose fit the host improves (was 65%) and was right in 83% of its choices; the

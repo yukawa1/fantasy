@@ -412,10 +412,26 @@ class Session:
 
     def fit_code(self, model="optical", broad_components=2, outflow=True, errors="covariance", **extra):
         self._need_rest_frame()
+        host_choice = extra.get("host")
         name, kw = self._preset_args(model, broad_components, outflow, **extra)
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
         err = f', errors="{errors}"' if errors != "covariance" else ""
-        return f"model = fa.presets.{name}({args})\nr = fa.fit(spec, model{err})\nr.key_results()"
+        code = f"model = fa.presets.{name}({args})\nr = fa.fit(spec, model{err})"
+        c = self.classification
+        borderline = (c is not None and c.spectrum is self.spec and c.measurements.get("host_borderline")
+                      and name in ("optical", "hbeta", "halpha") and "host" not in kw
+                      and not kw.get("physical") and host_choice in (None, "", "default"))
+        if borderline:
+            m = c.measurements
+            args_h = ", ".join(f"{k}={v!r}" for k, v in dict(kw, host=True).items())
+            code += (f"\n# possible starlight (host {m['host_fraction_5100']:.0%} at 5100 A, sigma* S/N "
+                     f"{m['sigma_star_snr']:.1f}): keep the host if the BIC prefers it"
+                     f"\nmodel_host = fa.presets.{name}({args_h})"
+                     f"\nr_host = fa.fit(spec, model_host{err})"
+                     f"\nprint(f'with host: dBIC = {{r_host.bic - r.bic:.0f}}')"
+                     f"\nif r_host.bic < r.bic - 10:"
+                     f"\n    model, r = model_host, r_host")
+        return code + "\nr.key_results()"
 
     # ------------------------------------------------- code for the model editor
     @staticmethod

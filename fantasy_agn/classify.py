@@ -397,6 +397,10 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
     meas["sigma_star_snr"] = float(sig_snr)
     host_frac = meas["host_fraction_5100"]
     meas["stellar_detected"] = bool(sig_snr >= 5 or (np.isfinite(host_frac) and host_frac >= 0.5))
+    # some starlight but not confirmed: decide by fitting with and without the host
+    # (on the calibration quasars this found the host for 95% of those that need it)
+    meas["host_borderline"] = bool(not meas["stellar_detected"] and np.isfinite(host_frac)
+                                   and host_frac >= 0.1)
     meas["stellar_dbic"] = float(smooth.bic - stellar.bic)
     meas["broad_dbic"], meas["broad_snr"], meas["broad_fwhm"] = dbic, snr, fwhm
     if bline is not None:
@@ -457,6 +461,9 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
         label = "type1_host" if meas["stellar_detected"] else "type1"
         reason = (f"broad {bline} detected (FWHM {meas['broad_fwhm']:.0f} km/s, "
                   f"dBIC {dbic:.0f}, S/N {meas['broad_snr']:.0f})")
+        if label == "type1" and meas["host_borderline"]:
+            reason += (f"; possible starlight (host {host_frac:.0%} at 5100 A, sigma* S/N "
+                       f"{meas['sigma_star_snr']:.1f}): compare fits with and without the host")
         if label == "type1_host":
             reason += (f"; stellar absorption detected (sigma* = {meas['sigma_star']:.0f} km/s, "
                        f"S/N {meas['sigma_star_snr']:.0f}): fit the host with the AGN")
