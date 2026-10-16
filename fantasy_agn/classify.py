@@ -33,7 +33,9 @@ The stellar fit includes a dust screen on the starlight: without it the
 template sum cannot follow the continuum shape and the error at H-beta (a few
 per cent of the continuum) is comparable to weak H-beta emission.
 
-Classes: 'type1', 'type1_host' (host >= 50% at 5100 A), 'seyfert2', 'liner',
+Classes: 'type1', 'type1_host' (stellar absorption detected: sigma* S/N >= 5,
+or host >= 50% at 5100 A; the recommended model then includes the host),
+'seyfert2', 'liner',
 'composite', 'starforming', 'retired' (EW(Ha) 0.5-3 A, ionised by old
 stars), 'passive' (EW(Ha) < 0.5 A) and 'unknown'. ``result.model()`` returns
 the recommended model for :func:`fantasy_agn.fit`.
@@ -388,7 +390,13 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
         bline, dbic, snr, fwhm, bflux = broad_stats(r_n, r_b)
     hp = stellar.host_properties()
     meas["host_fraction_5100"] = hp["host_fraction_5100"][0] if lo < 5100 < hi else np.nan
-    meas["sigma_star"] = hp["sigma_star"][0]
+    meas["sigma_star"], meas["sigma_star_err"] = hp["sigma_star"]
+    sig, sig_err = meas["sigma_star"], meas["sigma_star_err"]
+    kin_at_limit = any(n.startswith("host.") and n.endswith((".sigma", ".velocity")) for n in stellar.at_limit)
+    sig_snr = sig / sig_err if np.isfinite(sig_err) and sig_err > 0 and not kin_at_limit else 0.0
+    meas["sigma_star_snr"] = float(sig_snr)
+    host_frac = meas["host_fraction_5100"]
+    meas["stellar_detected"] = bool(sig_snr >= 5 or (np.isfinite(host_frac) and host_frac >= 0.5))
     meas["stellar_dbic"] = float(smooth.bic - stellar.bic)
     meas["broad_dbic"], meas["broad_snr"], meas["broad_fwhm"] = dbic, snr, fwhm
     if bline is not None:
@@ -441,9 +449,17 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
     host = meas["host_fraction_5100"]
     uncertain = False
     if broad:
-        label = "type1_host" if np.isfinite(host) and host >= 0.5 else "type1"
+        # The host belongs in the model when the stellar absorption is detected. On 300
+        # SDSS quasars at z < 0.35 (calibration/) this rule chose the host for 82% of
+        # those whose fit it improves (BIC), and was right in 83% of the cases where it
+        # chose it; host >= 50% alone found 65%, the literature's host >= 10% was right
+        # in only 59%.
+        label = "type1_host" if meas["stellar_detected"] else "type1"
         reason = (f"broad {bline} detected (FWHM {meas['broad_fwhm']:.0f} km/s, "
                   f"dBIC {dbic:.0f}, S/N {meas['broad_snr']:.0f})")
+        if label == "type1_host":
+            reason += (f"; stellar absorption detected (sigma* = {meas['sigma_star']:.0f} km/s, "
+                       f"S/N {meas['sigma_star_snr']:.0f}): fit the host with the AGN")
         uncertain = dbic < 2 * broad_dbic or meas["broad_snr"] < 2 * broad_snr or ew_b < 1.5 * broad_ew
     else:
         ew = meas["ew_ha"]

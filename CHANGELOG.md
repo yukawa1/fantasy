@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- `classify` recommends a stellar host for a type 1 AGN when the stellar absorption is detected
+  (sigma* S/N >= 5) or the host dominates (>= 50% at 5100 A). On 300 SDSS quasars this found
+  82% of those whose fit the host improves (was 65%) and was right in 83% of its choices; the
+  common "host >= 10%" rule was right in only 59%.
 - Presets calibrated on 1500 SDSS spectra (calibration/, tested on a held-out 30%): [OIII]
   outflow wing on by default in `optical` and `hbeta`; FeII shift tied to broad Hb in `hbeta`;
   `mgii` without narrow MgII (`narrow=True` to add it); `civ` with two broad components and the
