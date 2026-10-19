@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Reverberation mapping: `me.reverberation("Hb")` gives the lag (ICCF with FR/RSS errors, search
+  window from the R-L relation), sigma_line and FWHM of the rms spectrum and the reverberation
+  mass (f = 4.47); `continuum=(mjd, flux, err)` for photometry, `mjd_range`, `detrend`;
+  `me.rms_spectrum()`, `fa.rm.ccf_lag()`. App: **Lag, rms spectrum and mass** in the Multi-epoch view.
 - Samples: `fa.fit_sample(files, out=...)` reads, dereddens, classifies and fits many spectra in
   parallel (model from the classification, host check included) and returns one catalog
   (`.table`), the saved fits (`.load(i)`) and a gallery. App: **Sample** view with a sortable
@@ -86,6 +90,8 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- Multi-epoch: a shared parameter tied to a per-epoch one (e.g. feii.shift, tied to broad.shift
+  by the hbeta preset) stopped the fit; it is now fitted freely, with a warning.
 - App: after reading a new spectrum, Fit still used the model created for the previous one
   (e.g. a Seyfert 2 model, without FeII, for a quasar). Reading a spectrum now clears the
   model (`model = None` in the session), so Fit uses the model recommended for the new one.

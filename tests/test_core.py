@@ -1419,3 +1419,36 @@ def test_fit_sample(tmp_path):
     from fantasy_agn.app.session import Session
     code = Session().sample_code(pattern="/data/*.fits", model="seyfert2", mask_absorption=True)
     assert "fa.fit_sample(files" in code and "model='seyfert2'" in code and "mask_absorption=True" in code
+
+
+def test_iccf_recovers_lag():
+    from fantasy_agn.rm import ccf_lag
+    rng = np.random.default_rng(3)
+    t = np.arange(0, 400, 0.5)
+    x = np.zeros(t.size)
+    for i in range(1, t.size):                       # damped random walk
+        x[i] = x[i - 1] - x[i - 1] * 0.5 / 60 + rng.normal(0, 0.12)
+    ts = np.sort(rng.choice(t[t > 30], 70, replace=False))
+    c = np.interp(ts, t, 10 + x) + rng.normal(0, 0.05, ts.size)
+    l = np.interp(ts, t, 5 + 0.5 * np.interp(t - 20, t, x)) + rng.normal(0, 0.03, ts.size)
+    res = ccf_lag(ts, c, np.full(ts.size, 0.05), ts, l, np.full(ts.size, 0.03), lag_range=(-60, 80), n_mc=150)
+    assert abs(res["tau_cen"] - 20) < 3 * max(res["tau_err_lo"], res["tau_err_hi"], 1.0)
+    assert res["r_max"] > 0.8
+
+
+def test_rms_spectrum_width():
+    rng = np.random.default_rng(8)
+    spectra = []
+    for k in range(12):
+        m = _toy_truth()
+        m.params["broad.Hb.flux"].value *= 1 + 0.4 * np.sin(0.7 * k)
+        wave = np.arange(4650, 5150, 1.0)
+        flux = m.evaluate(wave, {"medium": "vacuum"}) + rng.normal(0, 1.0, wave.size)
+        spectra.append(fa.Spectrum(wave, flux, np.ones(wave.size), rest_frame=True, mjd=50000 + 7 * k))
+    me = fa.fit_epochs(spectra, _toy_model(), reference=0, n_jobs=1, verbose=False)
+    rms = me.rms_spectrum("Hb")
+    # only the broad flux varies: the rms profile is the broad Gaussian, sigma = FWHM / 2.355
+    assert rms["sigma_rms"] == pytest.approx(4200 / 2.3548, rel=0.12)
+    rv = me.reverberation("Hb", continuum=(np.arange(50000, 50084, 3.0), np.ones(28) + np.arange(28) * 0.01,
+                                           np.full(28, 0.01)), n_mc=20)
+    assert "lag (rest frame)" in rv.table().quantity.values

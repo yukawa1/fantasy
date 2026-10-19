@@ -730,6 +730,20 @@ function renderMulti() {
     ["fit time", `${m.time.toFixed(0)} s`]].map(([a, b]) =>
     `<div class="tile"><div class="lab">${a}</div><div class="val">${esc(b)}</div></div>`).join("");
   $("minfo").textContent = "Broad-line fluxes and widths and the continuum per epoch (intercalibrated).";
+  const bl = m.columns.filter((c) => c.endsWith("_flux")).map((c) => c.slice(0, -5));
+  if ($("rmline").options.length !== bl.length) $("rmline").innerHTML = bl.map((l) => `<option>${esc(l)}</option>`).join("");
+  $("btn-rm").disabled = !!state.busy || !bl.length;
+  const R = state.reverb;
+  $("rmresult").classList.toggle("hidden", !R);
+  if (R && $("rmresult").dataset.id !== String(R.id)) {
+    $("rmresult").dataset.id = String(R.id);
+    $("rmtable").innerHTML = "<tr><th>quantity</th><th>value</th><th>error</th><th>unit</th></tr>" +
+      R.rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("");
+  }
+  if (R && state.figure_stem === "reverberation" && $("rmfig").dataset.v !== String(state.figure_version)) {
+    $("rmfig").dataset.v = String(state.figure_version);
+    $("rmfig").src = withToken(`/api/figure.png?v=${state.figure_version}&hd=1`);
+  }
   if (m.id !== mId) {                       // a new result: rebuild table and epoch list
     mId = m.id;
     $("mtable").innerHTML = `<tr>${m.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
@@ -766,6 +780,8 @@ $("efig").addEventListener("load", (e) => {
   e.target.parentElement.classList.remove("loading");
   e.target.style.width = `${e.target.naturalWidth / 2}px`;
 });
+$("btn-rm").onclick = () => post("/api/reverberation", { line: $("rmline").value });
+$("rmfig").addEventListener("load", (e) => { e.target.style.width = `${e.target.naturalWidth / 2}px`; });
 $("eprev").onclick = () => showEpoch(epochK - 1);
 $("enext").onclick = () => showEpoch(epochK + 1);
 $("esel").onchange = () => showEpoch(Number($("esel").value));

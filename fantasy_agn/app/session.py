@@ -204,6 +204,7 @@ class Session:
                     "model": self.model_state(),
                     "templates": _templates_state(),
                     "multi": self.multi_state(),
+                    "reverb": self.reverb_state(),
                     "lines": self.line_state(),
                     "sample": self.sample_state(),
                     "cpus": os.cpu_count() or 1,
@@ -362,12 +363,16 @@ class Session:
         seen = {"spec": id(spec) if spec is not None else None,
                 "c": id(c) if c is not None else None,
                 "r": id(r) if r is not None else None,
-                "me": id(me) if me is not None else None}
+                "me": id(me) if me is not None else None,
+                "rm": id(self.reverb) if self.reverb is not None else None}
         changed = {k for k in seen if seen[k] != self._seen.get(k) and seen[k] is not None}
         self._seen = seen
         if isinstance(value, (Figure, Axes)):
             fig = value if isinstance(value, Figure) else value.figure
             self._show(fig, "figure")
+        elif "rm" in changed:
+            self._show(self.reverb.plot(fig=Figure()), "reverberation")
+            self.info = "Reverberation done: lag, rms widths and mass below the light curves."
         elif "me" in changed:
             self._show(me.plot_light_curves(fig=Figure()), "light_curves")
             self.info = (f"Multi-epoch fit of {len(me.epochs)} spectra done. Light curves below; "
@@ -848,6 +853,29 @@ class Session:
         return f"fa.templates.download({name!r})"
 
     # ------------------------------------------------------------ multi-epoch
+    @property
+    def reverb(self):
+        from ..rm import Reverberation
+        v = self.ns.get("rm")
+        return v if isinstance(v, Reverberation) else None
+
+    def reverb_state(self):
+        rv = self.reverb
+        if rv is None:
+            return None
+        t = rv.table()
+        fmt = lambda v: f"{v:.4g}" if isinstance(v, (float, np.floating)) and np.isfinite(v) else "—"
+        return {"line": rv.line, "rows": [[q.quantity, fmt(q.value), str(q.error), q.unit] for q in t.itertuples()],
+                "id": id(rv)}
+
+    def reverberation_code(self, line="Hb", n_mc=1000):
+        if self.multi is None:
+            raise ValueError("fit several epochs first")
+        if not str(line).replace("[", "").replace("]", "").isalnum():
+            raise ValueError("unknown line")
+        return (f"rm = me.reverberation({line!r}, n_mc={int(n_mc)})   # lag (ICCF), rms spectrum, mass\n"
+                "rm")
+
     def multi_state(self):
         me = self.multi
         if me is None:

@@ -21,6 +21,7 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     GET  /api/line.<png|pdf>?line=Hb one line of the current fit with its components
     POST /api/templates              JSON {name}: download a stellar template set (as a code cell)
     POST /api/sample                 JSON: classify and fit many spectra (fa.fit_sample, code cell)
+    POST /api/reverberation          JSON {line}: lag, rms spectrum and mass of the multi-epoch fit
     GET  /api/sample.csv, /api/sample_fig.png?k=N&kind=fit|line
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
@@ -285,6 +286,9 @@ class Handler(BaseHTTPRequestHandler):
                     shared=opts.get("shared", "narrow.*"), intercalibrate=opts.get("intercalibrate", True),
                     n_jobs=opts.get("n_jobs", -1), deredden=opts.get("deredden", True), ebv=opts.get("ebv"),
                     rest_frame=opts.get("rest_frame", True), z=opts.get("z"), **extra))
+            elif url.path == "/api/reverberation":
+                opts = json.loads(self._body() or b"{}")
+                s.run_cell(s.reverberation_code(opts.get("line", "Hb"), opts.get("n_mc", 1000)))
             elif url.path == "/api/sample":
                 opts = json.loads(self._body() or b"{}")
                 s.run_cell(s.sample_code(paths=opts.get("paths"), pattern=opts.get("pattern"),

@@ -222,6 +222,28 @@ shows the data, model, components and residuals of every epoch: step with the ar
 ← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
 one page per epoch.</p>
 """),
+    ("reverberation", "Reverberation mapping", """
+<p>After a multi-epoch fit, <b>Lag, rms spectrum and mass</b> (Multi-epoch view, below the light curves)
+measures the lag of the broad line behind the continuum, its width in the rms spectrum and the
+reverberation black-hole mass.</p>
+<pre>rm = me.reverberation("Hb")                                  # continuum: the fitted 5100 A light curve
+rm = me.reverberation("Hb", continuum=(mjd, flux, err))       # better: photometry
+rm = me.reverberation("Hb", mjd_range=(56600, 56850), detrend=True)   # one season, trend removed
+rm; rm.table(); rm.plot()
+me.rms_spectrum("Hb")                                        # mean and rms profiles and widths</pre>
+<ul>
+<li><b>Lag</b>: interpolated cross-correlation (ICCF), centroid of r &ge; 0.8 r<sub>max</sub>; errors from
+flux randomisation and random subset selection (Peterson et al. 1998, 2004). The search window is &plusmn;5
+times the lag expected from L5100 and the R&ndash;L relation (Bentz et al. 2013), at least 60 days.</li>
+<li><b>rms spectrum</b>: the broad line alone in every epoch (calibrated data minus continuum, FeII, host
+and narrow lines), noise-corrected rms (Park et al. 2012); widths with bootstrap errors.</li>
+<li><b>Mass</b>: M = f c&tau; &sigma;<sub>line</sub>(rms)&sup2;/G with f = 4.47 (Woo et al. 2015); the
+~0.3 dex scatter of f is not in the error.</li>
+</ul>
+<p>Lags need well-sampled light curves: the continuum from the spectra is often too sparse and diluted
+by host light, and a long baseline with seasonal gaps is dominated by slow trends. Check r<sub>max</sub>
+(&gt; 0.6&ndash;0.7 for a reliable lag) and the CCF in the figure.</p>
+"""),
     ("sample", "Fitting a sample", """
 <p>The <b>Sample</b> view fits many spectra at once. Drop the files (or give a pattern such as
 <code>/data/*.fits</code>) and press <i>Fit the sample</i>. Each spectrum is read, corrected for Galactic

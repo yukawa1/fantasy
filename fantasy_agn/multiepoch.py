@@ -66,8 +66,12 @@ class _JointProblem:
                 continue
             target, factor, offset = p.tie
             if names[p.name][0] == p.name and names[target][0] != target:
-                raise ValueError(f"{p.name} is shared but is tied to {target}, which is "
-                                 "not; share both or neither")
+                # shared on purpose (e.g. feii.shift, tied to broad.shift by the hbeta
+                # preset): one free value for all epochs instead of the tie
+                warnings.warn(f"{p.name} is shared, so it is fitted freely (one value for all "
+                              f"epochs) instead of being tied to {target}, which varies")
+                joint[p.name].tie = None
+                continue
             for k in range(self.n):
                 joint[names[p.name][k]].tie = (names[target][k], factor, offset)
         self.scale_names = []
@@ -380,6 +384,79 @@ class MultiEpochResult:
         rows = [(k, r.spectrum.mjd, r.spectrum.name, r.scale, r.scale_err, k == self.reference)
                 for k, r in enumerate(self.epochs)]
         return pd.DataFrame(rows, columns=["epoch", "mjd", "name", "scale", "error", "reference"])
+
+    def _epoch_select(self, mjd_range):
+        if mjd_range is None:
+            return list(range(len(self.epochs)))
+        lo, hi = mjd_range
+        sel = [k for k, e in enumerate(self.epochs) if e.spectrum.mjd is not None and lo <= e.spectrum.mjd <= hi]
+        if len(sel) < 5:
+            raise ValueError(f"only {len(sel)} epochs in MJD {lo}-{hi}")
+        return sel
+
+    def rms_spectrum(self, line="Hb", mjd_range=None, **kw):
+        """Mean and rms spectrum of a broad line (see :func:`fantasy_agn.rm.rms_spectrum`)."""
+        from .rm import rms_spectrum
+        return rms_spectrum([self.epochs[k] for k in self._epoch_select(mjd_range)], line, **kw)
+
+    def reverberation(self, line="Hb", continuum=None, lag_range=None, dt=None, n_mc=1000,
+                      f_virial=4.47, mjd_range=None, detrend=False, seed=0):
+        """
+        Lag of the broad ``line`` behind the continuum (ICCF with FR/RSS errors),
+        its width in the rms spectrum and the reverberation mass; returns a
+        :class:`fantasy_agn.rm.Reverberation` (print it, ``.table()``, ``.plot()``).
+
+        :param continuum: None: the fitted AGN continuum light curve of these
+            epochs; or (mjd, flux, error) arrays, e.g. photometry (better sampled).
+        :param mjd_range: (min, max): only epochs (and continuum points) in this
+            window, e.g. one observing season; lags need dense sampling.
+        :param lag_range: (min, max) observed-frame lag to search, days (default:
+            +-5x the lag expected from L5100 and the R-L relation, >= 60 d).
+        :param detrend: subtract a linear trend from both light curves (Welsh
+            1999): slow variations otherwise dominate the cross-correlation.
+        """
+        from .rm import Reverberation, ccf_lag
+        lc = self.light_curve(lines=[line]).iloc[self._epoch_select(mjd_range)]
+        if lc["mjd"].isna().any():
+            raise ValueError("the epochs need MJDs for a lag")
+        if f"{line}_flux" not in lc:
+            raise ValueError(f"no broad {line} in the model")
+        t2, f2, e2 = lc["mjd"].to_numpy(float), lc[f"{line}_flux"].to_numpy(float), lc[f"{line}_flux_err"].to_numpy(float)
+        if continuum is None:
+            cc = [c for c in lc.columns if c.startswith("cont") and not c.endswith("_err")]
+            if not cc:
+                raise ValueError("no continuum light curve in the fit; give continuum=(mjd, flux, error)")
+            t1, f1, e1 = t2, lc[cc[0]].to_numpy(float), lc[cc[0] + "_err"].to_numpy(float)
+            label = f"continuum {cc[0][4:]} A"
+        else:
+            t1, f1, e1 = (np.asarray(a, float) for a in continuum)
+            label = "continuum (given)"
+        if mjd_range is not None and continuum is not None:
+            keep = (t1 >= mjd_range[0]) & (t1 <= mjd_range[1])
+            t1, f1, e1 = t1[keep], f1[keep], e1[keep]
+        if detrend:
+            def flat(t, f):
+                ok = np.isfinite(f)
+                a, b = np.polyfit(t[ok], f[ok], 1)
+                return f - (a * t + b) + np.nanmean(f)
+            f1, f2 = flat(t1, f1), flat(t2, f2)
+            label += ", detrended"
+        z = self.epochs[0].spectrum.z
+        if lag_range is None:
+            # +-5x the lag expected from the R-L relation (Bentz et al. 2013), at least
+            # 60 d and at most half the overlap: long baselines with seasonal gaps
+            # otherwise produce spurious lags of hundreds of days
+            span = min(t1.max(), t2.max()) - max(t1.min(), t2.min())
+            lmax = 0.5 * span
+            lcol = [c for c in lc.columns if c.startswith("logL") and not c.endswith("_err")]
+            if lcol and np.isfinite(lc[lcol[0]]).any():
+                tau = 10 ** (1.527 + 0.533 * (np.nanmedian(lc[lcol[0]]) - 44.0)) * (1 + (z or 0))
+                lmax = min(lmax, max(5 * tau, 60.0))
+            lag_range = (-lmax, lmax)
+        lag = ccf_lag(t1, f1, e1, t2, f2, e2, lag_range=lag_range, dt=dt, n_mc=n_mc, seed=seed)
+        rms = self.rms_spectrum(line, mjd_range=mjd_range)
+        return Reverberation(line, lag, rms, label, z=z, f_virial=f_virial,
+                             lc=((t1, f1, e1), (t2, f2, e2)))
 
     def light_curve(self, lines=None, continuum_at=None):
         """

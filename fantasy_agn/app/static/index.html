@@ -377,6 +377,18 @@
       </div>
       <p class="hint small">Click a row of the table to see the fit of that epoch.</p>
       <div class="tablewrap" style="margin-top:6px"><table class="grid" id="mtable"></table></div>
+      <div class="epochs">
+        <header class="epochs-head"><h3>Reverberation</h3>
+          <div class="epoch-nav">
+            <label class="short">line <select id="rmline"></select></label>
+            <button id="btn-rm" class="btn small primary"><i data-icon="play"></i>Lag, rms spectrum and mass</button>
+          </div></header>
+        <p class="hint small">Lag of the broad line behind the fitted 5100 Å continuum (ICCF, errors from flux
+          randomisation and random subset selection), its width in the rms spectrum and the reverberation mass
+          (f = 4.47). For a photometric continuum use <code>me.reverberation("Hb", continuum=(mjd, flux, err))</code> in a cell.</p>
+        <div id="rmresult" class="hidden"><div class="tablewrap"><table class="grid" id="rmtable"></table></div>
+          <figure><img id="rmfig" alt="reverberation"></figure></div>
+      </div>
     </div>
     <aside class="card-side downloads">
       <a class="btn outline tok" href="/api/lightcurve.csv" download><i data-icon="download"></i>Light curve (.csv)</a>
