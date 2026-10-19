@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- `fit_epochs` warns when the intercalibration is uncertain (median flux-scale error > 2% per epoch;
+  `me.calibration_error`). On SDSS-RM RMID 766 (weak [OIII]) the narrow-line intercalibration added
+  ~3% noise and damped the Hb variability; without it the light curve matched the SDSS-RM one best
+  (r = 0.77). The ICCF is vectorised (6x faster).
 - Absorption: `fa.Absorption` (Gaussian optical-depth troughs multiplying the model) and
   `fa.fit_absorbed(spec, model)`, which finds troughs in the residuals and adds them while the BIC
   improves (`r.absorbers`, `r.no_absorbers`). The worst CIV calibration fits went from reduced chi2

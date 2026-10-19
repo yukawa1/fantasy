@@ -258,6 +258,11 @@ and narrow lines), noise-corrected rms (Park et al. 2012); widths with bootstrap
 <li><b>Mass</b>: M = f c&tau; &sigma;<sub>line</sub>(rms)&sup2;/G with f = 4.47 (Woo et al. 2015); the
 ~0.3 dex scatter of f is not in the error.</li>
 </ul>
+<p><b>Intercalibration</b> on the narrow lines only helps when they are strong. With weak [O III] it adds
+a few percent of noise per epoch, comparable to the variability; FANTASY warns when the median flux-scale
+error exceeds 2%. For spectra with a good pipeline calibration (SDSS) compare with
+<code>intercalibrate=False</code>: on SDSS-RM RMID 766 the uncalibrated light curve matched the published one
+best.</p>
 <p>Lags need well-sampled light curves: the continuum from the spectra is often too sparse and diluted
 by host light, and a long baseline with seasonal gaps is dominated by slow trends. Check r<sub>max</sub>
 (&gt; 0.6&ndash;0.7 for a reliable lag) and the CCF in the figure.</p>

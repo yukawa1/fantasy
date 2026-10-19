@@ -269,6 +269,15 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
     result = MultiEpochResult(prob, full, cov_full, in_order, chi2, dof, res, shared,
                               np.sqrt(scale), time.time() - t0)
     result.reference = order[0]
+    if intercalibrate:
+        errs = [e.scale_err for k, e in enumerate(in_order) if k != result.reference and np.isfinite(e.scale_err)]
+        result.calibration_error = float(np.median(errs)) if errs else np.nan
+        if errs and result.calibration_error > 0.02:
+            warnings.warn(
+                f"the intercalibration is uncertain: median flux-scale error "
+                f"{100 * result.calibration_error:.1f}% per epoch (the shared narrow lines are weak). "
+                "This noise can hide real variability; compare with intercalibrate=False (the "
+                "pipeline flux calibration), e.g. for SDSS spectra")
     if verbose:
         print(result.summary())
     return result

@@ -34,30 +34,38 @@ LIGHT_DAY = 2.59020683712e13     # m
 
 
 # ------------------------------------------------------------------ ICCF
+def _corr_columns(a, b, valid):
+    """Pearson r per column of a and b, using only the valid entries."""
+    n = valid.sum(axis=0)
+    w = valid.astype(float)
+    ma = (a * w).sum(axis=0) / np.maximum(n, 1)
+    mb = (b * w).sum(axis=0) / np.maximum(n, 1)
+    da, db = (a - ma) * w, (b - mb) * w
+    cov = (da * db).sum(axis=0)
+    va, vb = (da * da).sum(axis=0), (db * db).sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r = cov / np.sqrt(va * vb)
+    r[(n < 3) | (va <= 0) | (vb <= 0)] = np.nan
+    return r
+
+
 def iccf(t1, f1, t2, f2, lags):
     """
     Interpolated cross-correlation r(lag) of light curve 2 against 1 (positive
     lag: 2 follows 1), averaging the two interpolation directions.
     """
     t1, f1, t2, f2 = (np.asarray(a, float) for a in (t1, f1, t2, f2))
-    out = np.full(len(lags), np.nan)
-    for k, lag in enumerate(lags):
-        rs = []
-        # interpolate 2 at t1 + lag
-        m = (t1 + lag >= t2.min()) & (t1 + lag <= t2.max())
-        if m.sum() >= 3:
-            a, b = f1[m], np.interp(t1[m] + lag, t2, f2)
-            if a.std() > 0 and b.std() > 0:
-                rs.append(np.corrcoef(a, b)[0, 1])
-        # interpolate 1 at t2 - lag
-        m = (t2 - lag >= t1.min()) & (t2 - lag <= t1.max())
-        if m.sum() >= 3:
-            a, b = np.interp(t2[m] - lag, t1, f1), f2[m]
-            if a.std() > 0 and b.std() > 0:
-                rs.append(np.corrcoef(a, b)[0, 1])
-        if rs:
-            out[k] = np.mean(rs)
-    return out
+    lags = np.asarray(lags, float)
+    # interpolate 2 at t1 + lag (all lags at once)
+    x = t1[:, None] + lags[None, :]
+    v1 = (x >= t2.min()) & (x <= t2.max())
+    r1 = _corr_columns(np.broadcast_to(f1[:, None], x.shape), np.interp(x, t2, f2), v1)
+    # interpolate 1 at t2 - lag
+    y = t2[:, None] - lags[None, :]
+    v2 = (y >= t1.min()) & (y <= t1.max())
+    r2 = _corr_columns(np.interp(y, t1, f1), np.broadcast_to(f2[:, None], y.shape), v2)
+    with np.errstate(invalid="ignore"):
+        return np.nanmean(np.vstack([r1, r2]), axis=0)
 
 
 def _centroid(lags, r, frac=0.8):
