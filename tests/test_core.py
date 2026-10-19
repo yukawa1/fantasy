@@ -1307,3 +1307,25 @@ def test_app_host_check_after_create_model():
     assert "model_host" in s.fit_model_code()
     s.ns["model"].set("narrow.fwhm", max=900)                  # edited: fitted as it is
     assert "model_host" not in s.fit_model_code()
+
+
+def test_plot_line_and_components():
+    import matplotlib
+    matplotlib.use("Agg")
+    from fantasy_agn.plotting import plain_line, _curves
+    spec = fa.read(fa.examples.path("type1")).to_rest_frame()
+    r = fa.fit(spec, fa.presets.hbeta(), verbose=False)
+    lines = r.fitted_lines()
+    assert lines.line.iloc[0] == "Hb" and len(lines.components.iloc[0]) == 3      # narrow + 2 broad first
+    fig = r.plot_line()                                                            # the main broad line
+    labels = fig.axes[0].get_legend_handles_labels()[1]
+    assert any(l.startswith("Broad 1") for l in labels) and any(l.startswith("Broad 2") for l in labels)
+    assert "Sum" in labels and "Data" in labels
+    r.plot_line("[OIII]5007", velocity=False, residuals=False, others=True)
+    r.plot_lines(["Hb", "[OIII]5007"])
+    with pytest.raises(ValueError):
+        r.plot_line("Ha")                                                          # not in this model
+    names = [c[1] for c in _curves(r, "auto")]
+    assert "1st broad comp." in names and "2nd broad comp." in names and "Broad lines" in names
+    assert "1st broad comp." not in [c[1] for c in _curves(r, True)]
+    assert plain_line("[OIII]5007") == "[O III] λ5007" and plain_line("Hb") == "Hβ"

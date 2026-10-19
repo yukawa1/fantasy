@@ -204,6 +204,7 @@ class Session:
                     "model": self.model_state(),
                     "templates": _templates_state(),
                     "multi": self.multi_state(),
+                    "lines": self.line_state(),
                     "cpus": os.cpu_count() or 1,
                     "python": platform.python_version(),
                     "version": __import__("fantasy_agn").__version__}
@@ -658,6 +659,15 @@ class Session:
             for key, arrs in groups.items():
                 if arrs:
                     series.append((key, np.sum(arrs, axis=0)))
+            # several broad components: also each of them (1st, 2nd, ... summed over the lines)
+            from ..plotting import component_index
+            by_index = {}
+            for comp in r.model.components:
+                if getattr(comp, "role", None) == "broad" and comp.name in parts:
+                    by_index.setdefault(component_index(comp.name), []).append(parts[comp.name])
+            if len(by_index) > 1:
+                for k in sorted(by_index):
+                    series.append((f"broad {k}", np.sum(by_index[k], axis=0)))
             resid = (s.flux - model) / s.err
             title = f"{s.name}: fit, \u03c7\u00b2/\u03bd = {r.rchi2:.2f}"
         else:
@@ -785,6 +795,43 @@ class Session:
                              + (f"  (MJD {e.spectrum.mjd:g})" if e.spectrum.mjd else ""))
                 pdf.savefig(fig, bbox_inches="tight")
         return buf.getvalue()
+
+    def line_state(self):
+        """Lines of the current fit for the single-line view (most interesting first)."""
+        r, spec = self.result, self.spec
+        if r is None or spec is None or r.spectrum.name != spec.name:
+            return None
+        cached = self.__dict__.get("_line_cache")
+        if cached is not None and cached[0] is r:
+            return cached[1]
+        from ..plotting import fitted_lines, main_line, plain_line
+        lines = [{"line": d["line"], "wave": d["wavelength"], "n": len(d["components"]),
+                  "label": plain_line(d["line"]),
+                  "components": d["components"]} for d in fitted_lines(r)]
+        out = {"lines": lines, "main": main_line(r), "id": id(r)}
+        self._line_cache = (r, out)
+        return out
+
+    def line_figure(self, line, fmt="png", dpi=110):
+        """Figure of one line of the current fit (cached)."""
+        from matplotlib.figure import Figure
+        from ..plotting import paper_style
+        r = self.result
+        if r is None:
+            return None
+        key = (id(r), line, fmt, dpi)
+        cache = self.__dict__.setdefault("_line_figs", {})
+        if key in cache:
+            return cache[key]
+        with self._render_lock:
+            fig = r.plot_line(line, fig=Figure(), width=4.6, others=True)
+            buf = io.BytesIO()
+            with paper_style(fmt != "png" or dpi > 220):
+                fig.savefig(buf, format=fmt, dpi=dpi if fmt == "png" else None, bbox_inches="tight")
+        if len(cache) > 100:
+            cache.clear()
+        cache[key] = buf.getvalue()
+        return cache[key]
 
     def light_curve_csv(self):
         me = self.multi

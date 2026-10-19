@@ -176,7 +176,7 @@
         <header class="plothead">
           <i data-icon="pulse" class="accent"></i>
           <div><h2>Spectrum and model</h2><p id="plottitle"></p></div>
-          <div class="seg"><button class="segbtn active" data-pv="interactive">Interactive</button><button class="segbtn" data-pv="figure">Publication figure</button></div>
+          <div class="seg"><button class="segbtn active" data-pv="interactive">Interactive</button><button class="segbtn" data-pv="figure">Publication figure</button><button class="segbtn" data-pv="line" id="pv-line" disabled title="after a fit">Single line</button></div>
           <div class="tools" id="plottools">
             <button class="iconbtn" data-zoom="in" title="Zoom in"><i data-icon="zoomin"></i></button>
             <button class="iconbtn" data-zoom="out" title="Zoom out"><i data-icon="zoomout"></i></button>
@@ -186,7 +186,21 @@
         </header>
         <div id="legend"></div>
         <div id="plotwrap"><canvas id="plot"></canvas><div id="tip" class="hidden"></div></div>
-        <p class="hint small" id="plothelp">Scroll to zoom, drag to pan, double-click to reset; click a legend entry to hide it.</p>
+        <p class="hint small" id="plothelp">Scroll to zoom, drag to pan, double-click to reset; click a legend entry to hide it;
+          Alt-click (⌥-click) a line to show it alone.</p>
+        <div id="lineview" class="hidden">
+          <div class="line-nav">
+            <button class="iconbtn" id="lprev" title="Previous line (←)"><i data-icon="left"></i></button>
+            <select id="linesel" aria-label="line"></select>
+            <button class="iconbtn" id="lnext" title="Next line (→)"><i data-icon="arrow"></i></button>
+            <span class="hint small" id="lineinfo"></span>
+            <a class="tok small" id="ldl-pdf" href="/api/line.pdf"><i data-icon="download"></i>PDF</a>
+            <a class="tok small" id="ldl-png" href="/api/line.png"><i data-icon="download"></i>PNG</a>
+          </div>
+          <figure class="linefig"><img id="lineimg" alt="single line with its components"></figure>
+          <p class="hint small">The data with everything else in the model subtracted; every component of the line and
+            their sum. Lines with several components come first. In code: <code>r.plot_line("Hb")</code>.</p>
+        </div>
         <figure id="figure" class="hidden">
           <img id="figimg" alt="publication figure">
           <figcaption>

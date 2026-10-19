@@ -16,6 +16,8 @@ import matplotlib
 import numpy as np
 from matplotlib.ticker import MaxNLocator
 
+C_KMS = 299792.458
+
 __all__ = ("plot_result", "plot_light_curves", "plot_spectrum", "plot_baldwin", "fit_line",
            "new_figure", "paper_style", "pretty_line", "flux_label", "savefig")
 
@@ -96,6 +98,20 @@ def pretty_line(name):
     return text + (f" $\\lambda${wave}" if wave else "")
 
 
+_GREEK_TEXT = {"a": "α", "b": "β", "g": "γ", "d": "δ", "e": "ε"}
+
+
+def plain_line(name):
+    """Plain-text line name: 'Hb' -> 'Hβ', '[OIII]5007' -> '[O III] λ5007', 'HeII4686' -> 'He II λ4686'."""
+    m = re.fullmatch(r"H([abgde])", name)
+    if m:
+        return "H" + _GREEK_TEXT[m.group(1)]
+    m = re.fullmatch(r"(\[?)([A-Z][a-z]?)([IVX]+)(\]?)(\d+)", name)
+    if m:
+        return f"{m.group(1)}{m.group(2)} {m.group(3)}{m.group(4)} λ{m.group(5)}"
+    return name
+
+
 def _unit_scale(unit):
     """'10^{-17}' or '2.5\\times10^{-18}' for a flux unit, '' if unknown."""
     if not unit or unit == 1:
@@ -162,15 +178,53 @@ _ORDER = ["continuum", "host", "balmer_cont", "balmer_lines", "feii", "narrow", 
 _LINESTYLES = ["-", "--", ":", "-.", (0, (5, 1, 1, 1, 1, 1))]
 
 
+def component_index(name):
+    """1 for 'broad', 'broad_ha', 'broad_he'; 2 for 'broad2', 'broad_ha2', ..."""
+    m = re.search(r"(\d+)$", name)
+    return int(m.group(1)) if m else 1
+
+
+_ORDINAL = {1: "1st", 2: "2nd", 3: "3rd"}
+
+
 def _curves(result, group):
     """
     List of (kind, label, flux, linestyle) to draw. With group=True components
-    of the same kind are summed (e.g. all broad components); otherwise every
-    component is drawn, in its kind's colour with its own line style.
+    of the same kind are summed (e.g. all broad components); with group=False
+    every component is drawn, in its kind's colour with its own line style.
+    group='auto' (default) sums by kind but, when a line is fitted with several
+    components of one kind (two broad components, ...), also draws each of them:
+    the 1st, 2nd, ... broad component (summed over the lines) dashed, dotted.
     """
     parts = result.model_flux(components=True)
     out = {}
     count = {}
+    if group == "auto":
+        idx = {}
+        for comp in result.model.components:
+            if comp.name in parts:
+                kind, _ = _group_of(comp)
+                idx.setdefault(kind, set()).add(component_index(comp.name))
+        for comp in result.model.components:
+            if comp.name not in parts:
+                continue
+            kind, label = _group_of(comp)
+            if kind in out:
+                out[kind][2] = out[kind][2] + parts[comp.name]
+            else:
+                ls = {"continuum": "--", "host": ":", "balmer_cont": "-."}.get(kind, "-")
+                out[kind] = [kind, label, parts[comp.name].copy(), ls]
+            if kind in ("broad", "outflow", "narrow") and len(idx[kind]) > 1:
+                k = component_index(comp.name)
+                key = (kind, k)
+                if key in out:
+                    out[key][2] = out[key][2] + parts[comp.name]
+                else:
+                    name = {"broad": "broad", "outflow": "outflow", "narrow": "narrow"}[kind]
+                    out[key] = [kind, f"{_ORDINAL.get(k, f'{k}th')} {name} comp.", parts[comp.name].copy(),
+                                _LINESTYLES[1 + (k - 1) % (len(_LINESTYLES) - 1)]]
+        items = sorted(out.values(), key=lambda v: _ORDER.index(v[0]) if v[0] in _ORDER else 99)
+        return [tuple(v) for v in items]
     for comp in result.model.components:
         if comp.name not in parts:      # e.g. an Extinction component
             continue
@@ -234,13 +288,15 @@ def _label_lines(ax, result, view, model, xlim, max_labels=12):
 
 # -------------------------------------------------------------------- plots
 def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig=None,
-                width="double", group=True, label_lines=False, title=None, style=True):
+                width="double", group="auto", label_lines=False, title=None, style=True):
     """
     Data, model, components and residuals.
 
     :param width: 'single' (3.5 in), 'double' (7.1 in) or a width in inches.
-    :param group: sum components by role (one legend entry for all broad
-        components, etc.); False draws every component separately.
+    :param group: 'auto' (default): sum components by role, and when a line
+        has several components of one role (two broad components, ...) also
+        draw each of them; True: only the sums; False: every component
+        separately.
     :param label_lines: annotate the strongest lines with their names.
     :param title: figure title (default none, as is usual in papers).
     :param style: apply the journal style.
@@ -277,8 +333,9 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
             for kind, label, flux, ls in _curves(result, group):
                 if not np.any(np.abs(flux[view]) > 0):
                     continue  # e.g. Balmer continuum entirely outside the plotted range
-                ax.plot(wave, flux[view], color=COLORS.get(kind, COLORS["other"]), lw=0.9,
-                        ls=ls, label=label, zorder=3)
+                thin = ls not in ("-",) and kind in ("broad", "outflow", "narrow")
+                ax.plot(wave, flux[view], color=COLORS.get(kind, COLORS["other"]),
+                        lw=0.7 if thin else 0.9, ls=ls, label=label, zorder=3)
         ax.plot(wave, model[view], color=COLORS["model"], lw=1.1, label="Model", zorder=4)
 
         ax.set_xlim(*xlim)
@@ -315,6 +372,223 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
             fig.align_ylabels([ax, rax])
         else:
             ax.set_xlabel(_wave_label(s))
+    return fig
+
+
+# --------------------------------------------------------- single lines
+_MAIN_LINES = ("Hb", "Ha", "MgII2798", "CIV1549", "[OIII]5007", "Hg", "[NII]6583", "[OII]3729",
+               "[SII]6716", "[OI]6300", "HeII4686")
+# without broad lines the narrow-line diagnostics come first
+_MAIN_NARROW = ("[OIII]5007", "Ha", "Hb", "[NII]6583", "[SII]6716", "[OI]6300", "[OII]3729",
+                "[NeIII]3869", "HeII4686", "Hg")
+
+
+def fitted_lines(result):
+    """
+    The lines of a fit that can be shown alone, most interesting first: lines
+    with several components (broad + narrow, two broad, ...) before single
+    ones, main diagnostic lines first, then by flux. Returns a list of dicts
+    {line, wavelength, components, roles, flux}.
+    """
+    from .lines import line_wavelength
+    from .components import Lines
+    s = result.spectrum
+    lo, hi = (result.model.wave_range or (s.wave.min(), s.wave.max()))
+    found = {}
+    table = result.lines
+    for comp in result.model.components:
+        if not isinstance(comp, Lines):
+            continue
+        for ln in comp.line_names:
+            lam = line_wavelength(ln)
+            if not (lo < lam < hi):
+                continue
+            d = found.setdefault(ln, {"line": ln, "wavelength": float(lam), "components": [], "roles": []})
+            d["components"].append(comp.name)
+            d["roles"].append(comp.role)
+    for ln, d in found.items():
+        t = table[table.line == ln]
+        d["flux"] = float(t.flux.sum()) if len(t) else 0.0
+    has_broad = any("broad" in d["roles"] for d in found.values())
+    main = _MAIN_LINES if has_broad else _MAIN_NARROW
+    rank = lambda d: (-len(d["components"]), main.index(d["line"]) if d["line"] in main else 99, -d["flux"])
+    return sorted((d for d in found.values() if d["flux"] > 0), key=rank)
+
+
+def main_line(result):
+    """The line a single-line plot shows by default (the main broad line, else [OIII]...)."""
+    lines = fitted_lines(result)
+    broad = [d for d in lines if "broad" in d["roles"]]
+    for name in (_MAIN_LINES if broad else _MAIN_NARROW):
+        for d in broad or lines:
+            if d["line"] == name:
+                return name
+    return (broad or lines)[0]["line"] if lines else None
+
+
+def _line_parts(result, line, wave):
+    """{component name: profile of ``line`` in that component} on ``wave``."""
+    s = result.spectrum
+    slices = dict(zip([c.name for c in result.model.components], result.model._slices()))
+    out = {}
+    for comp in result._line_components():
+        if line in comp.line_names:
+            out[comp.name] = comp.line_profile(wave, result.full[slices[comp.name]], s.context, line)
+    return out
+
+
+def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, residuals=True,
+              others=False, info=True, width="single", title=None, style=True):
+    """
+    One emission line alone: the data with everything else in the model
+    subtracted (continuum, host, FeII and all other lines), each component
+    of the line (narrow, outflow, 1st, 2nd broad ...) and their sum, and the
+    residuals.
+
+    :param line: line name, e.g. 'Hb', 'Ha', '[OIII]5007' (default: the main
+        broad line; see :func:`fitted_lines` for what a fit offers).
+    :param window: half-width in km/s (default: from the line width).
+    :param velocity: velocity axis (km/s from the rest wavelength); False: wavelength.
+    :param others: also draw the other lines in the window (dotted), which stay
+        subtracted from the data.
+    :param info: write the FWHM and flux of the line (summed over its
+        broad components, or over all components) in the panel.
+    """
+    from .components import _in_medium
+    from .lines import line_wavelength
+    with paper_style(style):
+        s = result.spectrum
+        line = line or main_line(result)
+        if line is None:
+            raise ValueError("this fit has no emission lines")
+        lam0 = float(_in_medium(np.array([line_wavelength(line)]), s.context)[0])
+        comps = [c for c in result._line_components() if line in c.line_names]
+        if not comps:
+            raise ValueError(f"{line!r} is not in the model; fitted lines: "
+                             f"{', '.join(d['line'] for d in fitted_lines(result))}")
+        broad = [c.name for c in comps if c.role == "broad"]
+        meas = result.measure(line, broad or None)
+        if window is None:
+            window = float(np.clip(2.5 * meas["fwhm"], 1500.0, 15000.0)) if broad else 1500.0
+        v_data = (s.wave / lam0 - 1) * C_KMS
+        view = np.abs(v_data) <= window
+        if view.sum() < 5:
+            raise ValueError(f"{line} is outside the spectrum")
+        # the data with everything but this line subtracted
+        own = sum(_line_parts(result, line, s.wave).values())
+        model = result.model_flux()
+        isolated = s.flux - (model - own)
+        v_fine = np.linspace(-window, window, 1500)
+        lam_fine = lam0 * (1 + v_fine / C_KMS)
+        parts = _line_parts(result, line, lam_fine)
+        x_data = v_data if velocity else s.wave
+        x_fine = v_fine if velocity else lam_fine
+
+        narrow_panel = _figsize(width, 1)[0] < 5
+        if ax is None:
+            fig = new_figure(fig, _figsize(width, (1.05 if narrow_panel else 0.6) if residuals else
+                                           (0.8 if narrow_panel else 0.45)))
+            if residuals:
+                ax, rax = fig.subplots(2, 1, sharex=True,
+                                       gridspec_kw={"height_ratios": [3.2, 1], "hspace": 0})
+            else:
+                ax, rax = fig.subplots(), None
+        else:
+            fig, rax = ax.figure, None
+        sel = result.mask & view
+        ax.plot(x_data[view], np.where(sel[view], isolated[view], np.nan), color=COLORS["data"], lw=0.6,
+                drawstyle="steps-mid", label="Data", zorder=2)
+        ax.axhline(0, color="0.6", lw=0.5, zorder=1)
+        nth = {}
+        table = result.lines.set_index(["component", "line"])
+        for comp in comps:
+            role = comp.role if comp.role in COLORS else "other"
+            k = nth[role] = nth.get(role, 0) + 1
+            try:
+                fwhm = table.loc[(comp.name, line), "fwhm"]
+                extra = f" ({fwhm:.0f} km/s)" if np.isfinite(fwhm) else ""
+            except KeyError:
+                extra = ""
+            n_role = sum(c.role == comp.role for c in comps)
+            label = {"broad": "Broad", "narrow": "Narrow", "outflow": "Outflow"}.get(comp.role, comp.name)
+            if n_role > 1:
+                label = f"{label} {k}"
+            ax.plot(x_fine, parts[comp.name], color=COLORS[role], lw=0.9,
+                    ls=_LINESTYLES[(k - 1) % len(_LINESTYLES)], label=label + extra, zorder=3)
+        if len(comps) > 1:
+            ax.plot(x_fine, sum(parts.values()), color=COLORS["model"], lw=1.1, label="Sum", zorder=4)
+        if others:
+            seen = set()
+            for d in fitted_lines(result):
+                if d["line"] == line or d["line"] in seen:
+                    continue
+                v_other = (line_wavelength(d["line"]) / line_wavelength(line) - 1) * C_KMS
+                if abs(v_other) < window:
+                    seen.add(d["line"])
+                    prof = sum(_line_parts(result, d["line"], lam_fine).values())
+                    ax.plot(x_fine, prof, color="0.55", lw=0.6, ls=":", zorder=2)
+        good = sel & np.isfinite(isolated)
+        top = max(float(np.nanpercentile(isolated[good], 99.5)) if good.any() else 1.0,
+                  float(np.max(sum(parts.values()))))
+        bottom = min(0.0, float(np.nanpercentile(isolated[good], 0.5)) if good.any() else 0.0)
+        ax.set_ylim(bottom - 0.05 * top, 1.25 * top)
+        ax.set_xlim(x_data[view].min(), x_data[view].max())
+        ax.set_ylabel(flux_label(s).replace(" (", "\n(", 1) if narrow_panel else flux_label(s))
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0), fontsize=7,
+                  ncol=2 if narrow_panel else min(len(labels), 4), handlelength=1.8,
+                  columnspacing=1.0, borderaxespad=0.3, frameon=False)
+        head = pretty_line(line)
+        ax.text(0.03, 0.95, head, transform=ax.transAxes, ha="left", va="top", fontsize=10)
+        if info:
+            kind = "broad" if broad else "total"
+            txt = (f"{kind} FWHM = {meas['fwhm']:.0f} $\\pm$ {meas['fwhm_err']:.0f} km/s\n"
+                   f"{kind} flux = {meas['flux']:.4g} $\\pm$ {meas['flux_err']:.2g}")
+            ax.text(0.03, 0.83, txt, transform=ax.transAxes, ha="left", va="top", fontsize=7)
+        if title:
+            ax.set_title(title)
+        xlabel = "Velocity (km$\\,$s$^{-1}$)" if velocity else _wave_label(s)
+        if rax is not None:
+            r = np.where(sel, (s.flux - model) / s.err, np.nan)
+            rax.plot(x_data[view], r[view], color=COLORS["data"], lw=0.5, drawstyle="steps-mid")
+            rax.axhline(0, color=COLORS["model"], lw=0.8)
+            for lim in (-3, 3):
+                rax.axhline(lim, color="0.5", lw=0.5, ls=":")
+            m = np.nanpercentile(np.abs(r[view]), 99.5) if np.isfinite(r[view]).any() else 5
+            rax.set_ylim(-max(4.0, 1.15 * m), max(4.0, 1.15 * m))
+            rax.yaxis.set_major_locator(MaxNLocator(nbins=4, prune="upper", symmetric=True))
+            rax.set_ylabel("Resid. ($\\sigma$)")
+            rax.set_xlabel(xlabel)
+            ax.tick_params(labelbottom=False)
+            fig.align_ylabels([ax, rax])
+        else:
+            ax.set_xlabel(xlabel)
+    return fig
+
+
+def plot_lines(result, lines=None, fig=None, ncols=None, window=None, velocity=True, width="double",
+               style=True):
+    """
+    Several lines side by side (see :func:`plot_line`), without residual
+    panels. Default: the lines with several components, main lines first (at
+    most four).
+    """
+    with paper_style(style):
+        if lines is None:
+            lines = [d["line"] for d in fitted_lines(result) if len(d["components"]) > 1][:4] \
+                or [main_line(result)]
+        n = len(lines)
+        ncols = ncols or min(n, 2 if n == 4 else 3)
+        nrows = int(np.ceil(n / ncols))
+        w, _ = _figsize(width, 1)
+        fig = new_figure(fig, (w, w / ncols * 0.85 * nrows))
+        axes = np.atleast_1d(fig.subplots(nrows, ncols, squeeze=False)).ravel()
+        for ax, ln in zip(axes, lines):
+            plot_line(result, ln, ax=ax, window=window, velocity=velocity, residuals=False,
+                      style=False)
+        for ax in axes[n:]:
+            ax.set_visible(False)
+        fig.tight_layout()
     return fig
 
 

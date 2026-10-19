@@ -222,6 +222,23 @@ shows the data, model, components and residuals of every epoch: step with the ar
 ← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
 one page per epoch.</p>
 """),
+    ("lines", "Looking at single lines", """
+<p>When a line is fitted with several components, the figure shows each of them: the 1st broad
+component dashed, the 2nd dotted, besides their sum (the interactive plot has them as
+<i>broad 1</i>, <i>broad 2</i>; click a legend entry to hide one).</p>
+<p>To look at one line alone, press <b>Single line</b> above the plot (after a fit). It shows the data
+with everything else in the model subtracted (continuum, host, FeII, all other lines), each component
+of the line with its FWHM, their sum, and the residuals, on a velocity axis. The list starts with the
+lines that have several components and the main line is selected: broad H&beta;, H&alpha;, MgII or
+CIV, or [O III] &lambda;5007 for narrow-line objects. Step through the lines with the arrows or the
+&larr; &rarr; keys, or <b>Alt-click</b> (&#8997;-click) a line in the interactive plot. Each figure can
+be downloaded as PDF or PNG.</p>
+<pre>r.fitted_lines()                       # the lines and their components
+r.plot_line()                          # the main line
+r.plot_line("Ha", others=True)         # H-alpha; neighbouring [N II] dotted
+r.plot_line("[OIII]5007", velocity=False, window=1000)
+r.plot_lines(["Hb", "[OIII]5007", "Ha"])</pre>
+"""),
     ("calibration", "How the presets were calibrated", """
 <p>The defaults of the presets and of the classifier come from fits of <b>1500 SDSS DR17 spectra</b>, random within
 nine groups: quasars at z &lt; 0.35 (300), with H&beta; at 0.35&ndash;0.75 (200), MgII (200) and CIV (150), and

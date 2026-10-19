@@ -298,7 +298,7 @@ function renderProgress() {
 const COLORS = {
   data: "#5b6475", model: "#f26b3a", continuum: "#7c8698", host: "#9a9a2e", "Fe II": "#8b5cf6",
   Balmer: "#10b981", "narrow lines": "#d6336c", "broad lines": "#0ea5e9", outflow: "#f2a33a",
-  "stars + power law": "#9a9a2e",
+  "stars + power law": "#9a9a2e", "broad 1": "#0ea5e9", "broad 2": "#0ea5e9", "broad 3": "#0ea5e9",
 };
 let plotData = null, view = null, hidden = new Set(), drag = null, pv = "interactive";
 async function loadPlot() {
@@ -328,8 +328,59 @@ function setPV(v) {
   $("plothelp").classList.toggle("hidden", v !== "interactive");
   $("plottools").classList.toggle("hidden", v !== "interactive");
   $("figure").classList.toggle("hidden", v !== "figure");
+  $("lineview").classList.toggle("hidden", v !== "line");
   if (v === "interactive") requestAnimationFrame(drawPlot);
+  if (v === "line") showLine(lineName || (state.lines && state.lines.main));
 }
+
+// ============================================================ single line
+let lineName = null, linesId = null;
+function renderLines() {
+  const L = state.lines;
+  $("pv-line").disabled = !L || !L.lines.length;
+  if (!L) { if (pv === "line") setPV("interactive"); linesId = null; return; }
+  if (L.id === linesId) return;
+  linesId = L.id;
+  $("linesel").innerHTML = L.lines.map((d) =>
+    `<option value="${esc(d.line)}">${esc(d.label)} · ${d.wave.toFixed(0)} Å${d.n > 1 ? ` · ${d.n} components` : ""}</option>`).join("");
+  if (!L.lines.some((d) => d.line === lineName)) lineName = L.main;
+  if (pv === "line") showLine(lineName);
+}
+function showLine(name) {
+  const L = state && state.lines;
+  if (!L || !name) return;
+  lineName = name;
+  const k = L.lines.findIndex((d) => d.line === name);
+  const d = L.lines[k];
+  $("linesel").value = name;
+  $("lprev").disabled = k <= 0; $("lnext").disabled = k >= L.lines.length - 1;
+  $("lineinfo").textContent = d ? `components: ${d.components.join(", ")}` : "";
+  const q = `line=${encodeURIComponent(name)}&v=${L.id}`;
+  $("ldl-pdf").href = withToken(`/api/line.pdf?${q}&dl=1`);
+  $("ldl-png").href = withToken(`/api/line.png?${q}&dl=1`);
+  $("lineimg").parentElement.classList.add("loading");
+  $("lineimg").src = withToken(`/api/line.png?${q}&hd=1`);
+  for (const j of [k - 1, k + 1]) if (L.lines[j]) new Image().src = withToken(`/api/line.png?line=${encodeURIComponent(L.lines[j].line)}&v=${L.id}&hd=1`);
+}
+function stepLine(dk) {
+  const L = state && state.lines;
+  if (!L) return;
+  const k = L.lines.findIndex((d) => d.line === lineName) + dk;
+  if (k >= 0 && k < L.lines.length) showLine(L.lines[k].line);
+}
+$("lineimg").addEventListener("load", (e) => {
+  e.target.parentElement.classList.remove("loading");
+  e.target.style.width = `${e.target.naturalWidth / 2}px`;
+});
+$("linesel").onchange = () => showLine($("linesel").value);
+$("lprev").onclick = () => stepLine(-1);
+$("lnext").onclick = () => stepLine(1);
+document.addEventListener("keydown", (ev) => {
+  if (pv !== "line" || currentView !== "analysis") return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if (ev.key === "ArrowLeft") { stepLine(-1); ev.preventDefault(); }
+  if (ev.key === "ArrowRight") { stepLine(1); ev.preventDefault(); }
+});
 for (const b of document.querySelectorAll(".segbtn")) b.onclick = () => setPV(b.dataset.pv);
 function seriesList() {
   if (!plotData) return [];
@@ -409,7 +460,8 @@ function drawPlot() {
   for (const s of order) {
     g.strokeStyle = COLORS[s.name] || "#555";
     g.lineWidth = s.name === "model" ? 1.7 : s.name === "data" ? 0.9 : 1.3;
-    g.setLineDash(s.name === "continuum" ? [6, 4] : []);
+    g.setLineDash(s.name === "continuum" ? [6, 4] : s.name === "broad 1" ? [7, 4] : s.name.startsWith("broad ") ? [2, 3] : []);
+    if (s.name.startsWith("broad ")) g.lineWidth = 1.0;
     g.beginPath();
     let pen = false;
     for (const i of vis) { const y = s.y[i]; if (y === null) { pen = false; continue; } const px = X(d.x[i]), py = Y(y); pen ? g.lineTo(px, py) : g.moveTo(px, py); pen = true; }
@@ -492,6 +544,15 @@ cv.addEventListener("mousemove", (e) => {
   tip.style.left = left + "px"; tip.style.top = Math.max(4, e.offsetY - 20) + "px";
 });
 cv.addEventListener("mouseleave", () => { hover = null; $("tip").classList.add("hidden"); drawPlot(); });
+// Alt-click near a fitted line: show that line alone
+cv.addEventListener("click", (e) => {
+  if (!e.altKey || !layout || !state.lines) return;
+  const { P } = layout;
+  const lam = view[0] + (e.offsetX - P.x) / P.w * (view[1] - view[0]);
+  let best = null;
+  for (const d of state.lines.lines) if (!best || Math.abs(d.wave - lam) < Math.abs(best.wave - lam)) best = d;
+  if (best && Math.abs(best.wave - lam) < 0.02 * (view[1] - view[0]) + 15) { lineName = best.line; setPV("line"); }
+});
 cv.addEventListener("dblclick", () => { view = [plotData.x[0], plotData.x[plotData.x.length - 1]]; drawPlot(); });
 for (const b of document.querySelectorAll("[data-zoom]")) b.onclick = () => {
   if (!plotData) return;
@@ -796,6 +857,7 @@ function render() {
   renderCards();
   if (currentView === "model") renderModelEditor(false);
   renderMulti();
+  renderLines();
 }
 async function refresh() {
   try {

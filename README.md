@@ -104,6 +104,17 @@ result.savefig("fit.pdf", group=False)                      # every component se
 res.plot_light_curves(save="light_curves.pdf")              # multi-epoch light curves
 ```
 
+When a line is fitted with several components (two broad components, an outflow wing), the
+figure shows each of them (1st broad component dashed, 2nd dotted) besides their sum. One line
+alone, with all its components on a velocity axis and the rest of the model subtracted:
+
+```python
+result.fitted_lines()                     # the lines you can show, multi-component ones first
+result.plot_line()                        # the main line (broad Hβ, Hα, MgII, CIV; [OIII] for type 2)
+result.plot_line("Ha", others=True)       # Hα, with the neighbouring [NII] lines dotted
+result.plot_lines(["Hb", "[OIII]5007", "Ha"])   # side by side
+```
+
 `result.plot(...)` takes the same options and returns the matplotlib figure for
 further editing. The GUI offers the figure as PDF, EPS and PNG downloads.
 

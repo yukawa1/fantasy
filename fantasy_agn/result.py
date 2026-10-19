@@ -484,14 +484,15 @@ class FitResult:
                        "amplitudes_at_bound": self.at_zero}, fh, indent=2)
 
     def plot(self, ax=None, components=True, residuals=True, xlim=None, fig=None,
-             width="double", group=True, label_lines=False, title=None, style=True):
+             width="double", group="auto", label_lines=False, title=None, style=True):
         """
         Publication-quality plot of data, model, components and residuals;
         returns the figure. See :func:`fantasy_agn.plotting.plot_result`.
 
         :param width: 'single' (3.5 in) or 'double' (7.1 in) journal column, or inches.
-        :param group: one legend entry per kind of component (all broad
-            components summed, ...); False shows every component.
+        :param group: 'auto' (default): components summed by kind, and the 1st,
+            2nd, ... broad component drawn too when a line has several; True:
+            only the sums; False: every component separately.
         :param label_lines: annotate the strongest lines.
         :param xlim: wavelength range to show, e.g. (4700, 5100) for a zoom.
         """
@@ -499,6 +500,27 @@ class FitResult:
         return plot_result(self, ax=ax, components=components, residuals=residuals, xlim=xlim,
                            fig=fig, width=width, group=group, label_lines=label_lines,
                            title=title, style=style)
+
+    def plot_line(self, line=None, **kw):
+        """
+        One line alone, e.g. ``r.plot_line("Hb")``: the data with everything
+        else subtracted, each component of the line (narrow, outflow, 1st and
+        2nd broad, ...) and their sum, on a velocity axis, with residuals.
+        Default: the main broad line. ``r.fitted_lines()`` lists the choices.
+        See :func:`fantasy_agn.plotting.plot_line` for the options.
+        """
+        from .plotting import plot_line
+        return plot_line(self, line, **kw)
+
+    def plot_lines(self, lines=None, **kw):
+        """Several lines side by side (default: those with several components)."""
+        from .plotting import plot_lines
+        return plot_lines(self, lines, **kw)
+
+    def fitted_lines(self):
+        """The lines that ``plot_line`` can show, most interesting first (a DataFrame)."""
+        from .plotting import fitted_lines
+        return pd.DataFrame(fitted_lines(self))
 
     def savefig(self, path, **plot_options):
         """

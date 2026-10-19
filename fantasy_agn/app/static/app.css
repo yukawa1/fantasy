@@ -324,6 +324,14 @@ input.wide { width: min(420px, 60vw) !important; }
 .progress .ptext { white-space: nowrap; font-variant-numeric: tabular-nums; }
 pre.run .prog { color: var(--code-out); }
 
+/* single-line view */
+.line-nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 4px; }
+.line-nav select { max-width: 260px; }
+.line-nav a { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
+.linefig { min-height: 120px; }
+.linefig img { width: auto; max-width: 100%; max-height: 72vh; margin: 0 auto; transition: opacity .15s; }
+.linefig.loading img { opacity: .45; }
+
 /* figures keep a readable size: never wider than drawn, never taller than the window */
 #figure img, #mresults figure img { width: auto; max-width: 100%; max-height: 78vh; margin: 0 auto; }
 /* grid items may shrink below their content (wide tables scroll inside .tablewrap) */

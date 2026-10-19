@@ -18,6 +18,7 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     GET  /api/lightcurve.csv
     GET  /api/epoch.<png|pdf>?k=N     the fit of epoch N of the multi-epoch result
     GET  /api/epochs.pdf             all epoch fits, one page each
+    GET  /api/line.<png|pdf>?line=Hb one line of the current fit with its components
     POST /api/templates              JSON {name}: download a stellar template set (as a code cell)
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
@@ -159,6 +160,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error("no multi-epoch fit yet", 404)
             return self._send(data, "image/png" if fmt == "png" else "application/pdf",
                               filename=f"epoch_{q.get('k', ['0'])[0]}.{fmt}" if "dl" in q else None)
+        if url.path.startswith("/api/line."):
+            fmt = url.path.rsplit(".", 1)[1]
+            if fmt not in ("png", "pdf"):
+                return self._error("unknown format", 404)
+            line = q.get("line", [None])[0]
+            try:
+                data = s.line_figure(line, fmt, dpi=300 if "dl" in q else (220 if "hd" in q else 110))
+            except ValueError as exc:
+                return self._error(str(exc), 404)
+            if data is None:
+                return self._error("no fit yet", 404)
+            safe = "".join(ch for ch in str(line) if ch.isalnum()) or "line"
+            return self._send(data, "image/png" if fmt == "png" else "application/pdf",
+                              filename=f"{s.figure_stem}_{safe}.{fmt}" if "dl" in q else None)
         if url.path == "/api/epochs.pdf":
             data = s.epochs_pdf()
             if data is None:

@@ -6,6 +6,12 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Plots of single lines: `r.plot_line("Hb")` shows one line with the rest of the model subtracted,
+  every component (narrow, outflow, 1st/2nd broad with their FWHM) and their sum on a velocity
+  axis; `r.plot_lines([...])`, `r.fitted_lines()`. The main figure draws the individual broad
+  components when a line has several (`group="auto"`, the new default). App: **Single line**
+  view with a list of the lines, arrows / arrow keys and Alt-click on a line; broad components
+  in the interactive plot.
 - Borderline hosts (host >= 10% at 5100 A but sigma* not confirmed): the classification says so
   (`measurements["host_borderline"]`) and the app's Fit fits with and without the host and keeps
   the host if the BIC prefers it (dBIC < -10). With this, the host is used for 95% of the
