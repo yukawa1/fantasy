@@ -1490,3 +1490,30 @@ def test_fit_absorbed_recovers_trough():
     assert abs(t.wave - 1530) < 1.0 and t.tau == pytest.approx(1.2, rel=0.25)
     assert r.measure("CIV1549")["flux"] == pytest.approx(800, rel=0.05)
     r.plot_line("CIV1549")
+
+
+def test_block_solver_matches_dense():
+    from scipy import sparse
+    from fantasy_agn.multiepoch import _Blocks
+    rng = np.random.default_rng(1)
+    group = np.array([-1, -1, -1] + [k for k in range(4) for _ in range(5)])
+    n = group.size
+    J = rng.normal(size=(200, n))
+    for k in range(4):                                   # rows of epoch k see only its own + shared parameters
+        rows = slice(50 * k, 50 * (k + 1))
+        J[rows, (group >= 0) & (group != k)] = 0.0
+    N = J.T @ J
+    g = rng.normal(size=n)
+    keep = np.ones(n, bool)
+    keep[5] = False                                      # a parameter held at its bound
+    damp = 0.1 * np.diag(N)
+    b = _Blocks(sparse.csr_matrix(N), group, keep)
+    x = b.solve(g, damp)
+    kk = np.nonzero(keep)[0]
+    ref = np.linalg.solve(N[np.ix_(kk, kk)] + np.diag(damp[kk]), g[kk])
+    assert np.allclose(x[kk], ref) and x[5] == 0
+    inv = np.linalg.inv(N[np.ix_(kk, kk)])
+    per_epoch, _ = b.covariance()
+    for cols, cov in per_epoch:
+        pos = [int(np.nonzero(kk == c)[0][0]) for c in cols]
+        assert np.allclose(cov, inv[np.ix_(pos, pos)], rtol=1e-6, atol=1e-10)

@@ -6,6 +6,12 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Multi-epoch joint fits are much faster for large models: the normal equations are assembled per
+  epoch and solved block by block (Schur complement on the shared parameters), the covariance is
+  kept per epoch, host template grids are shared between epochs and the Balmer-continuum
+  broadening uses an FFT. 76 SDSS-RM epochs with `optical(host=True)`: joint fit 205 s (it ran
+  for more than 30 minutes before). The stellar host is shared between epochs by default (its
+  starlight does not vary); `shared=` overrides.
 - `fit_epochs` warns when the intercalibration is uncertain (median flux-scale error > 2% per epoch;
   `me.calibration_error`). On SDSS-RM RMID 766 (weak [OIII]) the narrow-line intercalibration added
   ~3% noise and damped the Hb variability; without it the light curve matched the SDSS-RM one best

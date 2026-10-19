@@ -1088,7 +1088,7 @@ class Session:
         return sm.table.drop(columns=[c for c in ("trace", "path") if c in sm.table]).to_csv(index=False)
 
     def multiepoch_code(self, paths=None, pattern=None, model="current", broad_components=2,
-                        outflow=True, shared="narrow.*", intercalibrate=True, n_jobs=-1,
+                        outflow=True, shared="", intercalibrate=True, n_jobs=-1,
                         deredden=True, ebv=None, rest_frame=True, z=None, **extra):
         """Code for a joint fit of several epochs (independent fits run in parallel)."""
         lines = []
@@ -1116,7 +1116,8 @@ class Session:
             lines.append(self.preset_code(model, broad_components, outflow, **extra).split("\n")[0])
             mname = "model"
         patterns = tuple(p.strip() for p in str(shared).split(",") if p.strip())
-        lines.append(f"me = fa.fit_epochs(spectra, {mname}, shared={patterns!r}, "
+        shared_arg = f"shared={patterns!r}, " if patterns else ""
+        lines.append(f"me = fa.fit_epochs(spectra, {mname}, {shared_arg}"
                      f"intercalibrate={bool(intercalibrate)}, n_jobs={int(n_jobs)})")
         lines.append("me.light_curve()")
         return "\n".join(lines)

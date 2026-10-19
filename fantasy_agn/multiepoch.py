@@ -94,6 +94,19 @@ class _JointProblem:
         self.ub = np.array([p.max for p in self.free])
         self.linear = np.array([p.linear for p in self.free], bool)
         self.rows = np.cumsum([0] + [d[0].size for d in self.data])
+        # epoch of each free parameter (-1: shared); the normal matrix couples an epoch's
+        # parameters only with themselves and the shared ones (block-arrowhead structure)
+        self.group = np.array([int(p.name.rsplit("@", 1)[1]) if "@" in p.name else -1
+                               for p in self.free])
+        # per epoch: the free parameters its model depends on, and the map from its
+        # full parameters (+ scale) to them, so that its Jacobian is a small dense block
+        Tcsr = self.T.tocsr()
+        self._epoch_map = []
+        for k in range(self.n):
+            cols = list(self.index[k]) + ([self.scale_index[k]] if self.scale_names else [])
+            Tk = Tcsr[cols]
+            fc = np.unique(Tk.indices)
+            self._epoch_map.append((fc, Tk[:, fc].toarray()))
 
     def full(self, theta):
         return self.T @ theta + self.c
@@ -109,6 +122,35 @@ class _JointProblem:
 
     def jacobian(self, theta):
         return self._evaluate(theta)[1]
+
+    def normal(self, theta):
+        """
+        Residuals, gradient J^T r and the blocks of J^T J, assembled per epoch from
+        dense Jacobians over only the free parameters that epoch depends on.
+        Returns (r, g, diag(J^T J), [(free indices, J_k^T J_k) per epoch]).
+        """
+        full = self.full(theta)
+        nfree = len(self.free)
+
+        def one(k):
+            x, y, err, f, Jb, s = self._epoch(k, full)
+            r = (s * f - y) / err
+            Je = s * Jb / err[:, None]
+            if self.scale_names:
+                Je = np.hstack([Je, (f / err)[:, None]])
+            fc, Tk = self._epoch_map[k]
+            Jf = Je @ Tk
+            return r, fc, Jf.T @ r, Jf.T @ Jf
+        parts = _thread_map(one, range(self.n))
+        r = np.concatenate([p[0] for p in parts])
+        g = np.zeros(nfree)
+        d = np.zeros(nfree)
+        items = []
+        for _, fc, gk, Mk in parts:
+            np.add.at(g, fc, gk)
+            np.add.at(d, fc, np.diag(Mk))
+            items.append((fc, Mk))
+        return r, g, d, items
 
     def _evaluate(self, theta):
         key = theta.tobytes()
@@ -139,7 +181,7 @@ class _JointProblem:
         return out
 
 
-def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_range=None,
+def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None,
                errors="covariance", scale_errors=True, reference="snr", n_jobs=-1, verbose=True):
     """
     Fit several epochs of one object jointly.
@@ -147,8 +189,11 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
     :param spectra: list of Spectrum (rest frame); ``mjd`` is used for light curves.
     :param model: Model to fit to every epoch.
     :param shared: parameter name patterns that are common to all epochs.
-        Default: all narrow-line parameters. Add e.g. 'feii.fwhm', 'feii.shift'
-        to also share the FeII kinematics.
+        Default: all narrow-line parameters and, if the model has a stellar
+        host, the host (its starlight does not vary: one set of template
+        weights, sigma* and v* for all epochs, which also makes the fit much
+        faster). Add e.g. 'feii.fwhm', 'feii.shift' to also share the FeII
+        kinematics.
     :param intercalibrate: fit a flux scale factor per epoch (reference epoch
         = 1). Needs shared narrow lines to be meaningful.
     :param reference: epoch that defines the flux scale: 'snr' (default, the
@@ -166,6 +211,10 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
     if errors not in ("covariance", None):
         raise ValueError("multi-epoch errors must be 'covariance' or None")
     model = model.copy()
+    if shared is None:
+        shared = ("narrow.*",) + tuple(f"{c.name}.*" for c in model.components if c.kind == "host")
+    elif isinstance(shared, str):
+        shared = (shared,)
     wave_range = wave_range or model.wave_range
     usable = []
     for s in spectra:
@@ -233,11 +282,19 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
 
     cov_full = None
     if errors == "covariance":
-        J = res.jac if sparse.issparse(res.jac) else sparse.csr_matrix(res.jac)
-        JtJ = (J.T @ J).toarray()
-        cov = _cov_from_normal(JtJ, limit) * scale
-        T = prob.T.toarray()
-        cov_full = T @ cov @ T.T
+        blocks = _Blocks.from_epochs(len(theta), prob.group, ~limit, res.jac)
+        per_epoch, shared_cov = blocks.covariance()
+        T = prob.T.tocsr()
+        # covariance of each epoch's full parameters (and of the shared ones) from
+        # the blocks only: the full matrix over all epochs is never formed
+        epoch_cov = {}
+        for cols, cov in per_epoch:
+            k = int(prob.group[cols[0]])
+            idx = prob.index[k]
+            rows = list(idx) + ([prob.scale_index[k]] if intercalibrate else [])
+            Tk = T[rows][:, cols].toarray()
+            epoch_cov[k] = (rows, Tk @ (cov * scale) @ Tk.T)
+        cov_full = _EpochCovariance(epoch_cov, blocks.shared, shared_cov * scale, prob)
 
     epochs = []
     for k, s in enumerate(spectra):
@@ -250,7 +307,7 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
         free_k = [p.name for p in m.params if p.free]
         epochs.append(FitResult(
             spectrum=spec, model=m, mask=masks[k], full=full[idx],
-            cov=None if cov_full is None else cov_full[np.ix_(idx, idx)], samples=None,
+            cov=None if cov_full is None else cov_full.epoch(k, idx), samples=None,
             chi2=float(r @ r), dof=max(r.size - len(free_k), 1), nfev=res.nfev,
             success=res.success, message=res.message,
             at_limit=[p.name for p, a in zip(prob.free, limit) if a and not p.linear
@@ -259,7 +316,7 @@ def fit_epochs(spectra, model, shared=("narrow.*",), intercalibrate=True, wave_r
         if intercalibrate:
             si = prob.scale_index[k]
             epochs[-1].scale = float(full[si])
-            epochs[-1].scale_err = (float(np.sqrt(max(cov_full[si, si], 0)))
+            epochs[-1].scale_err = (float(np.sqrt(max(cov_full.variance(si, k), 0)))
                                     if cov_full is not None else np.nan)
         else:
             epochs[-1].scale, epochs[-1].scale_err = 1.0, 0.0
@@ -287,6 +344,103 @@ class _LMResult:
     pass
 
 
+class _Blocks:
+    """
+    The normal matrix N = J^T J of the joint problem as blocks: one per epoch
+    (its own parameters), the shared block and the epoch-shared couplings.
+    Solving or inverting it block by block (Schur complement on the shared
+    parameters) costs n_epochs x (block size)^3 instead of (all parameters)^3.
+    """
+
+    def __init__(self, N, group, keep):
+        N = N.tocsr()
+        self.n = N.shape[0]
+        idx = np.arange(self.n)
+        self.shared = idx[(group < 0) & keep]
+        self.epochs = [idx[(group == k) & keep] for k in np.unique(group[group >= 0])]
+        self.epochs = [e for e in self.epochs if e.size]
+        self.C = N[self.shared][:, self.shared].toarray()
+        self.A = [N[e][:, e].toarray() for e in self.epochs]
+        self.B = [N[e][:, self.shared].toarray() for e in self.epochs]
+
+    @classmethod
+    def from_epochs(cls, n, group, keep, items):
+        """The same blocks from per-epoch (free indices, J_k^T J_k) without a sparse N."""
+        self = cls.__new__(cls)
+        self.n = n
+        idx = np.arange(n)
+        self.shared = idx[(group < 0) & keep]
+        spos = {j: i for i, j in enumerate(self.shared)}
+        self.C = np.zeros((self.shared.size, self.shared.size))
+        self.epochs, self.A, self.B = [], [], []
+        for fc, M in items:
+            kept = keep[fc]
+            own = np.nonzero(kept & (group[fc] >= 0))[0]
+            sh = np.nonzero(kept & (group[fc] < 0))[0]
+            if sh.size:
+                si = np.array([spos[j] for j in fc[sh]])
+                self.C[np.ix_(si, si)] += M[np.ix_(sh, sh)]
+            if own.size:
+                self.epochs.append(fc[own])
+                self.A.append(M[np.ix_(own, own)])
+                B = np.zeros((own.size, self.shared.size))
+                if sh.size:
+                    B[:, si] = M[np.ix_(own, sh)]
+                self.B.append(B)
+        return self
+
+    def solve(self, g, damp):
+        """x with (N + diag(damp)) x = g on the kept parameters (0 elsewhere)."""
+        x = np.zeros(self.n)
+        s = self.shared
+        S = self.C + np.diag(damp[s])
+        rhs = g[s].copy()
+        sol = []
+        for e, A, B in zip(self.epochs, self.A, self.B):
+            c = cho_factor(A + np.diag(damp[e]))
+            AiB = cho_solve(c, B) if s.size else None
+            Aig = cho_solve(c, g[e])
+            if s.size:
+                S -= B.T @ AiB
+                rhs -= B.T @ Aig
+            sol.append((e, AiB, Aig))
+        xs = cho_solve(cho_factor(S), rhs) if s.size else np.zeros(0)
+        x[s] = xs
+        for e, AiB, Aig in sol:
+            x[e] = Aig - (AiB @ xs if s.size else 0.0)
+        return x
+
+    def covariance(self):
+        """
+        The blocks of N^-1 needed per epoch: {epoch position: (indices, cov)} for
+        the epoch's parameters plus the shared ones, and the shared block. Uses
+        a scaled eigen-decomposition (pseudo-inverse) for robustness.
+        """
+        def pinv(M):
+            d = np.sqrt(np.clip(np.diag(M), 1e-300, None))
+            w, V = np.linalg.eigh(M / np.outer(d, d))
+            good = w > w.max() * 1e-12 if w.size else w
+            return ((V[:, good] / w[good]) @ V[:, good].T) / np.outer(d, d)
+        s = self.shared
+        Ainv = [pinv(A) for A in self.A]
+        if s.size:
+            S = self.C - sum(B.T @ Ai @ B for Ai, B in zip(Ainv, self.B))
+            Sss = pinv(S)
+        else:
+            Sss = np.zeros((0, 0))
+        out = []
+        for e, Ai, B in zip(self.epochs, Ainv, self.B):
+            if s.size:
+                X = Ai @ B
+                Sks = -X @ Sss
+                Skk = Ai + X @ Sss @ X.T
+                cov = np.block([[Skk, Sks], [Sks.T, Sss]])
+            else:
+                cov = Ai
+            out.append((np.concatenate([e, s]), cov))
+        return out, Sss
+
+
 def _levenberg_marquardt(prob, theta, max_iter=1000, ftol=1e-10, window=20, min_gain=0.1):
     """
     Bounded Levenberg-Marquardt using the normal equations J^T J, which stay
@@ -297,28 +451,26 @@ def _levenberg_marquardt(prob, theta, max_iter=1000, ftol=1e-10, window=20, min_
     irrelevant; with many epochs the last digits can take hundreds of steps).
     """
     lb, ub = prob.lb, prob.ub
-    r, J = prob._evaluate(theta)
+    n = len(theta)
+    r, g, d, items = prob.normal(theta)
     cost = float(r @ r)
     lam, nfev, converged = 1e-3, 1, False
     costs = [cost]
     for _ in range(max_iter):
-        g = J.T @ r
-        A = (J.T @ J).toarray()
-        d = np.diag(A).copy()
-        d[d <= 0] = 1.0
+        d = np.where(d > 0, d, 1.0)
         active = ((theta <= lb) & (g > 0)) | ((theta >= ub) & (g < 0))
-        free = ~active
-        Af, gf, df = A[np.ix_(free, free)], g[free], d[free]
+        blocks = _Blocks.from_epochs(n, prob.group, ~active, items)
         while True:
             try:
-                c = cho_factor(Af + lam * np.diag(df))
-                step = np.zeros_like(theta)
-                step[free] = -cho_solve(c, gf)
+                step = -blocks.solve(g, lam * d)
             except np.linalg.LinAlgError:
                 lam *= 10
+                if lam > 1e14:
+                    step = np.zeros_like(theta)
+                    break
                 continue
             trial = np.clip(theta + step, lb, ub)
-            rt, Jt = prob._evaluate(trial)
+            rt, gt, dt, it_t = prob.normal(trial)
             nfev += 1
             ct = float(rt @ rt)
             if ct < cost:
@@ -330,7 +482,7 @@ def _levenberg_marquardt(prob, theta, max_iter=1000, ftol=1e-10, window=20, min_
             converged = True
             break
         improvement = cost - ct
-        theta, r, J, cost = trial, rt, Jt, ct
+        theta, r, g, d, items, cost = trial, rt, gt, dt, it_t, ct
         report("joint fit", nfev, None, f"chi2 = {cost:.1f}")
         lam = max(lam / 3, 1e-12)
         costs.append(cost)
@@ -338,9 +490,51 @@ def _levenberg_marquardt(prob, theta, max_iter=1000, ftol=1e-10, window=20, min_
             converged = True
             break
     res = _LMResult()
-    res.x, res.fun, res.jac, res.nfev = theta, r, J, nfev
+    res.x, res.fun, res.jac, res.nfev = theta, r, items, nfev
     res.success, res.message = converged, "converged" if converged else "maximum iterations"
     return res
+
+
+class _EpochCovariance:
+    """Covariance of the joint fit, kept per epoch (the full matrix would not fit in memory)."""
+
+    def __init__(self, epoch_cov, shared_free, shared_cov, prob):
+        self._epoch = epoch_cov
+        self._prob = prob
+        self._shared = {}
+        T = prob.T.tocsr()
+        if len(shared_free):
+            # full joint parameters that depend only on shared free parameters
+            sub = T[:, shared_free]
+            full_cov_diag = np.einsum("ij,jk,ik->i", sub.toarray(), shared_cov, sub.toarray())
+            for i in range(T.shape[0]):
+                if sub[i].nnz and T[i].nnz == sub[i].nnz:
+                    self._shared[i] = full_cov_diag[i]
+
+    def epoch(self, k, idx):
+        rows, cov = self._epoch.get(k, (None, None))
+        if rows is None:
+            return None
+        pos = {r: j for j, r in enumerate(rows)}
+        sel = [pos[i] for i in idx]
+        return cov[np.ix_(sel, sel)]
+
+    def variance(self, i, k=None):
+        if i in self._shared:
+            return self._shared[i]
+        for kk, (rows, cov) in self._epoch.items():
+            if k is not None and kk != k:
+                continue
+            if i in rows:
+                j = rows.index(i)
+                return cov[j, j]
+        return np.nan
+
+    def __getitem__(self, ij):
+        i, j = ij
+        if i != j:
+            raise IndexError("only variances of the joint fit are kept (per-epoch covariances: me.epochs[k].cov)")
+        return self.variance(i)
 
 
 def _cov_from_normal(JtJ, exclude):

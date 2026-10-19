@@ -118,7 +118,7 @@ class StellarPopulation(Component):
         for k, v in self.__dict__.items():
             if k in self._SHARED:
                 new.__dict__[k] = v
-            elif k == "_setups":
+            elif k in ("_setups", "_bases"):
                 new.__dict__[k] = dict(v)       # prepared grids are read-only too
             elif k == "_eval_cache":
                 new.__dict__[k] = (None, None)
@@ -129,7 +129,7 @@ class StellarPopulation(Component):
     # Saved fits (fa.save, multiprocessing) leave out the template spectra and
     # all caches: they are reloaded and rebuilt when needed. The normalisation
     # (``_reference``) is kept, so the weights mean the same after loading.
-    _TRANSIENT = ("_lam_t", "_T", "_fwhm_t", "_setups", "_grid", "_eval_cache", "_basis_cache",
+    _TRANSIENT = ("_lam_t", "_T", "_fwhm_t", "_setups", "_bases", "_grid", "_eval_cache", "_basis_cache",
                   "_T_hat", "_freq", "_i0", "_frac", "_k_ext", "_n_fft")
 
     def __getstate__(self):
@@ -171,13 +171,53 @@ class StellarPopulation(Component):
         if gs is not None:
             self._publish(gs)
             return gs
+        # The template grid (interpolation, broadening to the common resolution,
+        # FFT) is the expensive part; it depends on the wavelength range only, so
+        # it is shared by all wavelength sets within the same 50 A-rounded range
+        # (e.g. the epochs of a multi-epoch fit); the interpolation onto x is cheap.
+        sig_d = float(np.median(instrumental_fwhm(x, ctx))) / FWHM_PER_SIGMA
+        if self.__dict__.get("_reference") is None:
+            self._set_reference(x, sig_d)
+        lo_r, hi_r = 50.0 * np.floor(x.min() / 50.0), 50.0 * np.ceil(x.max() / 50.0)
+        base_key = (lo_r, hi_r, ctx.get("medium"), round(sig_d, 3))
+        bases = self.__dict__.setdefault("_bases", {})
+        base = bases.get(base_key)
+        if base is None:
+            base = self._make_base(lo_r, hi_r, sig_d, ctx)
+            if len(bases) >= 8:
+                bases.pop(next(iter(bases)), None)
+            bases[base_key] = base
+        ln0, step, pad, T_hat, freq, n_fft, floor2, norms = base
+        pos = (np.log(x) - ln0) / step + pad
+        i0 = np.floor(pos).astype(int)
+        gs = _Grid(key, T_hat, freq, n_fft, i0, pos - i0, fitzpatrick99(x), floor2,
+                   float(np.sqrt(floor2)), norms)
+        if len(cache) >= 512:
+            cache.pop(next(iter(cache)), None)
+        cache[key] = gs
+        self._publish(gs)
+        return gs
+
+    def _set_reference(self, x, sig_d):
+        """Common resolution and template normalisation, fixed at the first evaluation."""
+        lam_t = self._lam_t
+        step = self.dv / C_KMS
+        lam_g = np.exp(np.arange(np.log(x.min()), np.log(x.max()), step))
+        sig_t = np.interp(lam_g, lam_t, self._fwhm_t) / FWHM_PER_SIGMA / lam_g * C_KMS
+        sig_c = max(sig_d, float(sig_t.max()) if sig_t.size else sig_d)
+        ref = (self._lam_t >= x.min()) & (self._lam_t <= x.max())
+        norms = np.median(self._T[:, ref], axis=1) if ref.any() else np.ones(len(self._T))
+        norms[norms <= 0] = 1.0
+        self._reference = (sig_c, norms, (float(x.min()), float(x.max())))
+
+    def _make_base(self, xmin, xmax, sig_d, ctx):
         lam_t = self._lam_t
         if ctx.get("medium", "vacuum") == "vacuum" and self._medium_t == "air":
             lam_t = np.where(lam_t > 2000, air_to_vac(lam_t), lam_t)
         vel = [p for p in self.params if p.name.endswith(".velocity")][0]
         sig = [p for p in self.params if p.name.endswith(".sigma")][0]
         reach = max(abs(vel.min), abs(vel.max)) + 6 * sig.max + 200
-        lo, hi = x.min() * np.exp(-reach / C_KMS), x.max() * np.exp(reach / C_KMS)
+        lo, hi = xmin * np.exp(-reach / C_KMS), xmax * np.exp(reach / C_KMS)
         if lo < lam_t[0] or hi > lam_t[-1]:
             raise ValueError(f"templates cover {lam_t[0]:.0f}-{lam_t[-1]:.0f} A; the fit "
                              f"needs {lo:.0f}-{hi:.0f} A")
@@ -194,19 +234,10 @@ class StellarPopulation(Component):
         # sigma_floor = sqrt(sig_c^2 - sig_d^2).
         # A resolution that varies with wavelength (e.g. DESI) is represented by
         # its median over the fitted range.
-        sig_d = float(np.median(instrumental_fwhm(x, ctx))) / FWHM_PER_SIGMA
         sig_t = np.interp(lam_g, lam_t, self._fwhm_t) / FWHM_PER_SIGMA / lam_g * C_KMS
-        if self.__dict__.get("_reference") is None:
-            # The common resolution and the template normalisation are fixed at
-            # the first evaluation (the fitted range), so the host is the same
-            # function of wavelength wherever it is evaluated later (plots,
-            # host fractions, other epochs).
-            inside = (lam_g >= x.min()) & (lam_g <= x.max())
-            sig_c = max(sig_d, float(sig_t[inside].max()) if inside.any() else sig_d)
-            ref = (self._lam_t >= x.min()) & (self._lam_t <= x.max())
-            norms = np.median(self._T[:, ref], axis=1) if ref.any() else np.ones(len(self._T))
-            norms[norms <= 0] = 1.0
-            self._reference = (sig_c, norms, (float(x.min()), float(x.max())))
+        # the common resolution and normalisation were fixed at the first evaluation
+        # (the fitted range), so the host is the same function of wavelength wherever
+        # it is evaluated later (plots, host fractions, other epochs)
         sig_c, norms, _ = self._reference
         T = _variable_gaussian(T, np.sqrt(np.clip(sig_c ** 2 - sig_t ** 2, 0, None)) / self.dv)
         T = T / norms[:, None]
@@ -215,16 +246,9 @@ class StellarPopulation(Component):
         n_fft = fft.next_fast_len(T.shape[1] + 2 * pad)
         Tp = np.zeros((T.shape[0], n_fft))
         Tp[:, pad:pad + T.shape[1]] = T
-        pos = (np.log(x) - ln_grid[0]) / step + pad
-        i0 = np.floor(pos).astype(int)
         floor2 = max(sig_c ** 2 - sig_d ** 2, 0.0)
-        gs = _Grid(key, fft.rfft(Tp, axis=1, workers=n_threads()), fft.rfftfreq(n_fft, d=self.dv),
-                   n_fft, i0, pos - i0, fitzpatrick99(x), floor2, float(np.sqrt(floor2)), norms)
-        if len(cache) >= 8:
-            cache.pop(next(iter(cache)), None)
-        cache[key] = gs
-        self._publish(gs)
-        return gs
+        return (ln_grid[0], step, pad, fft.rfft(Tp, axis=1, workers=n_threads()),
+                fft.rfftfreq(n_fft, d=self.dv), n_fft, floor2, norms)
 
     def _publish(self, gs):
         """Keep the attributes of the most recent grid (for inspection)."""

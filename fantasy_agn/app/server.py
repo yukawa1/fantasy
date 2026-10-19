@@ -283,7 +283,7 @@ class Handler(BaseHTTPRequestHandler):
                 s.run_cell(s.multiepoch_code(
                     paths=opts.get("paths"), pattern=opts.get("pattern"), model=opts.get("model", "current"),
                     broad_components=opts.get("broad_components", 2), outflow=opts.get("outflow", True),
-                    shared=opts.get("shared", "narrow.*"), intercalibrate=opts.get("intercalibrate", True),
+                    shared=opts.get("shared", ""), intercalibrate=opts.get("intercalibrate", True),
                     n_jobs=opts.get("n_jobs", -1), deredden=opts.get("deredden", True), ebv=opts.get("ebv"),
                     rest_frame=opts.get("rest_frame", True), z=opts.get("z"), **extra))
             elif url.path == "/api/reverberation":

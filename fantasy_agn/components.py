@@ -486,7 +486,8 @@ class BalmerContinuum(Component):
             half = int(np.ceil(5 * sigma / step))
             u = np.arange(-half, half + 1) * step
             kern = np.exp(-0.5 * (u / sigma) ** 2)
-            smooth = np.convolve(sharp, kern / kern.sum(), mode="same")
+            from scipy.signal import fftconvolve          # the kernel is long: FFT
+            smooth = fftconvolve(sharp, kern / kern.sum(), mode="same")
             hit = np.interp(np.log(x), grid, smooth)
             if len(self._cache) > 8:
                 self._cache = {}
