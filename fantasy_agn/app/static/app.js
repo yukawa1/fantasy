@@ -1015,7 +1015,8 @@ function presetDefaults() {
 }
 $("preset").addEventListener("change", () => { presetDefaults(); renderPresetOptions(); });
 $("btn-preset").onclick = () => modelAction(Object.assign({ action: "preset" }, presetOptions()));
-$("btn-fit").onclick = () => post("/api/fit", Object.assign({ errors: $("errors").value }, presetOptions()));
+$("btn-fit").onclick = () => post("/api/fit", Object.assign({ errors: $("errors").value, uncertainty: $("uncert").checked },
+                                                            presetOptions()));
 $("reset").onclick = () => { lastFigure = -1; modelSig = null; view = null; post("/api/reset"); };
 const drop = $("drop");
 $("browse").onclick = (e) => { e.preventDefault(); e.stopPropagation(); $("file").click(); };

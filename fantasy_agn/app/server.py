@@ -231,7 +231,11 @@ class Handler(BaseHTTPRequestHandler):
                 errors = opts.get("errors", "covariance")
                 if errors not in ("covariance", "mc"):
                     raise ValueError("errors must be covariance or mc")
-                if s.model is not None:
+                if opts.get("uncertainty"):
+                    s.run_cell(s.uncertainty_code(model=opts.get("model", "optical"),
+                                                  broad_components=opts.get("broad_components", 2),
+                                                  outflow=opts.get("outflow", True), **_options(opts)))
+                elif s.model is not None:
                     s.run_cell(s.fit_model_code(errors))
                 else:
                     s.run_cell(s.fit_code(model=opts.get("model", "optical"),

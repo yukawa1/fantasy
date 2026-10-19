@@ -1366,3 +1366,19 @@ def test_app_project_round_trip():
     t.load_project(s.save_project())
     assert len(t.cells) == len(s.cells) and t.result is not None and t.spec.name == s.spec.name
     assert "f" in t.info and t.results
+
+
+def test_compare_variants_and_uncertainty_code():
+    spec = fa.read(fa.examples.path("type1")).to_rest_frame()
+    models = fa.presets.variants("hbeta", broad_components=(1, 2), outflow=(False,), host=(False,))
+    assert list(models) == ["1 broad", "2 broad"]
+    cmp = fa.compare(spec, models, n_jobs=1)
+    assert cmp.result is cmp.results[cmp.best]
+    assert "Hb FWHM" in cmp.systematic() and "log L5100" in cmp.table
+    from fantasy_agn.app.session import Session
+    s = Session()
+    s.ns["spec"] = spec
+    code = s.uncertainty_code(model="optical")
+    assert "fa.presets.variants('optical', host=(False, True))" in code and "cmp = fa.compare" in code
+    with pytest.raises(ValueError):
+        s.uncertainty_code(model="passive / retired")            # no broad lines

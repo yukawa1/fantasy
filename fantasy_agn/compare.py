@@ -56,6 +56,11 @@ def default_quantities(result):
             m = r.bh_mass(line)
             return m["log_mbh"], m["log_mbh_err"]
         q["log M_BH"] = mbh
+        at = {"Hb": 5100, "MgII2798": 3000, "CIV1549": 1350}[line]
+
+        def lum(r):
+            return r.luminosity(at)
+        q[f"log L{at}"] = lum
     return q
 
 
@@ -82,6 +87,15 @@ class Comparison:
         t.insert(6, "acceptable", t.reduced_chi2 <= (1 + tolerance) * best_rchi2)
         self.table = t
         self.best = t.loc[0, "model"]
+
+    @property
+    def result(self):
+        """The FitResult of the best model (lowest BIC)."""
+        return self.results[self.best]
+
+    def systematic(self):
+        """{quantity: systematic error} from :meth:`summary` (NaN if undetermined)."""
+        return {row.quantity: row.sys_err for row in self.summary().itertuples()}
 
     def summary(self):
         """
@@ -112,7 +126,15 @@ class Comparison:
                     + "\n\n" + self.summary().to_string(index=False))
 
 
-def compare(spectrum, models, quantities=None, tolerance=0.1, **fit_options):
+def _fit_named(args):
+    spectrum, model, options = args
+    try:
+        return fit_one(spectrum, model, **options)
+    except Exception as exc:                     # one failing model does not stop the comparison
+        return exc
+
+
+def compare(spectrum, models, quantities=None, tolerance=0.1, n_jobs=-1, **fit_options):
     """
     Fit several models to one spectrum and compare them.
 
@@ -122,11 +144,45 @@ def compare(spectrum, models, quantities=None, tolerance=0.1, **fit_options):
         black-hole mass (see :func:`default_quantities`).
     :param tolerance: models with reduced chi2 within this fraction of the best
         one are acceptable and define the systematic error.
+    :param n_jobs: processes for the fits (-1: all cores but one; 1: one after the other).
     :param fit_options: passed to :func:`fantasy_agn.fit` (e.g. errors='mc').
     :return: Comparison
     """
+    import warnings
+    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures.process import BrokenProcessPool
+    from ._threads import SINGLE_THREADED, environment
+    from .fitting import _n_workers
+    from .progress import report
     fit_options.setdefault("verbose", False)
-    results = {name: fit_one(spectrum, m, **fit_options) for name, m in models.items()}
+    names = list(models)
+    jobs = [(spectrum, models[n], fit_options) for n in names]
+    workers = _n_workers(n_jobs, len(jobs))
+    fits = None
+    task = f"comparing {len(jobs)} models"
+    report(task, 0, len(jobs))
+    if workers > 1:
+        try:
+            with environment(SINGLE_THREADED), ProcessPoolExecutor(workers) as ex:
+                fits = []
+                for k, res in enumerate(ex.map(_fit_named, jobs), 1):
+                    fits.append(res)
+                    report(task, k, len(jobs), f"{workers} processes")
+        except (RuntimeError, BrokenProcessPool, OSError):
+            fits = None
+    if fits is None:
+        fits = []
+        for k, job in enumerate(jobs, 1):
+            fits.append(_fit_named(job))
+            report(task, k, len(jobs), "1 process")
+    results = {}
+    for n, res in zip(names, fits):
+        if isinstance(res, Exception):
+            warnings.warn(f"model {n!r} failed: {type(res).__name__}: {res}")
+        else:
+            results[n] = res
+    if not results:
+        raise RuntimeError("all models failed")
     if quantities is None:
         quantities = default_quantities(next(iter(results.values())))
     return Comparison(results, quantities, tolerance)

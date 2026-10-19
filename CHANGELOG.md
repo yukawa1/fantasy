@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Model uncertainty: `fa.compare` fits the models in parallel and also compares log L5100;
+  `fa.presets.variants(..., host=(False, True))`; `cmp.result`, `cmp.systematic()`. App: **Model
+  uncertainty** in the Fit step fits 1-3 broad components x outflow x host and shows value +-
+  statistical +- model error.
 - Saving work: `fa.save(obj, "x.fantasy")` / `fa.load(...)` for fit results, multi-epoch results,
   classifications, models and spectra (stellar templates and caches are not stored: a fit with
   a host shrinks from 13 MB to 0.2 MB). App: save the whole project (cells, outputs, spectra,

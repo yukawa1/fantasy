@@ -222,6 +222,21 @@ shows the data, model, components and residuals of every epoch: step with the ar
 ← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
 one page per epoch.</p>
 """),
+    ("uncertainty", "Model uncertainty", """
+<p>Broad-line widths, fluxes and the continuum luminosity often depend more on how a spectrum is
+decomposed (one, two or three broad components, an outflow wing, a host galaxy) than on the noise. Tick
+<b>Model uncertainty</b> in the Fit step: FANTASY fits all these decompositions in parallel, keeps the
+best one (lowest BIC) as the result, and adds a <b>model (systematic) error</b> to the results: the
+spread over the acceptable decompositions (reduced &chi;&sup2; within 10% of the best).</p>
+<pre>models = fa.presets.variants("hbeta", host=(False, True))
+cmp = fa.compare(spec, models)        # fits in parallel
+cmp                                    # table of the models and the summary
+cmp.summary()                          # value, statistical, systematic and total error
+r = cmp.result                         # the best fit</pre>
+<p>Example (SDSS quasar, 12 decompositions): H&beta; FWHM 4522 &plusmn; 56 (stat) &plusmn; 52 (model)
+km/s, but the line dispersion 3524 &plusmn; 143 &plusmn; 325 km/s and log L5100 44.854 &plusmn; 0.003
+&plusmn; 0.039: for &sigma;<sub>line</sub> and L5100 the decomposition dominates the error.</p>
+"""),
     ("save", "Saving and reopening work", """
 <p>In the app, the <b>download</b> button above the code cells saves the whole project (all cells
 with their outputs, the spectra, classifications, models and fits) as one <code>.fantasy</code> file;

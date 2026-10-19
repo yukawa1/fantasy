@@ -701,7 +701,7 @@ def auto(spectrum, **options):
 
 
 def variants(name="hbeta", broad_components=(1, 2, 3), outflow=(False, True),
-             broad_profile=("gaussian",), **options):
+             broad_profile=("gaussian",), host=None, **options):
     """
     Several decompositions of one preset for fa.compare(): every combination of
     the number of broad components, the broad-line profile and with/without an
@@ -712,6 +712,8 @@ def variants(name="hbeta", broad_components=(1, 2, 3), outflow=(False, True),
     :param broad_profile: profile name or several, e.g.
         ('gaussian', 'gauss-hermite'): Gauss-Hermite components can follow
         asymmetric broad lines (bumps, shoulders) with fewer components.
+    :param host: e.g. (False, True): also vary the stellar host (for quasars at
+        low redshift the host is a main systematic of L5100 and the widths).
     """
     import inspect
     func = PRESETS[name]
@@ -719,16 +721,20 @@ def variants(name="hbeta", broad_components=(1, 2, 3), outflow=(False, True),
     profiles = (broad_profile,) if isinstance(broad_profile, str) else tuple(broad_profile)
     short = {"gaussian": "", "gauss-hermite": "GH ", "lorentzian": "Lorentzian ", "voigt": "Voigt "}
     out = {}
+    hosts = (None,) if host is None else ((host,) if isinstance(host, (bool, str)) else tuple(host))
     for prof in profiles:
         for n in broad_components:
-            for o in (outflow if "outflow" in params else (False,)):
+            for o, h in [(o, h) for o in (outflow if "outflow" in params else (False,)) for h in hosts]:
                 kw = dict(options, broad_components=n)
+                if h is not None:
+                    kw["host"] = h
                 if prof != "gaussian":
                     kw["broad_profile"] = prof
                 if "outflow" in params:
                     kw["outflow"] = o
                 label = (f"{n} {short.get(prof, prof + ' ')}broad"
                          + ("" if o is False or o is None
-                            else " + outflow" if o is True else " + [OIII]-tied outflow"))
+                            else " + outflow" if o is True else " + [OIII]-tied outflow")
+                         + (" + host" if h not in (None, False) else ""))
                 out[label] = func(**kw)
     return out

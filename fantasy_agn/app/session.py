@@ -388,17 +388,30 @@ class Session:
             self.info = "Next: classify the spectrum."
 
     def _results(self, r):
+        from ..compare import Comparison
         t = r.key_results()
+        cmp = self.ns.get("cmp")
+        sys = {}
+        if isinstance(cmp, Comparison) and any(v is r for v in cmp.results.values()):
+            # quantity names of compare -> key_results
+            sys = {("broad " + k if k.split()[0] in ("Hb", "Ha", "MgII2798", "CIV1549") else k): v
+                   for k, v in cmp.systematic().items()}
         rows = []
         for q in t.itertuples():
             unit = f" {q.unit}" if q.unit else ""
+            s_err = sys.get(q.quantity, np.nan)
             if q.unit == "" and "fraction" in q.quantity:
                 val = f"{q.value:.0%}"
+            elif np.isfinite(q.error) and np.isfinite(s_err):
+                val = f"{q.value:.4g} ± {q.error:.2g} ± {s_err:.2g} (model){unit}"
             elif np.isfinite(q.error):
                 val = f"{q.value:.4g} ± {q.error:.2g}{unit}"
             else:
                 val = f"{q.value:.4g}{unit}"
             rows.append((q.quantity, val))
+        if sys:
+            acc = int(cmp.table.acceptable.sum())
+            rows.append(("decompositions compared", f"{len(cmp.results)} ({acc} acceptable), best: {cmp.best}"))
         self.results = rows
         self.warnings = [ln.strip().replace("WARNING: ", "").replace("note: ", "")
                          for ln in r.summary(short=True).split("\n") if "WARNING" in ln or "note:" in ln]
@@ -483,6 +496,36 @@ class Session:
         if host_choice in (None, "", "default"):
             code += self._host_check_code(name, kw, err)
         return code + "\nr.key_results()"
+
+    def uncertainty_code(self, model="optical", broad_components=2, outflow=True, **extra):
+        """
+        Code that fits several decompositions of the preset (1-3 broad components,
+        with/without outflow and host) and reports the model (systematic) error.
+        With a model from step 3 that is still the preset, its options are used.
+        """
+        self._need_rest_frame()
+        if self.model is not None:
+            made = self._unedited_preset()
+            if made is None:
+                raise ValueError("the model uncertainty compares decompositions of a preset; this model "
+                                 "was edited. Fit it without the option, or use fa.compare in a cell")
+            name, kw = made
+        else:
+            name, kw = self._preset_args(model, broad_components, outflow, **extra)
+        params = inspect.signature(getattr(presets, name)).parameters
+        if "broad_components" not in params:
+            raise ValueError(f"the model uncertainty compares broad-line decompositions; {name} has no "
+                             "broad lines")
+        kw = {k: v for k, v in kw.items() if k not in ("broad_components", "outflow", "host")}
+        if "host" in params and not kw.get("physical"):
+            kw["host"] = (False, True)
+        args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
+        return (f"models = fa.presets.variants({name!r}{', ' + args if args else ''})   "
+                f"# 1-3 broad components, with/without outflow{' and host' if 'host' in kw else ''}\n"
+                "cmp = fa.compare(spec, models)\n"
+                "r = cmp.result                        # the best model (lowest BIC)\n"
+                "model = r.model\n"
+                "cmp")
 
     def _host_check_code(self, name, kw, err):
         """
