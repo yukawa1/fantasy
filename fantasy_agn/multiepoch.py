@@ -310,8 +310,11 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
             cov=None if cov_full is None else cov_full.epoch(k, idx), samples=None,
             chi2=float(r @ r), dof=max(r.size - len(free_k), 1), nfev=res.nfev,
             success=res.success, message=res.message,
-            at_limit=[p.name for p, a in zip(prob.free, limit) if a and not p.linear
+            # names without the epoch suffix, as in the epoch's own model
+            at_limit=[p.name.rsplit("@", 1)[0] for p, a in zip(prob.free, limit) if a and not p.linear
                       and (p.name.endswith(f"@{k}") or "@" not in p.name)],
+            at_zero=[p.name.rsplit("@", 1)[0] for p, a in zip(prob.free, limit) if a and p.linear
+                     and (p.name.endswith(f"@{k}") or "@" not in p.name)],
             error_scale=np.sqrt(scale), time=0.0, error_method=errors))
         if intercalibrate:
             si = prob.scale_index[k]

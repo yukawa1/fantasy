@@ -105,6 +105,9 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- Multi-epoch: per-epoch results did not report parameters at a limit (the names carried the
+  epoch suffix), so e.g. a broad width at its maximum showed as "free" with error 0 and no warning;
+  amplitudes at zero were not reported either.
 - Multi-epoch: a shared parameter tied to a per-epoch one (e.g. feii.shift, tied to broad.shift
   by the hbeta preset) stopped the fit; it is now fitted freely, with a warning.
 - App: after reading a new spectrum, Fit still used the model created for the previous one

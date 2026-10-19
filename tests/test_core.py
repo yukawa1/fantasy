@@ -1517,3 +1517,21 @@ def test_block_solver_matches_dense():
     for cols, cov in per_epoch:
         pos = [int(np.nonzero(kk == c)[0][0]) for c in cols]
         assert np.allclose(cov, inv[np.ix_(pos, pos)], rtol=1e-6, atol=1e-10)
+
+
+def test_multi_epoch_reports_limits_per_epoch():
+    """A width at its limit in one epoch is reported there (it was shown as 'free', error 0)."""
+    rng = np.random.default_rng(4)
+    spectra = []
+    for k in range(4):
+        m = _toy_truth()
+        wave = np.arange(4650, 5150, 1.0)
+        flux = m.evaluate(wave, {"medium": "vacuum"}) + rng.normal(0, 2.0, wave.size)
+        spectra.append(fa.Spectrum(wave, flux, np.full(wave.size, 2.0), rest_frame=True, mjd=50000 + k))
+    model = _toy_model()
+    model.set("broad.fwhm", value=3000, min=1000, max=3500)      # the true width (4200) is outside
+    me = fa.fit_epochs(spectra, model, reference=0, n_jobs=1, verbose=False)
+    for e in me.epochs:
+        assert "broad.fwhm" in e.at_limit
+        row = e.params.set_index("parameter").loc["broad.fwhm"]
+        assert row.status == "at limit" and not np.isfinite(row.error)
