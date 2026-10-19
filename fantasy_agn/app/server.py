@@ -20,6 +20,8 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     GET  /api/epochs.pdf             all epoch fits, one page each
     GET  /api/line.<png|pdf>?line=Hb one line of the current fit with its components
     POST /api/templates              JSON {name}: download a stellar template set (as a code cell)
+    POST /api/sample                 JSON: classify and fit many spectra (fa.fit_sample, code cell)
+    GET  /api/sample.csv, /api/sample_fig.png?k=N&kind=fit|line
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
     GET  /api/lines.csv, /api/session.py
@@ -176,6 +178,19 @@ class Handler(BaseHTTPRequestHandler):
             safe = "".join(ch for ch in str(line) if ch.isalnum()) or "line"
             return self._send(data, "image/png" if fmt == "png" else "application/pdf",
                               filename=f"{s.figure_stem}_{safe}.{fmt}" if "dl" in q else None)
+        if url.path == "/api/sample.csv":
+            csv = s.sample_csv()
+            if csv is None:
+                return self._error("no sample fitted yet", 404)
+            return self._send(csv, "text/csv", filename="fantasy_catalog.csv")
+        if url.path == "/api/sample_fig.png":
+            try:
+                data = s.sample_figure(q.get("k", ["0"])[0], q.get("kind", ["fit"])[0])
+            except ValueError as exc:
+                return self._error(str(exc), 404)
+            if data is None:
+                return self._error("no sample fitted yet", 404)
+            return self._send(data, "image/png")
         if url.path == "/api/epochs.pdf":
             data = s.epochs_pdf()
             if data is None:
@@ -270,6 +285,12 @@ class Handler(BaseHTTPRequestHandler):
                     shared=opts.get("shared", "narrow.*"), intercalibrate=opts.get("intercalibrate", True),
                     n_jobs=opts.get("n_jobs", -1), deredden=opts.get("deredden", True), ebv=opts.get("ebv"),
                     rest_frame=opts.get("rest_frame", True), z=opts.get("z"), **extra))
+            elif url.path == "/api/sample":
+                opts = json.loads(self._body() or b"{}")
+                s.run_cell(s.sample_code(paths=opts.get("paths"), pattern=opts.get("pattern"),
+                                         model=opts.get("model", "auto"), deredden=opts.get("deredden", True),
+                                         ebv=opts.get("ebv"), mask_absorption=bool(opts.get("mask_absorption")),
+                                         n_jobs=opts.get("n_jobs", -1), batch=opts.get("batch", "sample")))
             elif url.path == "/api/templates":
                 opts = json.loads(self._body() or b"{}")
                 s.run_cell(s.download_templates_code(opts.get("name", "")))

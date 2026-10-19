@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Samples: `fa.fit_sample(files, out=...)` reads, dereddens, classifies and fits many spectra in
+  parallel (model from the classification, host check included) and returns one catalog
+  (`.table`), the saved fits (`.load(i)`) and a gallery. App: **Sample** view with a sortable
+  catalog, the fit and main line of every spectrum, and the catalog as CSV.
 - Narrow-line diagnostics, `r.diagnostics()`, with errors: BPT ratios and class, narrow Ha/Hb and
   gas E(B-V), [SII] electron density, [OIII]/[NII] temperatures, EW(Ha) for WHAN and the O3N2/N2
   metallicity of star-forming galaxies. `key_results` of narrow-line fits now has errors for the

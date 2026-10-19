@@ -205,6 +205,7 @@ class Session:
                     "templates": _templates_state(),
                     "multi": self.multi_state(),
                     "lines": self.line_state(),
+                    "sample": self.sample_state(),
                     "cpus": os.cpu_count() or 1,
                     "python": platform.python_version(),
                     "version": __import__("fantasy_agn").__version__}
@@ -961,6 +962,90 @@ class Session:
         with open(path, "wb") as fh:
             fh.write(data)
         return path
+
+    # ------------------------------------------------------------------ samples
+    @property
+    def sample(self):
+        from ..sample import SampleResult
+        s = self.ns.get("sample")
+        return s if isinstance(s, SampleResult) else None
+
+    def sample_code(self, paths=None, pattern=None, model="auto", deredden=True, ebv=None,
+                    mask_absorption=False, n_jobs=-1, batch="sample"):
+        """Code that classifies and fits many spectra in parallel (fa.fit_sample)."""
+        lines = []
+        if pattern:
+            lines.append("import glob")
+            lines.append(f"files = sorted(glob.glob({os.path.expanduser(pattern.strip())!r}))")
+        elif paths:
+            lines.append("files = [" + ",\n         ".join(repr(p) for p in paths) + "]")
+        else:
+            raise ValueError("give the spectra: drop files or a pattern such as /data/*.fits")
+        out = os.path.join(os.path.expanduser("~"), ".fantasy_agn", "sample_fits",
+                           "".join(ch for ch in str(batch) if ch.isalnum() or ch in "-_")[:40] or "sample")
+        args = [f"out={out!r}"]
+        if model and model != "auto":
+            name, kw = MODELS[model]
+            args.append(f"model={(name, kw)!r}" if kw else f"model={name!r}")
+        if not deredden:
+            args.append("deredden=False")
+        elif ebv not in (None, ""):
+            args.append(f"ebv={float(ebv):g}")
+        if mask_absorption:
+            args.append("mask_absorption=True")
+        args.append(f"n_jobs={int(n_jobs)}")
+        lines.append(f"sample = fa.fit_sample(files, {', '.join(args)})")
+        lines.append('sample.table[[c for c in ("name", "cls", "preset", "rchi2") if c in sample.table]]')
+        return "\n".join(lines)
+
+    _SAMPLE_COLS = ("name", "z", "cls", "preset", "rchi2", "n_at_limit", "broad Hb FWHM", "broad Ha FWHM",
+                    "broad MgII2798 FWHM", "broad CIV1549 FWHM", "log M_BH", "log [NII]/Ha", "log [OIII]/Hb",
+                    "BPT class", "E(B-V) gas", "n_e ([SII])", "12+log(O/H) (O3N2)", "sigma* (host)", "error")
+
+    def sample_state(self):
+        sm = self.sample
+        if sm is None:
+            return None
+        cached = self.__dict__.get("_sample_cache")
+        if cached is not None and cached[0] is sm:
+            return cached[1]
+        t = sm.table
+        cols = [c for c in self._SAMPLE_COLS if c in t and t[c].notna().any()]
+
+        def fmt(v):
+            if isinstance(v, (float, np.floating)):
+                return "" if not np.isfinite(v) else f"{v:.4g}"
+            return "" if v is None else str(v)
+        rows = [[fmt(v) for v in row] for row in t[cols].itertuples(index=False)]
+        has_fig = [isinstance(v, str) for v in (t["saved"] if "saved" in t else [None] * len(t))]
+        out = {"n": len(t), "failed": int(t["error"].notna().sum()) if "error" in t else 0,
+               "classes": t["cls"].value_counts().to_dict() if "cls" in t else {},
+               "columns": cols, "rows": rows, "figs": has_fig, "out": sm.out, "id": id(sm)}
+        self._sample_cache = (sm, out)
+        return out
+
+    def sample_figure(self, k, kind="fit"):
+        """PNG of the fit (or main line) of row ``k`` of the sample, from its output folder."""
+        sm = self.sample
+        if sm is None:
+            return None
+        k = int(k)
+        if not 0 <= k < len(sm.table):
+            raise ValueError(f"row {k} does not exist")
+        saved = sm.table.iloc[k].get("saved") if "saved" in sm.table else None
+        if not isinstance(saved, str):
+            raise ValueError("no figure for this spectrum (it failed or no output folder)")
+        path = saved[:-len(".fantasy")] + ("_line.png" if kind == "line" else "_fit.png")
+        if not os.path.realpath(path).startswith(os.path.realpath(sm.out) + os.sep) or not os.path.exists(path):
+            raise ValueError("figure not found")
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    def sample_csv(self):
+        sm = self.sample
+        if sm is None:
+            return None
+        return sm.table.drop(columns=[c for c in ("trace", "path") if c in sm.table]).to_csv(index=False)
 
     def multiepoch_code(self, paths=None, pattern=None, model="current", broad_components=2,
                         outflow=True, shared="narrow.*", intercalibrate=True, n_jobs=-1,

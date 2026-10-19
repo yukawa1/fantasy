@@ -39,9 +39,10 @@ from .parameters import Parameter, ParameterSet
 from .result import FitResult
 from .spectrum import Spectrum, read
 from .io import save, load
+from .sample import fit_sample, SampleResult
 
 __all__ = [
-    "read", "Spectrum", "Model", "save", "load", "fit", "fit_many", "guess", "fit_epochs", "compare", "Comparison",
+    "read", "Spectrum", "Model", "save", "load", "fit_sample", "SampleResult", "fit", "fit_many", "guess", "fit_epochs", "compare", "Comparison",
     "classify", "Classification",
     "presets", "gui", "app",
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",

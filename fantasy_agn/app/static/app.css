@@ -305,10 +305,10 @@ td .lines { color: var(--muted); font-size: 12.5px; }
 .form.opts { margin-top: 0; }
 .form.opts .hint { margin-right: 2px; }
 
-#mdrop { display: flex; align-items: center; gap: 16px; justify-content: center; border: 1.5px dashed #c6d0db;
+#mdrop, #sdrop { display: flex; align-items: center; gap: 16px; justify-content: center; border: 1.5px dashed #c6d0db;
   border-radius: 12px; padding: 18px; color: var(--ink-2); cursor: pointer; background: #fbfcfd; }
-#mdrop small { display: block; color: var(--muted); margin-top: 2px; }
-#mdrop.over { border-color: var(--teal); background: var(--teal-soft); }
+#mdrop small, #sdrop small { display: block; color: var(--muted); margin-top: 2px; }
+#mdrop.over, #sdrop.over { border-color: var(--teal); background: var(--teal-soft); }
 input.wide { width: min(420px, 60vw) !important; }
 #mtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px; }
 #mresults figure img { border: 1px solid var(--line); }
@@ -349,3 +349,9 @@ pre.run .prog { color: var(--code-out); }
 .epochfig.loading img { opacity: .45; }
 #mtable tr.sel td { background: var(--teal-soft); }
 #mtable tr:not(:first-child) { cursor: pointer; }
+
+/* sample view */
+#stable tr.sel td { background: var(--teal-soft); }
+#stable tr:not(:first-child) { cursor: pointer; }
+#stable th { cursor: pointer; white-space: nowrap; }
+#sresults figure img { max-width: 100%; height: auto; margin: 0 auto; }

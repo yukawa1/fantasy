@@ -222,6 +222,21 @@ shows the data, model, components and residuals of every epoch: step with the ar
 ← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
 one page per epoch.</p>
 """),
+    ("sample", "Fitting a sample", """
+<p>The <b>Sample</b> view fits many spectra at once. Drop the files (or give a pattern such as
+<code>/data/*.fits</code>) and press <i>Fit the sample</i>. Each spectrum is read, corrected for Galactic
+extinction, moved to the rest frame, <b>classified</b> and fitted with the model its class needs (with the
+host check for borderline starlight), in parallel processes. Choose a model in the menu instead of
+<i>automatic</i> to fit all spectra with the same one.</p>
+<p>The result is one <b>catalog</b>: class, model, reduced &chi;&sup2;, the main quantities with errors
+(broad-line widths and black-hole masses, or the narrow-line diagnostics) per spectrum. Sort it by
+clicking a column header (e.g. reduced &chi;&sup2;, to check the worst fits first); click a row to see
+its fit and main line. Download the catalog as CSV; every fit is also saved as a <code>.fantasy</code> file.</p>
+<pre>s = fa.fit_sample(glob.glob("data/*.fits"), out="fits/")   # in a script: under if __name__ == "__main__":
+s.table                # the catalog
+s.load(3)              # the full fit of row 3
+s.gallery()            # HTML page with every fit</pre>
+"""),
     ("diagnostics", "Narrow-line diagnostics", """
 <p><code>r.diagnostics()</code> turns the narrow-line fluxes of a fit into physical quantities, with
 errors propagated from the fit. The app shows them in the <b>Data</b> tab and the main ones in the

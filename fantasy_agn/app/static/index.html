@@ -19,6 +19,7 @@
   <nav class="links">
     <button class="link" data-view-link="model"><i data-icon="sliders"></i>Model editor</button>
     <button class="link" data-view-link="multi"><i data-icon="layers"></i>Multi-epoch</button>
+    <button class="link" data-view-link="sample"><i data-icon="table"></i>Sample</button>
     <button class="link" data-view-link="docs"><i data-icon="book"></i>Docs</button>
     <a class="link" href="https://github.com/yukawa1/fantasy" target="_blank" rel="noopener"><i data-icon="github"></i>GitHub</a>
     <button id="reset" class="btn ghost small" title="Start a new analysis"><i data-icon="refresh"></i>New analysis</button>
@@ -386,6 +387,62 @@
   </section>
 
   <!-- ============================== Docs ============================== -->
+  <section id="view-sample" class="view hidden">
+    <div class="hero"><h1>Sample <span>fitting</span></h1>
+      <div class="kicker">CLASSIFY · CHOOSE THE MODEL · FIT · ONE CATALOG</div></div>
+
+    <section class="card"><div class="card-main">
+      <header class="card-head"><span class="num">1</span>
+        <div><h2>Spectra</h2><p>Any number of objects. Each is classified and fitted with the model its class
+          needs (with the host check), in parallel.</p></div>
+        <a class="help" data-doc="sample" href="#">Need help?</a></header>
+      <div id="sdrop" tabindex="0">
+        <input type="file" id="sfiles" accept=".fits,.fit,.fz,.txt,.dat,.csv,.json" multiple hidden>
+        <i data-icon="upload" class="big"></i>
+        <div><b>Drop spectra here</b> or <a href="#" id="sbrowse">choose files</a>
+        <small id="sfiles-info">SDSS, DESI, OzDES, GAMA, 1D FITS or text</small></div>
+      </div>
+      <div class="form">
+        <label>or a pattern <input id="spattern" type="text" placeholder="/data/sample/*.fits" class="wide"></label>
+      </div>
+      <div class="form prep">
+        <label class="check"><input id="sdered" type="checkbox" checked> Correct Galactic extinction</label>
+        <label class="check"><input id="sabsorb" type="checkbox"> Mask narrow absorption</label>
+      </div>
+      <div class="form">
+        <label>Model <select id="smodel"></select></label>
+        <label title="processes for the fits">Processes <input id="sjobs" type="number" min="1" value="4"></label>
+        <button id="btn-sample" class="btn primary"><i data-icon="play"></i>Fit the sample</button>
+      </div>
+      <div id="smessage" class="msg" role="status"></div>
+      <div id="sprogress" class="progress hidden"><div class="track"><div class="bar"></div></div><span class="ptext"></span></div>
+    </div>
+    <aside class="card-side"><i data-icon="table" class="big"></i><b>Many objects</b>
+      <span id="scpus">Classification, model choice and fit for every spectrum.</span></aside></section>
+
+    <section class="card hidden" id="sresults"><div class="card-main">
+      <header class="card-head"><span class="num">2</span>
+        <div><h2>Catalog</h2><p id="sinfo"></p></div></header>
+      <div id="stiles"></div>
+      <div class="epochs">
+        <header class="epochs-head"><h3>Fit of each spectrum</h3>
+          <div class="epoch-nav">
+            <button class="iconbtn" id="sprev" title="Previous (←)"><i data-icon="left"></i></button>
+            <select id="ssel" aria-label="spectrum"></select>
+            <button class="iconbtn" id="snext" title="Next (→)"><i data-icon="arrow"></i></button>
+          </div></header>
+        <figure class="epochfig"><img id="sfig" alt="fit"></figure>
+        <figure class="epochfig"><img id="sline" alt="main line"></figure>
+      </div>
+      <p class="hint small">Click a row to see its fit. Sort by clicking a column header.</p>
+      <div class="tablewrap"><table class="grid" id="stable"></table></div>
+    </div>
+    <aside class="card-side downloads">
+      <a class="btn outline tok" href="/api/sample.csv" download><i data-icon="download"></i>Catalog (.csv)</a>
+      <a class="btn outline tok" href="/api/project.fantasy" download><i data-icon="download"></i>Project</a>
+    </aside></section>
+  </section>
+
   <section id="view-docs" class="view hidden">
     <aside id="docnav">
       <img src="/static/img/logo.png" alt="FANTASY" class="doclogo">

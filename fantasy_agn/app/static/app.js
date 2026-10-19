@@ -65,7 +65,7 @@ function fmt(v) {
 let currentView = "analysis";
 function setView(name, docId) {
   currentView = name;
-  for (const v of ["analysis", "model", "multi", "docs"]) $("view-" + v).classList.toggle("hidden", v !== name);
+  for (const v of ["analysis", "model", "multi", "sample", "docs"]) $("view-" + v).classList.toggle("hidden", v !== name);
   for (const l of document.querySelectorAll(".link[data-view-link]")) l.classList.toggle("active", l.dataset.viewLink === name);
   $("main").classList.toggle("docs", name === "docs");
   if (name === "docs") openDocs(docId);
@@ -240,6 +240,8 @@ function renderCards() {
   msg.classList.toggle("error", !!err);
   msg.textContent = err ? err : (busy ? "running …" : state.info);
   $("mmessage").textContent = msg.textContent;
+  $("smessage").textContent = msg.textContent;
+  $("smessage").classList.toggle("error", !!err);
   $("mmessage").classList.toggle("error", !!err);
   renderProgress();
   $("card-results").classList.toggle("hidden", !state.has_result);
@@ -281,7 +283,9 @@ function progressText() {
   return [p.task, count, p.detail].filter(Boolean).join(" · ");
 }
 function renderProgress() {
-  const box = $("mprogress");
+  for (const id of ["mprogress", "sprogress"]) renderProgressIn($(id));
+}
+function renderProgressIn(box) {
   const p = state.busy && state.progress;
   box.classList.toggle("hidden", !p);
   if (!p) return;
@@ -859,7 +863,115 @@ function render() {
   if (currentView === "model") renderModelEditor(false);
   renderMulti();
   renderLines();
+  renderSample();
 }
+
+// ================================================================ sample
+let sFiles = [], sId = null, sK = 0, sSort = null;
+function renderSample() {
+  if (!$("smodel").options.length && state) {
+    $("smodel").innerHTML = '<option value="auto">automatic (classify each spectrum)</option>' +
+      state.models.map((m) => `<option>${esc(m)}</option>`).join("");
+    $("sjobs").value = Math.max(1, (state.cpus || 2) - 1);
+    $("scpus").textContent = `${state.cpus} processor cores: classification, model choice and fit for every spectrum.`;
+  }
+  $("btn-sample").disabled = !!state.busy;
+  const S = state.sample;
+  $("sresults").classList.toggle("hidden", !S);
+  if (!S || S.id === sId) return;
+  sId = S.id; sSort = null; sK = 0;
+  const cls = Object.entries(S.classes).map(([k, v]) => `${k} ${v}`).join(", ");
+  $("stiles").innerHTML = [["spectra", S.n], ["fitted", S.n - S.failed], ["failed", S.failed], ["classes", cls || "—"]]
+    .map(([a, b]) => `<div class="tile"><div class="lab">${a}</div><div class="val">${esc(String(b))}</div></div>`).join("");
+  $("sinfo").textContent = S.out ? `Fits and figures saved in ${S.out}` : "";
+  drawSampleTable();
+  showSample(0);
+}
+function sampleOrder() {
+  const S = state.sample, idx = S.rows.map((_, k) => k);
+  if (sSort) {
+    const [c, dir] = sSort;
+    idx.sort((a, b) => {
+      const x = S.rows[a][c], y = S.rows[b][c], nx = parseFloat(x), ny = parseFloat(y);
+      const v = (isNaN(nx) || isNaN(ny)) ? String(x).localeCompare(String(y)) : nx - ny;
+      return dir * v;
+    });
+  }
+  return idx;
+}
+function drawSampleTable() {
+  const S = state.sample, order = sampleOrder();
+  $("stable").innerHTML = `<tr>${S.columns.map((c, j) => `<th data-c="${j}">${esc(c)}${sSort && sSort[0] === j ? (sSort[1] > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr>` +
+    order.map((k) => `<tr data-k="${k}">${S.rows[k].map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("");
+  $("ssel").innerHTML = order.map((k) => `<option value="${k}">${esc(S.rows[k][0] || S.rows[k][1])}</option>`).join("");
+  for (const tr of $("stable").querySelectorAll("tr[data-k]")) tr.classList.toggle("sel", Number(tr.dataset.k) === sK);
+  $("ssel").value = String(sK);
+}
+function showSample(k) {
+  const S = state.sample;
+  if (!S) return;
+  sK = k;
+  $("ssel").value = String(k);
+  for (const tr of $("stable").querySelectorAll("tr[data-k]")) tr.classList.toggle("sel", Number(tr.dataset.k) === k);
+  const order = sampleOrder(), pos = order.indexOf(k);
+  $("sprev").disabled = pos <= 0; $("snext").disabled = pos >= order.length - 1;
+  const ok = S.figs[k];
+  $("sfig").parentElement.classList.toggle("hidden", !ok);
+  $("sline").parentElement.classList.toggle("hidden", !ok);
+  if (ok) {
+    $("sfig").src = withToken(`/api/sample_fig.png?k=${k}&kind=fit&v=${S.id}`);
+    $("sline").src = withToken(`/api/sample_fig.png?k=${k}&kind=line&v=${S.id}`);
+  }
+}
+function stepSample(d) {
+  const order = sampleOrder(), pos = order.indexOf(sK) + d;
+  if (pos >= 0 && pos < order.length) showSample(order[pos]);
+}
+$("sprev").onclick = () => stepSample(-1);
+$("snext").onclick = () => stepSample(1);
+$("ssel").onchange = () => showSample(Number($("ssel").value));
+$("stable").onclick = (ev) => {
+  const th = ev.target.closest("th[data-c]");
+  if (th) { const c = Number(th.dataset.c); sSort = sSort && sSort[0] === c ? [c, -sSort[1]] : [c, 1]; drawSampleTable(); return; }
+  const tr = ev.target.closest("tr[data-k]");
+  if (tr) { showSample(Number(tr.dataset.k)); $("sfig").scrollIntoView({ behavior: "smooth", block: "center" }); }
+};
+document.addEventListener("keydown", (ev) => {
+  if (currentView !== "sample" || !state || !state.sample) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if (ev.key === "ArrowLeft") { stepSample(-1); ev.preventDefault(); }
+  if (ev.key === "ArrowRight") { stepSample(1); ev.preventDefault(); }
+});
+const sdrop = $("sdrop");
+$("sbrowse").onclick = (e) => { e.preventDefault(); e.stopPropagation(); $("sfiles").click(); };
+sdrop.onclick = () => $("sfiles").click();
+$("sfiles").onchange = () => { sFiles = [...$("sfiles").files]; renderSFiles(); };
+sdrop.ondragover = (e) => { e.preventDefault(); sdrop.classList.add("over"); };
+sdrop.ondragleave = () => sdrop.classList.remove("over");
+sdrop.ondrop = (e) => { e.preventDefault(); sdrop.classList.remove("over"); sFiles = [...e.dataTransfer.files]; renderSFiles(); };
+function renderSFiles() {
+  $("sfiles-info").textContent = sFiles.length ? `${sFiles.length} files: ${sFiles.slice(0, 3).map((f) => f.name).join(", ")}${sFiles.length > 3 ? " …" : ""}`
+    : "SDSS, DESI, OzDES, GAMA, 1D FITS or text";
+}
+$("btn-sample").onclick = async () => {
+  const batch = "sample-" + Date.now();
+  const opts = { model: $("smodel").value, deredden: $("sdered").checked, mask_absorption: $("sabsorb").checked,
+                 n_jobs: Number($("sjobs").value), pattern: $("spattern").value.trim() || null, batch };
+  if (!opts.pattern) {
+    if (!sFiles.length) return showError("Drop spectra or give a pattern such as /data/*.fits");
+    opts.paths = [];
+    for (const [i, f] of sFiles.entries()) {
+      $("smessage").textContent = `uploading ${i + 1}/${sFiles.length}: ${f.name}`;
+      try {
+        const r = await api(`/api/upload?${new URLSearchParams({ filename: f.name, batch })}`,
+          { method: "POST", body: f, headers: { "Content-Type": "application/octet-stream" } });
+        opts.paths.push(r.path);
+      } catch (e) { return showError(`${f.name}: ${e.message}`); }
+    }
+  }
+  post("/api/sample", opts);
+};
+for (const id of ["sfig", "sline"]) $(id).addEventListener("load", (e) => { e.target.style.width = `${e.target.naturalWidth}px`; });
 async function refresh() {
   try {
     setState(await api("/api/state"));
@@ -1036,6 +1148,7 @@ function route() {
   if (h.startsWith("docs")) setView("docs", h.split("/")[1]);
   else if (h === "model") setView("model");
   else if (h === "multi") setView("multi");
+  else if (h === "sample") setView("sample");
   else setView("analysis");
 }
 window.addEventListener("hashchange", route);

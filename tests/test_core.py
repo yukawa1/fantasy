@@ -1403,3 +1403,19 @@ def test_diagnostics_seyfert2():
     assert 100 < d.loc["n_e ([SII])", "value"] < 3000 and 1e4 < d.loc["T_e ([OIII])", "value"] < 2.5e4
     k = r.key_results().set_index("quantity")
     assert np.isfinite(k.loc["log [OIII]/Hb", "error"]) and np.isfinite(k.loc["[OIII]5007 flux", "error"])
+
+
+def test_fit_sample(tmp_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    files = [fa.examples.path("type1"), os.path.join(tmp_path, "missing.fits")]
+    s = fa.fit_sample(files, out=str(tmp_path / "out"), model="hbeta", deredden=False, n_jobs=1, verbose=False)
+    t = s.table
+    assert len(t) == 2 and len(s.failed) == 1 and t.preset.iloc[0] == "hbeta()"
+    assert np.isfinite(t["broad Hb FWHM"].iloc[0]) and os.path.exists(tmp_path / "out" / "catalog.csv")
+    r = s.load(0)
+    assert r.rchi2 == pytest.approx(t.rchi2.iloc[0])
+    assert os.path.exists(s.gallery())
+    from fantasy_agn.app.session import Session
+    code = Session().sample_code(pattern="/data/*.fits", model="seyfert2", mask_absorption=True)
+    assert "fa.fit_sample(files" in code and "model='seyfert2'" in code and "mask_absorption=True" in code
