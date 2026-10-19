@@ -23,6 +23,8 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
     GET  /api/lines.csv, /api/session.py
+    GET  /api/project.fantasy        the whole session (cells, spectra, models, fits) in one file
+    POST /api/project                body = a .fantasy project file: open it
 
 The app runs Python code, so the API only answers requests that carry the
 token created when the server starts (it is put into the page) and that are
@@ -189,6 +191,9 @@ class Handler(BaseHTTPRequestHandler):
             if csv is None:
                 return self._error("no multi-epoch fit yet", 404)
             return self._send(csv, "text/csv", filename="light_curve.csv")
+        if url.path == "/api/project.fantasy":
+            name = (s.spec.name if s.spec is not None else "session") + ".fantasy"
+            return self._send(s.save_project(), "application/octet-stream", filename=name)
         if url.path == "/api/session.py":
             return self._send(s.script(), "text/x-python", filename="fantasy_session.py")
         return self._error("not found", 404)
@@ -264,6 +269,8 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/templates":
                 opts = json.loads(self._body() or b"{}")
                 s.run_cell(s.download_templates_code(opts.get("name", "")))
+            elif url.path == "/api/project":
+                s.load_project(self._body())
             elif url.path == "/api/reset":
                 s.reset()
             else:

@@ -74,6 +74,7 @@ class StellarPopulation(Component):
         age_idx = (np.arange(0, all_ages.size, 2) if ages is None else
                    np.unique([np.argmin(abs(all_ages - a)) for a in np.atleast_1d(ages)]))
         met_idx = np.unique([np.argmin(abs(all_metals - m)) for m in np.atleast_1d(metals)])
+        self._selection = (np.asarray(age_idx), np.asarray(met_idx))   # to reload after unpickling
         cube = data["templates"][:, age_idx][:, :, met_idx]
         self._lam_t = np.asarray(data["lam"], float)
         self._T = cube.reshape(cube.shape[0], -1).T.copy()          # (n_tpl, n_lam)
@@ -124,6 +125,31 @@ class StellarPopulation(Component):
             else:
                 new.__dict__[k] = copy.deepcopy(v, memo)
         return new
+
+    # Saved fits (fa.save, multiprocessing) leave out the template spectra and
+    # all caches: they are reloaded and rebuilt when needed. The normalisation
+    # (``_reference``) is kept, so the weights mean the same after loading.
+    _TRANSIENT = ("_lam_t", "_T", "_fwhm_t", "_setups", "_grid", "_eval_cache", "_basis_cache",
+                  "_T_hat", "_freq", "_i0", "_frac", "_k_ext", "_n_fft")
+
+    def __getstate__(self):
+        state = {k: v for k, v in self.__dict__.items() if k not in self._TRANSIENT}
+        if "_selection" not in state:                 # made before this attribute existed
+            return dict(self.__dict__)
+        state["_setup_key"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if "_T" not in self.__dict__:
+            data = load(self.template_set)
+            age_idx, met_idx = self._selection
+            cube = data["templates"][:, age_idx][:, :, met_idx]
+            self._lam_t = np.asarray(data["lam"], float)
+            self._T = cube.reshape(cube.shape[0], -1).T.copy()
+            self._fwhm_t = np.asarray(data["fwhm"], float)
+        self.__dict__.setdefault("_eval_cache", (None, None))
+        self.__dict__.setdefault("_setup_key", None)
 
     # ----------------------------------------------------------- setup
     _STATE = ("_T_hat", "_freq", "_n_fft", "_i0", "_frac", "_k_ext", "_floor2", "sigma_floor",

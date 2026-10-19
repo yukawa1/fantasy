@@ -34,7 +34,10 @@
         <button class="ptab" data-ptab="data"><i data-icon="table"></i>Data</button>
       </div>
       <span class="pill" id="pyver" title="Python running the app"><span class="dotok"></span>Python</span>
-      <a id="script" class="iconbtn tok hidden" href="/api/session.py" download title="Download the session as a Python script"><i data-icon="download"></i></a>
+      <a id="script" class="iconbtn tok hidden" href="/api/session.py" download title="Download the session as a Python script"><i data-icon="code"></i></a>
+      <a id="saveproj" class="iconbtn tok hidden" href="/api/project.fantasy" download title="Save the project (cells, spectra, models, fits) to reopen later"><i data-icon="download"></i></a>
+      <button id="openproj" class="iconbtn" title="Open a saved project (.fantasy)"><i data-icon="upload"></i></button>
+      <input id="projfile" type="file" accept=".fantasy" class="hidden">
     </div>
     <div id="cells"></div>
     <div id="datapane" class="hidden"></div>

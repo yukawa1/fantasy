@@ -222,6 +222,19 @@ shows the data, model, components and residuals of every epoch: step with the ar
 ← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
 one page per epoch.</p>
 """),
+    ("save", "Saving and reopening work", """
+<p>In the app, the <b>download</b> button above the code cells saves the whole project (all cells
+with their outputs, the spectra, classifications, models and fits) as one <code>.fantasy</code> file;
+the <b>upload</b> button next to it opens a saved project, which replaces the current session. The
+<b>&lt;/&gt;</b> button downloads the session as a Python script instead.</p>
+<p>In Python, any result can be saved and loaded:</p>
+<pre>fa.save(r, "quasar.fantasy")         # FitResult, MultiEpochResult, Classification, Model, Spectrum
+r = fa.load("quasar.fantasy")
+r.plot_line("Hb"); r.measure("Hb")</pre>
+<p>A <code>.fantasy</code> file is a compressed Python pickle: like any pickle it can run code when it is
+opened, so open only files you or your collaborators made. Stellar templates are not stored (a fit with
+a host is a few hundred kB); they are read from the template folder when the file is opened.</p>
+"""),
     ("lines", "Looking at single lines", """
 <p>When a line is fitted with several components, the figure shows each of them: the 1st broad
 component dashed, the 2nd dotted, besides their sum (the interactive plot has them as

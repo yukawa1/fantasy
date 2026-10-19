@@ -6,6 +6,10 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Saving work: `fa.save(obj, "x.fantasy")` / `fa.load(...)` for fit results, multi-epoch results,
+  classifications, models and spectra (stellar templates and caches are not stored: a fit with
+  a host shrinks from 13 MB to 0.2 MB). App: save the whole project (cells, outputs, spectra,
+  fits) and open it again.
 - Plots of single lines: `r.plot_line("Hb")` shows one line with the rest of the model subtracted,
   every component (narrow, outflow, 1st/2nd broad with their FWHM) and their sum on a velocity
   axis; `r.plot_lines([...])`, `r.fitted_lines()`. The main figure draws the individual broad

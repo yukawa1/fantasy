@@ -166,6 +166,7 @@ function renderCells() {
   });
   if (cells.length !== lastCellCount) { box.scrollTop = box.scrollHeight; lastCellCount = cells.length; }
   $("script").classList.toggle("hidden", cells.length < 2);
+  $("saveproj").classList.toggle("hidden", cells.length < 2);
   $("runnew").disabled = !!state.busy;
 }
 // the composer at the bottom: a new cell
@@ -940,6 +941,18 @@ function readFile(file) {
   post(`/api/read?${q}`, file, { "Content-Type": "application/octet-stream" });
 }
 $("btn-read").onclick = readJSON;
+// projects: save is a download link; open uploads the file and replaces the session
+$("openproj").onclick = () => {
+  if (state && state.cells.length > 1 && !confirm("Open a project? The current session is replaced (save it first if needed).")) return;
+  $("projfile").click();
+};
+$("projfile").onchange = () => {
+  const f = $("projfile").files[0];
+  if (!f) return;
+  lastFigure = -1; modelSig = null; view = null; mId = null; linesId = null;
+  post("/api/project", f, { "Content-Type": "application/octet-stream" });
+  $("projfile").value = "";
+};
 $("path").addEventListener("keydown", (e) => { if (e.key === "Enter") readJSON(); });
 $("targetid").addEventListener("keydown", (e) => { if (e.key === "Enter") readJSON(); });
 $("btn-classify").onclick = () => post("/api/classify");

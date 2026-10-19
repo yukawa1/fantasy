@@ -87,6 +87,8 @@ result.measure("Hb", ["broad", "broad2"])   # broad Hβ: flux, FWHM, sigma, shif
                              # (without components: summed over all, narrow included)
 result.bh_mass()             # single-epoch virial mass (Vestergaard & Peterson 2006)
 result.save("my_quasar")     # CSV tables + model spectrum
+fa.save(result, "my_quasar.fantasy")     # the whole result, to reopen later:
+result = fa.load("my_quasar.fantasy")    # plot, measure, refit ... as before
 ```
 
 For Monte Carlo errors use `fa.fit(spec, model, errors="mc", n_mc=100)`.

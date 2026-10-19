@@ -1329,3 +1329,40 @@ def test_plot_line_and_components():
     assert "1st broad comp." in names and "2nd broad comp." in names and "Broad lines" in names
     assert "1st broad comp." not in [c[1] for c in _curves(r, True)]
     assert plain_line("[OIII]5007") == "[O III] λ5007" and plain_line("Hb") == "Hβ"
+
+
+def test_save_load_fit(tmp_path):
+    spec = fa.read(fa.examples.path("type1")).to_rest_frame()
+    r = fa.fit(spec, fa.presets.hbeta(broad_components=1), verbose=False)
+    path = fa.save(r, str(tmp_path / "q.fantasy"))
+    r2 = fa.load(path)
+    assert np.allclose(r.model_flux(), r2.model_flux()) and r2.saved_with["type"] == "FitResult"
+    (tmp_path / "bad.fantasy").write_bytes(b"not a fantasy file")
+    with pytest.raises(Exception):
+        fa.load(str(tmp_path / "bad.fantasy"))
+
+
+@needs_templates
+def test_save_load_host_is_small(tmp_path):
+    spec = fa.read(fa.examples.path("seyfert2")).to_rest_frame()
+    r = fa.fit(spec, fa.presets.passive(), verbose=False)
+    path = fa.save(r, str(tmp_path / "g.fantasy"))
+    assert os.path.getsize(path) < 2e6                     # templates and caches are not stored
+    r2 = fa.load(path)
+    assert np.allclose(r.model_flux(), r2.model_flux())
+    assert r2.host_properties()["sigma_star"][0] == pytest.approx(r.host_properties()["sigma_star"][0])
+
+
+def test_app_project_round_trip():
+    import time
+    from fantasy_agn.app.session import Session
+    s = Session()
+    for code in (s.read_code(path=fa.examples.path("type1"), ebv=0.03), "model = fa.presets.hbeta(broad_components=1)",
+                 "r = fa.fit(spec, model, verbose=False)\nr.key_results()", "f = lambda q: q"):
+        s.run_cell(code)
+        while s.busy:
+            time.sleep(0.1)
+    t = Session()
+    t.load_project(s.save_project())
+    assert len(t.cells) == len(s.cells) and t.result is not None and t.spec.name == s.spec.name
+    assert "f" in t.info and t.results
