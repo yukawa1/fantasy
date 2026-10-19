@@ -324,7 +324,7 @@ r.plot_line("Hb"); r.measure("Hb")</pre>
 opened, so open only files you or your collaborators made. Stellar templates are not stored (a fit with
 a host is a few hundred kB); they are read from the template folder when the file is opened.</p>
 """),
-    ("lines", "Looking at single lines", """
+    ("single-lines", "Looking at single lines", """
 <p>When a line is fitted with several components, the figure shows each of them: the 1st broad
 component dashed, the 2nd dotted, besides their sum (the interactive plot has them as
 <i>broad 1</i>, <i>broad 2</i>; click a legend entry to hide one).</p>
