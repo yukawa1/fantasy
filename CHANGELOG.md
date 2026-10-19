@@ -6,6 +6,11 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Narrow-line diagnostics, `r.diagnostics()`, with errors: BPT ratios and class, narrow Ha/Hb and
+  gas E(B-V), [SII] electron density, [OIII]/[NII] temperatures, EW(Ha) for WHAN and the O3N2/N2
+  metallicity of star-forming galaxies. `key_results` of narrow-line fits now has errors for the
+  [OIII] flux and the BPT ratios (they were missing) and includes E(B-V), n_e and T_e; the app's
+  Data tab lists all diagnostics.
 - Model uncertainty: `fa.compare` fits the models in parallel and also compares log L5100;
   `fa.presets.variants(..., host=(False, True))`; `cmp.result`, `cmp.systematic()`. App: **Model
   uncertainty** in the Fit step fits 1-3 broad components x outflow x host and shows value +-

@@ -1382,3 +1382,24 @@ def test_compare_variants_and_uncertainty_code():
     assert "fa.presets.variants('optical', host=(False, True))" in code and "cmp = fa.compare" in code
     with pytest.raises(ValueError):
         s.uncertainty_code(model="passive / retired")            # no broad lines
+
+
+def test_diagnostics_physics():
+    from fantasy_agn.diagnostics import _ne_sii, _te_oiii
+    # [SII] density: low- and high-density limits and a mid value (Sanders et al. 2016)
+    assert _ne_sii(1.44) < 10 and _ne_sii(0.45) > 1e4 and 500 < _ne_sii(0.886) < 1100
+    # [OIII] temperature: R = 7.90 exp(32900/T) at low density
+    T = 12000.0
+    assert _te_oiii(7.90 * np.exp(32900 / T), ne=1.0) == pytest.approx(T, rel=0.01)
+
+
+@needs_templates
+def test_diagnostics_seyfert2():
+    spec = fa.read(fa.examples.path("seyfert2")).to_rest_frame()
+    r = fa.fit(spec, fa.presets.seyfert2(), verbose=False)
+    d = r.diagnostics().set_index("quantity")
+    assert d.loc["BPT class", "note"] == "Seyfert"
+    assert 1.0 < d.loc["log [OIII]5007/Hb", "value"] < 1.3 and d.loc["log [OIII]5007/Hb", "error"] > 0
+    assert 100 < d.loc["n_e ([SII])", "value"] < 3000 and 1e4 < d.loc["T_e ([OIII])", "value"] < 2.5e4
+    k = r.key_results().set_index("quantity")
+    assert np.isfinite(k.loc["log [OIII]/Hb", "error"]) and np.isfinite(k.loc["[OIII]5007 flux", "error"])

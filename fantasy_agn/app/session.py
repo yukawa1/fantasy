@@ -819,6 +819,16 @@ class Session:
                 if isinstance(v, (int, float, np.floating)) and not isinstance(v, bool) and np.isfinite(v):
                     rows.append([k, f"{v:.4g}"])
             out.append({"title": "Classification", "columns": ["quantity", "value"], "rows": rows})
+        if r is not None and not any(getattr(c, "role", None) == "broad" for c in r.model.components):
+            try:
+                d = r.diagnostics()
+                rows = [[q.quantity, (f"{q.value:.4g}" if np.isfinite(q.value) else q.note) +
+                         (f" \u00b1 {q.error:.2g}" if np.isfinite(q.error) else "") + (f" {q.unit}" if q.unit else ""),
+                         q.note if np.isfinite(q.value) else ""] for q in d.itertuples()]
+                out.append({"title": "Narrow-line diagnostics (r.diagnostics())",
+                            "columns": ["quantity", "value", "note"], "rows": rows})
+            except Exception:
+                pass
         if r is not None:
             t = r.lines
             rows = [[row.component, row.line, f"{row.flux:.4g}", f"{row.flux_err:.2g}",

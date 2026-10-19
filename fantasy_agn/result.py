@@ -250,15 +250,27 @@ class FitResult:
                 rows.append(("broad Ha/Hb", dec[0], dec[1], ""))
         else:
             t = self.lines[self.lines.component.isin(["narrow", "narrow_hi", "outflow"])]
-            tot = t.groupby("line").flux.sum()
-            if "[OIII]5007" in tot:
+            if "[OIII]5007" in set(t.line):
+                from .diagnostics import _flux_function
+                idx = _flux_function(self, outflow=True).get("[OIII]5007", [])
+                f, e = self.propagate(lambda full: float(np.sum(full[idx])))
                 core = t[t.component.isin(["narrow", "narrow_hi"]) & (t.line == "[OIII]5007")]
                 n = core.iloc[0]
-                rows += [("[OIII]5007 flux", tot["[OIII]5007"], np.nan, ""),
+                rows += [("[OIII]5007 flux", float(f), float(e), ""),
                          ("[OIII]5007 FWHM (narrow)", n.fwhm, n.fwhm_err, "km/s")]
-            for a, b, lab in (("[NII]6583", "Ha", "log [NII]/Ha"), ("[OIII]5007", "Hb", "log [OIII]/Hb")):
-                if a in tot and b in tot and tot[a] > 0 and tot[b] > 0:
-                    rows.append((lab, float(np.log10(tot[a] / tot[b])), np.nan, "dex"))
+            try:
+                d = self.diagnostics().set_index("quantity")
+            except Exception:
+                d = None
+            if d is not None:
+                for q, lab, unit in (("log [NII]6583/Ha", "log [NII]/Ha", "dex"),
+                                     ("log [OIII]5007/Hb", "log [OIII]/Hb", "dex"),
+                                     ("E(B-V) gas", "E(B-V) gas", "mag"),
+                                     ("n_e ([SII])", "n_e ([SII])", "cm^-3"),
+                                     ("T_e ([OIII])", "T_e ([OIII])", "K"),
+                                     ("12+log(O/H) O3N2", "12+log(O/H) (O3N2)", "")):
+                    if q in d.index:
+                        rows.append((lab, float(d.loc[q, "value"]), float(d.loc[q, "error"]), unit))
         from .host import StellarPopulation
         if any(isinstance(c, StellarPopulation) for c in self.model.components):
             hp = self.host_properties()
@@ -500,6 +512,17 @@ class FitResult:
         return plot_result(self, ax=ax, components=components, residuals=residuals, xlim=xlim,
                            fig=fig, width=width, group=group, label_lines=label_lines,
                            title=title, style=style)
+
+    def diagnostics(self, outflow=True, kind=None):
+        """
+        Narrow-line diagnostics with errors: BPT ratios and class, narrow
+        Halpha/Hbeta and gas E(B-V), [SII] electron density, [OIII] and [NII]
+        temperatures (when the auroral lines are detected), EW(Halpha) for the
+        WHAN diagram and, for star-forming galaxies, 12+log(O/H). See
+        :func:`fantasy_agn.diagnostics.diagnostics`.
+        """
+        from .diagnostics import diagnostics
+        return diagnostics(self, outflow=outflow, kind=kind)
 
     def plot_line(self, line=None, **kw):
         """

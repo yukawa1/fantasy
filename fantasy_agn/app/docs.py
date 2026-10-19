@@ -222,6 +222,25 @@ shows the data, model, components and residuals of every epoch: step with the ar
 ← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
 one page per epoch.</p>
 """),
+    ("diagnostics", "Narrow-line diagnostics", """
+<p><code>r.diagnostics()</code> turns the narrow-line fluxes of a fit into physical quantities, with
+errors propagated from the fit. The app shows them in the <b>Data</b> tab and the main ones in the
+results.</p>
+<table class="doc">
+<tr><td>BPT ratios and class</td><td>[N II]/H&alpha;, [O III]/H&beta;, [S II]/H&alpha;, [O I]/H&alpha;;
+Kauffmann et al. (2003), Kewley et al. (2001, 2006)</td></tr>
+<tr><td>narrow H&alpha;/H&beta;, E(B-V) gas</td><td>against Case B 2.86 (H II regions) or 3.1 (AGN), Fitzpatrick
+(1999); with the <code>starforming</code> preset E(B-V) is fitted and the fluxes are already dereddened</td></tr>
+<tr><td>n<sub>e</sub> ([S II])</td><td>[S II] 6716/6731, Sanders et al. (2016), 10<sup>4</sup> K</td></tr>
+<tr><td>T<sub>e</sub> ([O III]), T<sub>e</sub> ([N II])</td><td>auroral/nebular ratios (when [O III] 4363 or [N II] 5755 is
+detected), dereddened, Osterbrock &amp; Ferland (2006)</td></tr>
+<tr><td>EW(H&alpha;)</td><td>for the WHAN diagram (Cid Fernandes et al. 2011)</td></tr>
+<tr><td>12+log(O/H)</td><td>star-forming galaxies only: O3N2 and N2 of Marino et al. (2013); their calibration
+scatter (0.16&ndash;0.18 dex) is not in the error</td></tr>
+</table>
+<p>Fluxes are summed over the narrow components and the outflow wing (<code>outflow=False</code>
+leaves the wing out).</p>
+"""),
     ("uncertainty", "Model uncertainty", """
 <p>Broad-line widths, fluxes and the continuum luminosity often depend more on how a spectrum is
 decomposed (one, two or three broad components, an outflow wing, a host galaxy) than on the noise. Tick
