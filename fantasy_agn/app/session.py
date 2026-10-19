@@ -905,7 +905,7 @@ class Session:
                         for row in lc.itertuples(index=False)],
                "epochs": [{"name": e.spectrum.name, "mjd": e.spectrum.mjd,
                            "rchi2": float(e.chi2 / e.dof), "scale": float(getattr(e, "scale", 1.0)),
-                           "reference": k == me.reference}
+                           "reference": k == me.reference, "limits": list(e.at_limit)}
                           for k, e in enumerate(me.epochs)]}
         self._multi_cache = (me, out)
         return out

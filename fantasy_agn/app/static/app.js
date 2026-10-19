@@ -749,7 +749,7 @@ function renderMulti() {
     $("mtable").innerHTML = `<tr>${m.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
       m.rows.map((r, k) => `<tr data-k="${k}">${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("");
     $("esel").innerHTML = m.epochs.map((e, k) =>
-      `<option value="${k}">${k}: ${esc(e.name)}${e.mjd ? ` · MJD ${e.mjd}` : ""}${e.reference ? " · reference" : ""}</option>`).join("");
+      `<option value="${k}">${e.limits && e.limits.length ? "⚠ " : ""}${k}: ${esc(e.name)}${e.mjd ? ` · MJD ${e.mjd}` : ""}${e.reference ? " · reference" : ""}</option>`).join("");
     showEpoch(0);
   }
   const src = withToken(`/api/figure.png?v=${state.figure_version}&hd=1`);
@@ -768,7 +768,8 @@ function showEpoch(k) {
   $("eprev").disabled = epochK === 0;
   $("enext").disabled = epochK === m.n - 1;
   $("einfo").textContent = `Epoch ${epochK + 1} of ${m.n} · χ²/ν = ${e.rchi2.toFixed(3)} · flux scale ${e.scale.toFixed(3)}` +
-    (e.reference ? " (reference)" : "");
+    (e.reference ? " (reference)" : "") +
+    (e.limits && e.limits.length ? ` · ⚠ at their limits: ${e.limits.join(", ")}` : "");
   $("edl").href = withToken(`/api/epoch.pdf?k=${epochK}&dl=1`);
   for (const tr of $("mtable").querySelectorAll("tr[data-k]")) tr.classList.toggle("sel", Number(tr.dataset.k) === epochK);
   $("efig").parentElement.classList.add("loading");
