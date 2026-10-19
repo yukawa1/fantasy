@@ -222,6 +222,24 @@ shows the data, model, components and residuals of every epoch: step with the ar
 ← → keys), pick one from the list or click a row of the table. <i>All epoch fits (PDF)</i> gives
 one page per epoch.</p>
 """),
+    ("absorption", "Absorption troughs (CIV, MgII)", """
+<p>Many CIV and MgII quasar spectra contain absorption: narrow intervening absorbers and, in BAL and
+mini-BAL quasars, broad troughs from outflowing gas. They cut into the emission lines and dominate
+&chi;&sup2;. Tick <b>Fit absorption troughs</b> in the Fit step: FANTASY fits the model, finds the troughs
+in the residuals, multiplies the model by their transmission exp(&minus;&tau;) and refits while the BIC
+improves. The emission components then describe the unabsorbed spectrum.</p>
+<pre>r = fa.fit_absorbed(spec, fa.presets.civ())
+r.absorbers                       # wavelength, FWHM and optical depth of every trough
+r.no_absorbers                    # the fit without them, for comparison
+r.plot_line("CIV1549")            # the line, unabsorbed and (dashed) as observed
+model.add(fa.Absorption([(1510.5, 1200), (1547.0, 300)]))   # troughs by hand</pre>
+<p>On the 150 CIV quasars of the calibration, the worst fits went from reduced &chi;&sup2; 8&ndash;24 to
+1.0&ndash;1.9. Troughs are kept narrower than 6000 km/s (and than three times the width at which they were
+found), so that a broad shallow &ldquo;absorber&rdquo; cannot trade flux with a too-broad emission line.
+Widths and fluxes of the emission can change a lot when troughs are fitted: compare with
+<code>r.no_absorbers</code> and look at the figure. For narrow absorbers only, masking is simpler:
+<i>Mask narrow absorption</i> in step 1, or <code>spec.mask_absorption()</code>.</p>
+"""),
     ("reverberation", "Reverberation mapping", """
 <p>After a multi-epoch fit, <b>Lag, rms spectrum and mass</b> (Multi-epoch view, below the light curves)
 measures the lag of the broad line behind the continuum, its width in the rms spectrum and the

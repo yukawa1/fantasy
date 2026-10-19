@@ -1452,3 +1452,41 @@ def test_rms_spectrum_width():
     rv = me.reverberation("Hb", continuum=(np.arange(50000, 50084, 3.0), np.ones(28) + np.arange(28) * 0.01,
                                            np.full(28, 0.01)), n_mc=20)
     assert "lag (rest frame)" in rv.table().quantity.values
+
+
+def test_absorption_jacobian_with_extinction():
+    m = fa.Model(fa.PowerLaw("continuum", pivot=1450), fa.Lines("broad", ["CIV1549"], fwhm=(4000, 1000, 20000)),
+                 fa.Absorption([(1510.0, 1200, 0.8), (1548.0, 300, 1.5)]), fa.Extinction())
+    m.set("extinction.ebv", 0.2)
+    x = np.linspace(1450, 1700, 1500)
+    full = m.params.full_values()
+    f, J = m.evaluate_with_jacobian(x, {}, full)
+    assert np.allclose(f, m.evaluate(x, {}, full))
+    num = np.empty_like(J)
+    for k in range(full.size):
+        h = 1e-6 * max(abs(full[k]), 1)
+        a, b = full.copy(), full.copy()
+        a[k] += h
+        b[k] -= h
+        num[:, k] = (m.evaluate(x, {}, a) - m.evaluate(x, {}, b)) / (2 * h)
+    assert np.max(np.abs(J - num)) < 1e-4 * np.max(np.abs(num))
+
+
+def test_fit_absorbed_recovers_trough():
+    rng = np.random.default_rng(5)
+    truth = fa.Model(fa.PowerLaw("continuum", pivot=1450),
+                     fa.Lines("broad", ["CIV1549"], fwhm=(5000, 1000, 20000), shift=(0, -3000, 3000)),
+                     fa.Absorption([(1530.0, 800, 1.2)]))
+    truth.set("continuum.amp", 20).set("broad.CIV1549.flux", 800)
+    w = np.arange(1450, 1720, 0.4)
+    spec = fa.Spectrum(w, truth.evaluate(w, {}) + rng.normal(0, 0.3, w.size), np.full(w.size, 0.3),
+                       rest_frame=True)
+    model = fa.Model(fa.PowerLaw("continuum", pivot=1450),
+                     fa.Lines("broad", ["CIV1549"], fwhm=(3000, 1000, 20000), shift=(0, -3000, 3000)),
+                     wave_range=(1450, 1715))
+    r = fa.fit_absorbed(spec, model)
+    assert r.rchi2 < 1.3 < r.no_absorbers.rchi2
+    t = r.absorbers.iloc[(r.absorbers.wave - 1530).abs().argsort()].iloc[0]
+    assert abs(t.wave - 1530) < 1.0 and t.tau == pytest.approx(1.2, rel=0.25)
+    assert r.measure("CIV1549")["flux"] == pytest.approx(800, rel=0.05)
+    r.plot_line("CIV1549")

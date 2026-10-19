@@ -6,6 +6,11 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Absorption: `fa.Absorption` (Gaussian optical-depth troughs multiplying the model) and
+  `fa.fit_absorbed(spec, model)`, which finds troughs in the residuals and adds them while the BIC
+  improves (`r.absorbers`, `r.no_absorbers`). The worst CIV calibration fits went from reduced chi2
+  8-24 to 1.0-1.9. Models now accept several multiplicative components (absorption and extinction).
+  App: **Fit absorption troughs** in the Fit step; single-line figures show the absorbed profile.
 - Reverberation mapping: `me.reverberation("Hb")` gives the lag (ICCF with FR/RSS errors, search
   window from the R-L relation), sigma_line and FWHM of the rms spectrum and the reverberation
   mass (f = 4.47); `continuum=(mjd, flux, err)` for photometry, `mjd_range`, `detrend`;

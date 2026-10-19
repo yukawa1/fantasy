@@ -19,7 +19,7 @@ __version__ = "2.0.0"
 
 from . import desi, examples, ozdes, presets, rm, templates
 from .host import StellarPopulation
-from .components import (BalmerContinuum, BrokenPowerLaw, Component, Extinction, FeII,
+from .components import (Absorption, BalmerContinuum, BrokenPowerLaw, Component, Extinction, FeII,
                          HighOrderBalmer, HostGalaxy, Lines, Polynomial, PowerLaw)
 from .extinction import fitzpatrick99
 from .classify import Classification, classify
@@ -39,15 +39,16 @@ from .parameters import Parameter, ParameterSet
 from .result import FitResult
 from .spectrum import Spectrum, read
 from .io import save, load
+from .absorbers import fit_absorbed
 from .sample import fit_sample, SampleResult
 
 __all__ = [
-    "read", "Spectrum", "Model", "save", "load", "fit_sample", "SampleResult", "fit", "fit_many", "guess", "fit_epochs", "compare", "Comparison",
+    "read", "Spectrum", "Model", "save", "load", "fit_absorbed", "fit_sample", "SampleResult", "fit", "fit_many", "guess", "fit_epochs", "compare", "Comparison",
     "classify", "Classification",
     "presets", "gui", "app",
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
     "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "StellarPopulation",
-    "Extinction",
+    "Extinction", "Absorption",
     "templates", "desi", "ozdes", "rm", "examples", "Component",
     "Parameter", "ParameterSet", "LINES", "line_wavelength", "read_line_list",
     "fitzpatrick99",

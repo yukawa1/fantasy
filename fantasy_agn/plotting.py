@@ -437,6 +437,17 @@ def _line_parts(result, line, wave):
     return out
 
 
+def _transmission(result, wave):
+    """Product of the multiplicative components (absorption, extinction) acting on lines."""
+    m = result.model
+    slices = m._slices()
+    T = np.ones_like(np.asarray(wave, float))
+    for i in m._multipliers():
+        c = m.components[i]
+        T = T * c.value(wave, result.full[slices[i]], result.spectrum.context)
+    return T
+
+
 def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, residuals=True,
               others=False, info=True, width="single", title=None, style=True):
     """
@@ -474,8 +485,9 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
         view = np.abs(v_data) <= window
         if view.sum() < 5:
             raise ValueError(f"{line} is outside the spectrum")
-        # the data with everything but this line subtracted
-        own = sum(_line_parts(result, line, s.wave).values())
+        # the data with everything but this line subtracted (the line as observed, i.e.
+        # after any absorption or extinction in the model)
+        own = sum(_line_parts(result, line, s.wave).values()) * _transmission(result, s.wave)
         model = result.model_flux()
         isolated = s.flux - (model - own)
         v_fine = np.linspace(-window, window, 1500)
@@ -517,6 +529,10 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
                     ls=_LINESTYLES[(k - 1) % len(_LINESTYLES)], label=label + extra, zorder=3)
         if len(comps) > 1:
             ax.plot(x_fine, sum(parts.values()), color=COLORS["model"], lw=1.1, label="Sum", zorder=4)
+        T_fine = _transmission(result, lam_fine)
+        if np.min(T_fine) < 0.99:                       # absorption in the window: the line as observed
+            ax.plot(x_fine, sum(parts.values()) * T_fine, color=COLORS["model"], lw=0.9, ls="--",
+                    label="Sum $\\times$ absorption", zorder=4)
         if others:
             seen = set()
             for d in fitted_lines(result):

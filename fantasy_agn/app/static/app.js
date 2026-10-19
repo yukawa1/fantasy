@@ -1143,7 +1143,8 @@ function presetDefaults() {
 }
 $("preset").addEventListener("change", () => { presetDefaults(); renderPresetOptions(); });
 $("btn-preset").onclick = () => modelAction(Object.assign({ action: "preset" }, presetOptions()));
-$("btn-fit").onclick = () => post("/api/fit", Object.assign({ errors: $("errors").value, uncertainty: $("uncert").checked },
+$("btn-fit").onclick = () => post("/api/fit", Object.assign({ errors: $("errors").value, uncertainty: $("uncert").checked,
+                                                              absorbers: $("absorbfit").checked },
                                                             presetOptions()));
 $("reset").onclick = () => { lastFigure = -1; modelSig = null; view = null; post("/api/reset"); };
 const drop = $("drop");

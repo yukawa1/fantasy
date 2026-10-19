@@ -24,7 +24,7 @@ from .wavelengths import vac_to_air
 
 __all__ = ("Component", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
            "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "Extinction",
-           "calzetti00")
+           "Absorption", "calzetti00")
 
 C_KMS = 299792.458
 FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -615,3 +615,57 @@ class Extinction(Component):
         k = self.curve(x)
         T = 10 ** (-0.4 * p[0] * k)
         return T, (-0.4 * np.log(10) * k * T)[:, None]
+
+
+class Absorption(Component):
+    """
+    Absorption troughs in front of the AGN (intervening or outflowing gas: CIV,
+    SiIV, MgII absorbers, mini-BAL and BAL troughs): every component is
+    multiplied by exp(-tau(lambda)), with tau a sum of Gaussians in velocity.
+    Each trough k has the central optical depth ``a<k>.tau``, the wavelength
+    ``a<k>.wave`` (A) and the width ``a<k>.fwhm`` (km/s). The emission
+    components then describe the unabsorbed spectrum.
+
+        model.add(fa.Absorption([(1510.5, 1200), (1547.0, 300)]))   # (wavelength, FWHM)
+
+    :func:`fantasy_agn.absorbers.fit_absorbed` finds the troughs in the residuals
+    of a fit and adds them automatically.
+
+    :param troughs: list of (wavelength, FWHM km/s) or (wavelength, FWHM, tau) starting values.
+    :param shift_max: how far (km/s) each centre may move from its start.
+    :param fwhm_range: (min, max) FWHM in km/s.
+    """
+    kind = "absorption"
+
+    def __init__(self, troughs, name="absorption", shift_max=500.0, fwhm_range=(30.0, 20000.0),
+                 tau_max=10.0):
+        super().__init__(name)
+        self.n = len(troughs)
+        for k, t in enumerate(troughs):
+            wave, fwhm = float(t[0]), float(t[1])
+            tau = float(t[2]) if len(t) > 2 else 0.5
+            dw = wave * shift_max / C_KMS
+            self._par(f"a{k}.tau", min(max(tau, 1e-3), tau_max), 0.0, tau_max,
+                      description="central optical depth of the trough")
+            self._par(f"a{k}.wave", wave, wave - dw, wave + dw, unit="A", description="trough wavelength")
+            self._par(f"a{k}.fwhm", float(np.clip(fwhm, *fwhm_range)), *fwhm_range, unit="km/s",
+                      description="trough FWHM")
+
+    def evaluate(self, x, p, ctx):
+        p = np.asarray(p, float).reshape(self.n, 3)
+        tau = np.zeros_like(x)
+        cols = []
+        for t0, lam, fwhm in p:
+            sig = lam * fwhm / C_KMS / FWHM_PER_SIGMA
+            u = (x - lam) / sig
+            g = np.exp(-0.5 * u * u)
+            tau += t0 * g
+            # d tau / d (t0, lam, fwhm)
+            cols.append((g, t0 * g * (u / sig + u * u / lam), t0 * g * u * u / fwhm))
+        T = np.exp(-tau)
+        J = np.empty((x.size, 3 * self.n))
+        for k, (dt0, dlam, dfwhm) in enumerate(cols):
+            J[:, 3 * k] = -T * dt0
+            J[:, 3 * k + 1] = -T * dlam
+            J[:, 3 * k + 2] = -T * dfwhm
+        return T, J

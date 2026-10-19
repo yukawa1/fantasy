@@ -492,14 +492,24 @@ class Session:
     def classify_code():
         return "c = fa.classify(spec)\nc"
 
-    def fit_code(self, model="optical", broad_components=2, outflow=True, errors="covariance", **extra):
+    @staticmethod
+    def _absorbed(code, err):
+        """Use fa.fit_absorbed instead of fa.fit (troughs found in the residuals)."""
+        return code.replace(f"r = fa.fit(spec, model{err})",
+                            f"r = fa.fit_absorbed(spec, model{err})   # adds absorption troughs while the BIC improves\n"
+                            "print(r.absorbers.round(2))")
+
+    def fit_code(self, model="optical", broad_components=2, outflow=True, errors="covariance",
+                 absorbers=False, **extra):
         self._need_rest_frame()
         host_choice = extra.get("host")
         name, kw = self._preset_args(model, broad_components, outflow, **extra)
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
         err = f', errors="{errors}"' if errors != "covariance" else ""
         code = f"model = fa.presets.{name}({args})\nr = fa.fit(spec, model{err})"
-        if host_choice in (None, "", "default"):
+        if absorbers:
+            code = self._absorbed(code, err)
+        elif host_choice in (None, "", "default"):
             code += self._host_check_code(name, kw, err)
         return code + "\nr.key_results()"
 
@@ -607,13 +617,15 @@ class Session:
             raise ValueError("the models are defined in the rest frame: read the spectrum again with "
                              "'Move to rest frame' ticked (or run spec = spec.to_rest_frame())")
 
-    def fit_model_code(self, errors="covariance"):
+    def fit_model_code(self, errors="covariance", absorbers=False):
         """Fit the current model (from the model step or an edited cell)."""
         if self.model is None:
             raise ValueError("create a model first (step 3)")
         self._need_rest_frame()
         err = f', errors="{errors}"' if errors != "covariance" else ""
         code = f"r = fa.fit(spec, model{err})"
+        if absorbers:
+            return self._absorbed(code, err) + "\nr.key_results()"
         made = self._unedited_preset()               # an edited model is fitted as it is
         if made is not None:
             code += self._host_check_code(made[0], made[1], err)

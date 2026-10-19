@@ -415,8 +415,9 @@ def civ(broad_components=2, broad_profile="gaussian", wave_range=(1450, 1720)):
     component (a free shift ended at its -3000 km/s limit in half of the
     fits, absorbing the red shelf of CIV).
 
-    Narrow absorption lines are common here and dominate chi2: use
-    ``spec.mask_absorption()`` before fitting.
+    Absorption lines and troughs are common here and dominate chi2: fit them with
+    ``fa.fit_absorbed(spec, fa.presets.civ())``, or mask narrow ones with
+    ``spec.mask_absorption()``.
     """
     m = Model(PowerLaw("continuum", pivot=1450))
     _broad(m, "broad", ["CIV1549"], broad_components, broad_profile)

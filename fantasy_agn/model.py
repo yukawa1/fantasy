@@ -114,6 +114,18 @@ class Model:
             raise ValueError("only one Extinction component is supported")
         return idx[0] if idx else None
 
+    # Multiplicative components: an Extinction dims everything but the host; an
+    # Absorption (troughs of absorbers in front of the AGN) acts on everything.
+    _MULTIPLY = ("attenuation", "absorption")
+
+    @staticmethod
+    def _applies(mult, comp):
+        return comp.kind != "host" if mult.kind == "attenuation" else True
+
+    def _multipliers(self):
+        self._attenuation()                       # only one Extinction
+        return [i for i, c in enumerate(self.components) if c.kind in self._MULTIPLY]
+
     def evaluate(self, x, ctx=None, full=None, components=False):
         """
         Model flux at wavelengths x. With components=True return a dict of the
@@ -122,16 +134,18 @@ class Model:
         x = np.asarray(x, float)
         ctx = ctx or {}
         full = self.params.full_values() if full is None else np.asarray(full, float)
-        att = self._attenuation()
-        T = 1.0
-        if att is not None:
-            T = self.components[att].value(x, full[self._slices()[att]], ctx)
+        slices = self._slices()
+        mult = self._multipliers()
+        T = {i: self.components[i].value(x, full[slices[i]], ctx) for i in mult}
         parts = {}
-        for i, (c, s) in enumerate(zip(self.components, self._slices())):
-            if i == att:
+        for i, (c, s) in enumerate(zip(self.components, slices)):
+            if i in T:
                 continue
             fc = c.value(x, full[s], ctx)
-            parts[c.name] = fc if c.kind == "host" else T * fc
+            for m in mult:
+                if self._applies(self.components[m], c):
+                    fc = T[m] * fc
+            parts[c.name] = fc
         return parts if components else sum(parts.values(), np.zeros_like(x))
 
     __call__ = evaluate
@@ -145,25 +159,32 @@ class Model:
         f = np.zeros_like(x)
         J = np.empty((x.size, len(self.params)))
         slices = self._slices()
-        att = self._attenuation()
-        if att is None:
+        mult = self._multipliers()
+        if not mult:
             for (fc, Jc), s in zip(results, slices):
                 f += fc
                 J[:, s] = Jc
             return f, J
-        T, dT = results[att]
-        agn = np.zeros_like(x)
+        # each additive component times the transmissions that apply to it; the
+        # derivative of a transmission collects the components it multiplies
+        under = {m: np.zeros_like(x) for m in mult}
         for i, (c, (fc, Jc), s) in enumerate(zip(self.components, results, slices)):
-            if i == att:
+            if i in under:
                 continue
-            if c.kind == "host":
-                f += fc
-                J[:, s] = Jc
-            else:
-                f += T * fc
-                J[:, s] = T[:, None] * Jc
-                agn += fc
-        J[:, slices[att]] = dT * agn[:, None]
+            Tc = np.ones_like(x)
+            acting = [m for m in mult if self._applies(self.components[m], c)]
+            for m in acting:
+                Tc = Tc * results[m][0]
+            f += Tc * fc
+            J[:, s] = Tc[:, None] * Jc
+            for m in acting:
+                others = np.ones_like(x)
+                for m2 in acting:
+                    if m2 != m:
+                        others = others * results[m2][0]
+                under[m] += others * fc
+        for m in mult:
+            J[:, slices[m]] = results[m][1] * under[m][:, None]
         return f, J
 
     def evaluate_with_jacobian(self, x, ctx, full):

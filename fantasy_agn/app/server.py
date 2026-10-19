@@ -252,12 +252,12 @@ class Handler(BaseHTTPRequestHandler):
                                                   broad_components=opts.get("broad_components", 2),
                                                   outflow=opts.get("outflow", True), **_options(opts)))
                 elif s.model is not None:
-                    s.run_cell(s.fit_model_code(errors))
+                    s.run_cell(s.fit_model_code(errors, absorbers=bool(opts.get("absorbers"))))
                 else:
                     s.run_cell(s.fit_code(model=opts.get("model", "optical"),
                                           broad_components=opts.get("broad_components", 2),
                                           outflow=opts.get("outflow", True), errors=errors,
-                                          **_options(opts)))
+                                          absorbers=bool(opts.get("absorbers")), **_options(opts)))
             elif url.path == "/api/model":
                 opts = json.loads(self._body() or b"{}")
                 action = opts.get("action")
