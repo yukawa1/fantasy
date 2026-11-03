@@ -2218,24 +2218,47 @@ async function openDocs() {
   renderDocList();
   if (!$("docbody").innerHTML) showDoc(docs[0].id);
 }
+// the pages come from the server (app/guides.py and the docstrings): their HTML is trusted, titles may hold entities
+const plainText = (h) => { const t = document.createElement("div"); t.innerHTML = h; return t.textContent; };
 function renderDocList() {
   if (!docs) return;                       // typed before the pages arrived: openDocs renders them
   const q = $("docsearch").value.trim().toLowerCase();
   let sec = null, html = "";
   for (const d of docs) {
-    if (q && !(d.title + " " + d.html).toLowerCase().includes(q)) continue;
+    if (q && !plainText(d.title + " " + d.html).toLowerCase().includes(q)) continue;
     if (d.section !== sec) { sec = d.section; html += `<li class="sec">${esc(sec)}</li>`; }
-    html += `<li data-id="${esc(d.id)}">${esc(d.title)}</li>`;
+    html += `<li data-id="${esc(d.id)}">${d.title}</li>`;
   }
-  $("doclist").innerHTML = html;
+  $("doclist").innerHTML = html || '<li class="empty">nothing found</li>';
   $("doclist").querySelectorAll("li[data-id]").forEach((li) => (li.onclick = () => showDoc(li.dataset.id)));
+  const on = $("doclist").querySelector("li.on, li[data-id]");
+  if (q && on && !$("docbody").dataset.id) showDoc(on.dataset.id);
 }
-function showDoc(id) {
-  const d = docs.find((x) => x.id === id);
-  if (!d) return;
-  $("docbody").innerHTML = `<h1>${esc(d.title)}</h1>` + d.html;
+function showDoc(id, anchor) {
+  const i = docs.findIndex((x) => x.id === id);
+  if (i < 0) return;
+  const d = docs[i], prev = docs[i - 1], next = docs[i + 1];
+  const box = document.createElement("div");
+  box.innerHTML = d.html;
+  // "On this page": the h2 headings, given ids
+  const heads = [...box.querySelectorAll("h2")];
+  heads.forEach((h, k) => (h.id = `s-${k}`));
+  const toc = heads.length > 1
+    ? `<nav class="doctoc"><b>On this page</b>${heads.map((h) => `<a data-anchor="${h.id}">${h.innerHTML}</a>`).join("")}</nav>` : "";
+  const link = (p, dir) => p ? `<a class="docnext ${dir}" data-doc="${esc(p.id)}"><small>${dir === "prev" ? "&larr; Previous" : "Next &rarr;"}</small>` +
+    `<span>${p.title}</span></a>` : "<span></span>";
+  $("docbody").dataset.id = id;
+  $("docbody").innerHTML = `<header class="dochead"><span class="docsec">${esc(d.section)}</span><h1>${d.title}</h1></header>` +
+    `<div class="docgrid"><div class="doccontent">${box.innerHTML}</div>${toc}</div>` +
+    `<footer class="docfoot">${link(prev, "prev")}${link(next, "next")}</footer>`;
+  $("docbody").querySelectorAll("[data-doc]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); showDoc(a.dataset.doc); }));
+  $("docbody").querySelectorAll("[data-anchor]").forEach((a) => (a.onclick = () => {
+    const t = $(a.dataset.anchor); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
   $("docbody").scrollTop = 0;
+  if (anchor && $(anchor)) $(anchor).scrollIntoView();
   $("doclist").querySelectorAll("li[data-id]").forEach((li) => li.classList.toggle("on", li.dataset.id === id));
+  const cur = $("doclist").querySelector("li.on"); if (cur) cur.scrollIntoView({ block: "nearest" });
 }
 
 // ===================================================================== init

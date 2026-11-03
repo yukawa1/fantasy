@@ -331,19 +331,84 @@ input:focus, select:focus, textarea:focus { outline: 2px solid rgba(212, 71, 42,
 
 /* -------------------------------------------------------------------- docs */
 .docs { position: fixed; inset: 0; background: rgba(20, 24, 33, .45); z-index: 30; display: grid; place-items: center; }
-.docsbox { position: relative; width: min(1100px, 94vw); height: 86vh; background: var(--surface); border-radius: 10px; display: grid;
-  grid-template-columns: 260px 1fr; overflow: hidden; }
-.docnav { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.docnav input { margin: 12px; width: auto; }
-.docnav ul { list-style: none; margin: 0; padding: 0 0 12px; overflow: auto; }
-.docnav li { padding: 6px 16px; cursor: pointer; font-size: 13px; }
-.docnav li.sec { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; cursor: default; padding-top: 12px; }
-.docnav li.on { background: var(--accent-soft); color: var(--accent-ink); }
-.docbody { overflow: auto; padding: 22px 32px; }
-.docbody pre { background: var(--bg); padding: 10px; border-radius: 6px; overflow: auto; font-size: 12.5px; }
-.docbody code { font-size: 12.5px; }
-.docbody table { border-collapse: collapse; font-size: 12.5px; }
-.docbody td, .docbody th { border: 1px solid var(--line); padding: 4px 8px; }
+.docsbox { position: relative; width: min(1260px, 96vw); height: 90vh; background: var(--surface); border-radius: 12px; display: grid;
+  grid-template-columns: 270px 1fr; overflow: hidden; box-shadow: 0 24px 60px rgba(20, 24, 33, .28); }
+.docnav { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: #fbfaf8; }
+.docnav input { margin: 14px 14px 8px; width: auto; }
+.docnav ul { list-style: none; margin: 0; padding: 0 0 16px; overflow: auto; }
+.docnav li { padding: 5px 18px; cursor: pointer; font-size: 13px; color: var(--ink-2); border-left: 2px solid transparent; line-height: 1.35; }
+.docnav li:hover { color: var(--ink); background: #f3f2ee; }
+.docnav li.sec { color: var(--muted); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; cursor: default;
+  padding-top: 16px; background: none; }
+.docnav li.on { background: var(--accent-soft); color: var(--accent-ink); border-left-color: var(--accent); font-weight: 500; }
+.docnav li.empty { color: var(--muted); cursor: default; }
+.docbody { overflow: auto; padding: 30px 44px 36px; scroll-padding-top: 16px; }
+.dochead { max-width: 1000px; margin-bottom: 10px; }
+.docsec { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+.dochead h1 { font-size: 30px; line-height: 1.15; margin: 4px 0 0; font-weight: 650; letter-spacing: -.01em; color: var(--ink); }
+.docgrid { display: grid; grid-template-columns: minmax(0, 760px) 190px; gap: 40px; align-items: start; max-width: 1000px; }
+.doccontent { min-width: 0; font-size: 14.5px; line-height: 1.68; color: #2a2e36; }
+.doccontent > :first-child { margin-top: 10px; }
+.doccontent p { margin: 10px 0; }
+.doccontent h2 { font-size: 19px; margin: 34px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); font-weight: 620; color: var(--ink); }
+.doccontent h3 { font-size: 15.5px; margin: 22px 0 6px; font-weight: 620; color: var(--ink); }
+.doccontent a { color: var(--accent-ink); text-decoration: underline; text-decoration-color: rgba(212, 71, 42, .35); text-underline-offset: 2px; cursor: pointer; }
+.doccontent .lead { font-size: 16.5px; line-height: 1.6; color: var(--ink-2); margin: 12px 0 18px; }
+.doccontent code { font-family: var(--mono); font-size: 12.8px; background: #f3f2ee; border: 1px solid #ebe9e3; border-radius: 4px; padding: 0 4px; }
+.doccontent pre { background: #17191d; color: #e8e6e1; padding: 14px 16px; border-radius: 8px; overflow: auto; font-size: 12.8px;
+  line-height: 1.55; margin: 14px 0; }
+.doccontent pre code { background: none; border: 0; padding: 0; color: inherit; }
+.doccontent table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 14px 0; font-size: 13.2px; line-height: 1.45;
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.doccontent th { background: #f6f5f2; text-align: left; font-weight: 600; color: var(--ink); font-size: 12px; text-transform: uppercase;
+  letter-spacing: .04em; }
+.doccontent td, .doccontent th { border: 0; border-bottom: 1px solid var(--line); padding: 7px 11px; vertical-align: top; }
+.doccontent tr:last-child td { border-bottom: 0; }
+.doccontent tr:nth-child(even) td { background: #fcfbf9; }
+.doccontent ul, .doccontent ol { padding-left: 22px; }
+.doccontent li { margin: 4px 0; }
+.doccontent ol.steps { list-style: none; counter-reset: st; padding-left: 0; }
+.doccontent ol.steps > li { counter-increment: st; position: relative; padding: 2px 0 6px 38px; margin: 10px 0; }
+.doccontent ol.steps > li::before { content: counter(st); position: absolute; left: 0; top: 2px; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent-ink); font-weight: 650; font-size: 12.5px; display: grid; place-items: center; }
+.doccontent dl.params { display: grid; grid-template-columns: max-content 1fr; gap: 0; margin: 14px 0; border-top: 1px solid var(--line); }
+.doccontent dl.params dt, .doccontent dl.params dd { padding: 8px 0; border-bottom: 1px solid var(--line); margin: 0; }
+.doccontent dl.params dt { font-weight: 600; color: var(--ink); padding-right: 22px; }
+.doccontent .eq { font-family: "STIX Two Text", "Cambria Math", "Times New Roman", serif; font-size: 18px; text-align: center;
+  margin: 16px 0; padding: 14px 10px; background: #fbfaf8; border-radius: 8px; color: var(--ink); overflow-x: auto; white-space: nowrap; }
+.doccontent .eq sub, .doccontent .eq sup { font-size: 68%; }
+.frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; margin: 0 2px; }
+.frac > span:first-child { border-bottom: 1px solid currentColor; padding: 0 3px 1px; }
+.frac > span:last-child { padding: 1px 3px 0; }
+.doccontent .note, .doccontent .tip, .doccontent .warn { border-left: 3px solid; border-radius: 0 8px 8px 0; padding: 10px 14px; margin: 16px 0;
+  font-size: 13.8px; line-height: 1.6; }
+.doccontent .note { background: #eef4fc; border-color: #2a78d6; }
+.doccontent .tip { background: #ecf8f2; border-color: #1baf7a; }
+.doccontent .warn { background: #fdf5e6; border-color: #eda100; }
+.doccontent kbd { font-family: var(--mono); font-size: 11.5px; border: 1px solid #d8d6d0; border-bottom-width: 2px; border-radius: 4px;
+  padding: 0 5px; background: #fff; }
+.doccontent .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 3px; }
+.doccontent svg.diagram { width: 100%; height: auto; margin: 18px 0 8px; display: block; }
+.dg-box { fill: #fbfaf8; stroke: #d8d6d0; }
+.dg-hi { fill: var(--accent-soft); stroke: var(--accent); }
+.dg-t { font-size: 14px; font-weight: 650; fill: var(--ink); }
+.dg-s { font-size: 11.5px; fill: #6b6a66; }
+.dg-a { stroke: #898781; stroke-width: 1.4; fill: none; }
+.doccontent .api { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 18px; }
+.doccontent .api h3 code { font-size: 13px; background: none; border: 0; }
+.doctoc { position: sticky; top: 0; font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; border-left: 1px solid var(--line);
+  padding-left: 14px; margin-top: 12px; }
+.doctoc b { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+.doctoc a { color: var(--ink-2); cursor: pointer; padding: 3px 0; line-height: 1.35; }
+.doctoc a:hover { color: var(--accent-ink); }
+.docfoot { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 760px; margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--line); }
+.docnext { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+  color: var(--ink); text-decoration: none; }
+.docnext:hover { border-color: var(--accent); }
+.docnext.next { text-align: right; }
+.docnext small { color: var(--muted); font-size: 11.5px; }
+.docnext span { font-weight: 600; font-size: 14px; }
+@media (max-width: 1100px) { .docgrid { grid-template-columns: minmax(0, 1fr); } .doctoc { display: none; } }
 .closedocs { position: absolute; right: 12px; top: 10px; }
 .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--panel); color: #fff; padding: 8px 14px;
   border-radius: 6px; font-size: 13px; z-index: 40; }
