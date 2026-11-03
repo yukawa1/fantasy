@@ -9,32 +9,76 @@ Every preset returns an ordinary Model, so it can be inspected and changed::
 Each model remembers the wavelength window it is meant for
 (``model.wave_range``), which :func:`fantasy_agn.fit` uses by default.
 """
-from .components import (BalmerContinuum, BrokenPowerLaw, Extinction, FeII, HighOrderBalmer,
+from .components import (BalmerContinuum, Blackbody, BrokenPowerLaw, Extinction, FeII, HighOrderBalmer,
                          HostGalaxy, Lines, PowerLaw)
 from .model import Model
 import numpy as np
 
-__all__ = ("hbeta", "halpha", "optical", "mgii", "civ", "type2", "galaxy", "seyfert2", "liner",
+__all__ = ("hbeta", "halpha", "optical", "mgii", "civ", "tde", "bff", "type2", "galaxy", "seyfert2", "liner",
            "composite", "starforming", "passive", "retired", "available", "auto",
            "variants",
            "outflow_kinematics",
            "PRESETS")
 
 NARROW = dict(fwhm=(400, 50, 1200), shift=(0, -600, 600))
-# One broad Gaussian covers the whole profile (FWHM 1000-20000 km/s).
-BROAD = dict(fwhm=(3500, 1000, 20000), shift=(0, -3000, 3000))
-BROAD_FWHM = (1000.0, 30000.0)   # FWHM range shared out among several components
+# Broad lines: no component wider than 15000 km/s FWHM. Broad Balmer lines of
+# quasars rarely exceed ~15000 km/s (QSFit, Calderone et al. 2017, uses the same
+# limit), and a Gaussian of FWHM 30000 km/s (sigma ~200 A at H-beta) spans the
+# whole H-beta - [OIII] window: it becomes part of the continuum, trades flux with
+# the power law and FeII, and its "variability" is decomposition noise.
+BROAD_FWHM_MAX = 15000.0
+# One broad Gaussian covers the whole profile.
+BROAD = dict(fwhm=(3500, 1000, BROAD_FWHM_MAX), shift=(0, -3000, 3000))
+BROAD_FWHM = (1000.0, BROAD_FWHM_MAX)    # FWHM range shared out among several components
 BROAD_OVERLAP = 1.3
+# Physically motivated components (start, min, max FWHM, km/s):
+# two components: the broad core (BC / intermediate-line region) and the very
+# broad component (VBC / very-broad-line region; FWHM ~10000 km/s in Population B
+# quasars: Sulentic et al. 2000, Marziani et al. 2009; Popovic et al. 2004).
+# The VBC is at least 3000 km/s wide (in narrow-line Seyfert 1s the second
+# component describes the Lorentzian-like wings, 2-3 times the core width).
+BROAD_COMPONENTS = {
+    1: [(3500.0, 1000.0, BROAD_FWHM_MAX)],
+    2: [(3000.0, 1000.0, 9000.0), (9000.0, 3000.0, BROAD_FWHM_MAX)],
+    3: [(2000.0, 1000.0, 5000.0), (5000.0, 2500.0, 10000.0), (10000.0, 5000.0, BROAD_FWHM_MAX)],
+}
+
+
+# Broad Balmer decrement: H-gamma/H-beta free within physical limits (case B 0.47; AGN broad lines are
+# flatter or reddened, Dong et al. 2008, Gaskell 2017), H-delta tied to H-gamma by the case-B ratio
+# (Storey & Hummer 1995, T = 10^4 K). Without a limit the broad H-gamma of a second, very broad component
+# takes the FeII/continuum and the H-delta wing below 4300 A (up to H-gamma/H-beta ~ 5).
+HG_HB = (0.35, 0.1, 0.5)
+HD_HB = (0.19, 0.05, 0.28)
+HD_HG = 0.553
+
+
+def _balmer_ratios(lines):
+    """line_ratios for the broad Balmer lines present (H-gamma and H-delta relative to H-beta)."""
+    if "Hb" not in lines:
+        return None
+    return {ln: ("Hb", lim) for ln, lim in (("Hg", HG_HB), ("Hd", HD_HB)) if ln in lines} or None
 
 
 def broad_fwhm_ranges(n, fwhm_max=None):
     """
-    FWHM limits (start, min, max) for n broad components: 1000-30000 km/s (or
-    up to ``fwhm_max``) is split into n logarithmic bands that overlap by a
-    factor 1.3, so every component has its own width regime (core,
-    intermediate, wings, ...) and two components cannot simply swap roles.
+    FWHM limits (start, min, max) for n broad components. One to three
+    components have physically motivated ranges (``BROAD_COMPONENTS``: core,
+    intermediate, very broad), at most 15000 km/s; more components split
+    1000-15000 km/s into n logarithmic bands that overlap by a factor 1.3, so
+    every component has its own width regime and two components cannot simply
+    swap roles. ``fwhm_max`` lowers the upper limits.
     """
-    lo, hi = BROAD_FWHM[0], (fwhm_max or BROAD_FWHM[1])
+    hi = min(fwhm_max or BROAD_FWHM[1], BROAD_FWHM[1]) if fwhm_max is None or fwhm_max <= BROAD_FWHM[1] \
+        else fwhm_max
+    if n in BROAD_COMPONENTS:
+        out = []
+        for start, a, b in BROAD_COMPONENTS[n]:
+            b = min(b, hi)
+            a = min(a, 0.5 * b)
+            out.append((float(min(max(start, a), b)), float(a), float(b)))
+        return out
+    lo = BROAD_FWHM[0]
     edges = lo * (hi / lo) ** (np.arange(n + 1) / n)
     out = []
     for k in range(n):
@@ -56,7 +100,7 @@ OI_RATIO = 1 / 3.0
 NII_HA_MAX = 3.0            # upper limit of [NII]6583/H-alpha in an outflow wing
 HA_OUTFLOW_FWHM = (900, 300, 2000)
 PHYSICAL_SLOPE = -1.7          # alpha_lambda, host-free quasar continuum (Selsing+2016)
-PHYSICAL_BROAD_FWHM_MAX = 15000.0
+PHYSICAL_BROAD_FWHM_MAX = BROAD_FWHM_MAX     # kept for compatibility
 RED_END = 7500.0              # end of the optical window with red=True
 
 
@@ -115,30 +159,36 @@ def _coronal(model, wave_range):
         model.add(Lines("coronal_high", high, role="narrow", **CORONAL))
 
 
-def _broad(model, name, lines, n, profile="gaussian", fwhm_max=None):
+def _broad(model, name, lines, n, profile="gaussian", fwhm_max=None, balmer_decrement=False):
     """
     n broad Gaussian components for the same lines, named name, name2, name3, ...
-    Each has its own kinematics; the narrowest may shift by +-3000 km/s, the
-    broader ones by +-5000 km/s.
+    Each has its own kinematics, with the FWHM ranges of :func:`broad_fwhm_ranges`
+    and shifts of at most +-3000 km/s (the very broad component of Population B
+    quasars is typically redshifted by 1000-2000 km/s). With ``balmer_decrement``
+    H-gamma and H-delta are given as ratios to H-beta in each component
+    (``HG_HB``, H-delta tied to H-gamma by ``HD_HG``).
     """
     if n < 1:
         raise ValueError("broad_components must be at least 1")
+    ratios = _balmer_ratios(lines) if balmer_decrement else None
     if n == 1:
         kin = dict(BROAD)
         if fwhm_max:
             kin["fwhm"] = (min(kin["fwhm"][0], fwhm_max), kin["fwhm"][1], min(kin["fwhm"][2], fwhm_max))
-        model.add(Lines(name, lines, role="broad", profile=profile, **kin))
-        return model
-    for k, fwhm in enumerate(broad_fwhm_ranges(n, fwhm_max)):
-        shift = (0, -3000, 3000) if k == 0 else (0, -5000, 5000)
-        model.add(Lines(name if k == 0 else f"{name}{k + 1}", lines, role="broad",
-                        fwhm=fwhm, shift=shift, profile=profile))
+        specs = [(name, kin)]
+    else:
+        specs = [(name if k == 0 else f"{name}{k + 1}", dict(fwhm=fwhm, shift=(0, -3000, 3000)))
+                 for k, fwhm in enumerate(broad_fwhm_ranges(n, fwhm_max))]
+    for comp, kin in specs:
+        model.add(Lines(comp, lines, role="broad", profile=profile, line_ratios=ratios, **kin))
+        if ratios and "Hd" in ratios and "Hg" in ratios:
+            model.tie(f"{comp}.Hd.ratio", f"{comp}.Hg.ratio", HD_HG)
     return model
 
 
 def hbeta(broad_components=2, feii=True, outflow=True, host=False, heii=True,
           continuum="powerlaw", extinction=False, coronal=False,
-          broad_profile="gaussian", wave_range=(4150, 5550)):
+          broad_profile="gaussian", wave_range=(4150, 5550), balmer_decrement=True):
     """
     H-beta region (4150-5550 A): power law, optical FeII, narrow H-gamma,
     [OIII]4363, H-beta and [OIII]4959,5007 (fixed 1:2.98 ratio), broad
@@ -158,6 +208,9 @@ def hbeta(broad_components=2, feii=True, outflow=True, host=False, heii=True,
     :param continuum: 'powerlaw' or 'broken' (slope change at 4600 A).
     :param coronal: add the coronal lines [FeVII]5159 and [FeXIV]5303 (own
         kinematics), seen in many Seyferts.
+    :param balmer_decrement: broad H-gamma as a ratio to H-beta, 0.1-0.5 (case B 0.47), in every broad
+        component, and broad H-delta (its wing enters a window starting below 4250 A) tied to H-gamma by
+        the case-B ratio. False: free H-gamma flux and no H-delta (FANTASY 2.0.0 and earlier).
     """
     m = Model(_continuum(continuum, 5100, 4600))
     if host:
@@ -170,7 +223,8 @@ def hbeta(broad_components=2, feii=True, outflow=True, host=False, heii=True,
     if outflow:
         m.add(Lines("outflow", ["[OIII]4959", "[OIII]5007"], role="outflow",
                     ratios={"[OIII]4959": ("[OIII]5007", OIII_RATIO)}, **OUTFLOW))
-    _broad(m, "broad", ["Hg", "Hb"], broad_components, broad_profile)
+    broad_lines = (["Hd"] if balmer_decrement and wave_range[0] < 4250 else []) + ["Hg", "Hb"]
+    _broad(m, "broad", broad_lines, broad_components, broad_profile, balmer_decrement=balmer_decrement)
     if feii:
         m.tie("feii.shift", "broad.shift")
     if heii:
@@ -270,7 +324,7 @@ def outflow_kinematics(source):
 def optical(broad_components=2, feii=True, outflow=True, host=False, continuum="broken",
             balmer=True, extinction=False, coronal=False, oi6046=False, red=False,
           broad_profile="gaussian", wave_range=None, physical=False, slope=PHYSICAL_SLOPE,
-          broad_fwhm_max=None):
+          broad_fwhm_max=None, balmer_decrement=True):
     """
     Full optical range (3700-6900 A): broken power law, Balmer continuum and
     high-order Balmer lines, FeII, narrow lines from [OII]3727 to [SII]6731
@@ -301,8 +355,6 @@ def optical(broad_components=2, feii=True, outflow=True, host=False, continuum="
         - a stellar-population host galaxy (``host=True`` unless given);
         - the velocity-broadened Balmer continuum and high-order Balmer lines,
           with a window starting at 3550 A so that the Balmer edge is covered;
-        - broad components no wider than 15000 km/s (wider "lines" trade flux
-          with the continuum);
         - with ``outflow=True`` an [NII]/H-alpha wing with the kinematics of the
           [OIII] outflow.
 
@@ -310,7 +362,9 @@ def optical(broad_components=2, feii=True, outflow=True, host=False, continuum="
         (Dong et al. 2008) indicates a consistent decomposition.
     :param slope: AGN power-law slope for ``physical=True`` (None: fit it).
     :param broad_fwhm_max: upper FWHM limit of the broad components, km/s
-        (default 30000; 15000 with physical=True).
+        (default 15000, see ``BROAD_FWHM_MAX``).
+    :param balmer_decrement: broad H-gamma and H-delta as ratios to H-beta in every broad component
+        (H-gamma/H-beta 0.1-0.5, H-delta tied to H-gamma by the case-B ratio); False: free fluxes.
 
     :param extinction: True (Fitzpatrick 1999) or 'calzetti': fit an intrinsic
         E(B-V) of the AGN; fluxes and luminosities are then dereddened.
@@ -329,7 +383,6 @@ def optical(broad_components=2, feii=True, outflow=True, host=False, continuum="
         continuum = "powerlaw"
         host = host or True
         balmer = True
-        broad_fwhm_max = broad_fwhm_max or PHYSICAL_BROAD_FWHM_MAX
         wave_range = wave_range or (3550, RED_END if red else 6900)
     wave_range = wave_range or (3700, RED_END if red else 6900)
     m = Model(_continuum(continuum, 5100, 4600))
@@ -363,7 +416,8 @@ def optical(broad_components=2, feii=True, outflow=True, host=False, continuum="
                     max_ratios={"[NII]6583": ("Ha", NII_HA_MAX)}))
         m.tie("outflow_ha.fwhm", "outflow.fwhm")
         m.tie("outflow_ha.shift", "outflow.shift")
-    _broad(m, "broad", ["Hd", "Hg", "Hb"], broad_components, broad_profile, broad_fwhm_max)
+    _broad(m, "broad", ["Hd", "Hg", "Hb"], broad_components, broad_profile, broad_fwhm_max,
+           balmer_decrement=balmer_decrement)
     _broad(m, "broad_ha", ["Ha"], broad_components, broad_profile, broad_fwhm_max)
     m.add(Lines("broad_he", ["HeI4471", "HeII4686", "HeI5876", "HeI6678"] + (["HeI7065"] if red else []),
                 role="broad",
@@ -389,6 +443,11 @@ def mgii(broad_components=1, feii=True, balmer_continuum=True, narrow=False, bro
     MgII region (2650-3050 A): power law, Balmer continuum, UV FeII and broad
     MgII2798 (doublet blend).
 
+    :param feii: True or 'uv': the UV Fe II model of Kovacevic-Dojcinovic & Popovic
+        (2015), with which this preset was calibrated; 'uv_extended': the UV model
+        built as the optical one (2200-3500 A, see :class:`fantasy_agn.FeII`; widen
+        ``wave_range`` to use its range); False: none.
+
     :param narrow: add a narrow MgII component. Off by default: in the
         calibration on 200 SDSS quasars (calibration/report.md) its width ended
         at the upper limit in half of the fits (it became part of the broad
@@ -399,7 +458,8 @@ def mgii(broad_components=1, feii=True, balmer_continuum=True, narrow=False, bro
     if balmer_continuum:
         m.add(BalmerContinuum())
     if feii:
-        m.add(FeII("feii_uv", kind="uv", fwhm=(3000, 1000, 10000), shift=(0, -2000, 2000)))
+        kind = feii if isinstance(feii, str) else "uv"
+        m.add(FeII("feii_uv", kind=kind, fwhm=(3000, 1000, 10000), shift=(0, -2000, 2000)))
     _broad(m, "broad", ["MgII2798"], broad_components, broad_profile)
     if narrow:
         m.add(Lines("narrow", ["MgII2798"], role="narrow", **NARROW))
@@ -542,22 +602,32 @@ def _stars(host, young=False):
     return StellarPopulation(templates=templates, **kw)
 
 
-def _agn_narrow(m, wave_range, two_systems, outflow, narrow_fwhm=(300, 50, 1200)):
+def _agn_narrow(m, wave_range, two_systems, outflow, narrow_fwhm=(300, 50, 1200), profile="gaussian"):
     names = _inside(NARROW_FULL, wave_range)
     if two_systems:
         m.add(_lines("narrow", [n for n in names if n not in HIGH_IONISATION], role="narrow",
-                     fwhm=narrow_fwhm, shift=(0, -600, 600)))
+                     fwhm=narrow_fwhm, shift=(0, -600, 600), profile=profile))
         m.add(_lines("narrow_hi", [n for n in names if n in HIGH_IONISATION], role="narrow",
-                     fwhm=(400, 50, 1500), shift=(0, -600, 600)))
+                     fwhm=(400, 50, 1500), shift=(0, -600, 600), profile=profile))
     else:
-        m.add(_lines("narrow", names, role="narrow", fwhm=narrow_fwhm, shift=(0, -600, 600)))
+        m.add(_lines("narrow", names, role="narrow", fwhm=narrow_fwhm, shift=(0, -600, 600), profile=profile))
     if outflow:
         m.add(_lines("outflow", _inside(WING_LINES, wave_range), role="outflow",
                      fwhm=(1000, 500, 2500), shift=(-200, -1500, 500)))
 
 
+def _calibrate(m, degree):
+    """Add a multiplicative Legendre correction (flux calibration, dust law) of the given degree."""
+    if degree:
+        from .components import Calibration
+        # with a fitted dust screen the linear term is degenerate with E(B-V)
+        dust = any(n.endswith(".ebv") for n in m.params.names)
+        m.add(Calibration(m.wave_range, degree=int(degree), start=2 if dust else 1))
+    return m
+
+
 def seyfert2(host=True, outflow=True, two_systems=True, featureless=True, coronal=False,
-             red=True, wave_range=None):
+             red=True, wave_range=None, narrow_profile="gaussian", calibration=0):
     """
     Seyfert 2 galaxy: stellar populations with dust (E-MILES; ``host='bc03'``
     for BC03), a weak featureless continuum (scattered AGN light, power law
@@ -570,21 +640,26 @@ def seyfert2(host=True, outflow=True, two_systems=True, featureless=True, corona
     :param two_systems: separate kinematics for high- and low-ionisation lines.
     :param red: extend the fit to 7500 A (HeI 7065, [ArIII] 7136, [OII] 7320, 7330).
     :param coronal: add coronal lines ([FeVII], [FeX], [FeXIV]).
+    :param narrow_profile: 'gaussian' or 'gauss-hermite' (h3, h4: asymmetric and
+        peaked/flat-topped profiles, for spectra of high S/N; see :func:`fantasy_agn.refine`).
+    :param calibration: degree of a smooth multiplicative correction
+        (:class:`fantasy_agn.Calibration`; 0 = none, ~10 over 3700-7500 A) for
+        flux-calibration and dust-law errors, needed at S/N > ~40.
     """
     wave_range = _window(red, wave_range)
     m = Model(_stars(host))
     if featureless:
         m.add(PowerLaw("continuum", pivot=5100))
         m.fix("continuum.index", PHYSICAL_SLOPE)
-    _agn_narrow(m, wave_range, two_systems, outflow)
+    _agn_narrow(m, wave_range, two_systems, outflow, profile=narrow_profile)
     if coronal:
         _coronal(m, wave_range)
     m.wave_range = wave_range
-    return m
+    return _calibrate(m, calibration)
 
 
 def composite(host=True, outflow=False, two_systems=True, featureless=True, red=True,
-              wave_range=None):
+              wave_range=None, narrow_profile="gaussian", calibration=0):
     """
     Composite galaxy (between the Kauffmann 2003 and Kewley 2001 lines): star
     formation and an AGN. Like :func:`seyfert2` (stellar populations with dust,
@@ -594,10 +669,11 @@ def composite(host=True, outflow=False, two_systems=True, featureless=True, red=
     half of the fits (it absorbed template mismatch, not gas).
     """
     return seyfert2(host=host, outflow=outflow, two_systems=two_systems, featureless=featureless,
-                    red=red, wave_range=wave_range)
+                    red=red, wave_range=wave_range, narrow_profile=narrow_profile, calibration=calibration)
 
 
-def liner(host=True, broad=False, outflow=False, featureless=True, red=True, wave_range=None):
+def liner(host=True, broad=False, outflow=False, featureless=True, red=True, wave_range=None,
+          narrow_profile="gaussian", calibration=0):
     """
     LINER: a dominant old stellar population with dust, a weak featureless
     continuum and one narrow-line system that may be broad (FWHM up to 1500
@@ -610,16 +686,16 @@ def liner(host=True, broad=False, outflow=False, featureless=True, red=True, wav
     if featureless:
         m.add(PowerLaw("continuum", pivot=5100))
         m.fix("continuum.index", PHYSICAL_SLOPE)
-    _agn_narrow(m, wave_range, False, outflow, narrow_fwhm=(400, 50, 1500))
+    _agn_narrow(m, wave_range, False, outflow, narrow_fwhm=(400, 50, 1500), profile=narrow_profile)
     if broad:
         m.add(Lines("broad", _inside(["Hb", "Ha"], wave_range), role="broad",
                     fwhm=(2500, 1200, 8000), shift=(0, -2000, 2000)))
     m.wave_range = wave_range
-    return m
+    return _calibrate(m, calibration)
 
 
 def starforming(host="bc03", outflow=False, extinction=True, wolf_rayet=False, red=True,
-                wave_range=None):
+                wave_range=None, narrow_profile="gaussian", calibration=0):
     """
     Star-forming galaxy: young and old stellar populations with dust (BC03
     from 1 Myr; E-MILES starts at 63 Myr and cannot follow young continua),
@@ -632,12 +708,16 @@ def starforming(host="bc03", outflow=False, extinction=True, wolf_rayet=False, r
     model without it for 84%.
 
     :param wolf_rayet: add the Wolf-Rayet bumps at 4650 and 5808 A.
+    :param narrow_profile: 'gaussian' or 'gauss-hermite' (see :func:`seyfert2`).
+    :param calibration: degree of the smooth multiplicative correction (see :func:`seyfert2`).
     """
     wave_range = _window(red, wave_range)
     m = Model(_stars(host, young=True))
     names = _inside(HIGH_BALMER + NARROW_FULL, wave_range)
-    cb = CASE_B if extinction else None
-    m.add(_lines("narrow", names, case_b=cb, role="narrow", fwhm=(150, 20, 800), shift=(0, -400, 400)))
+    # H8 3889 is blended with HeI 3889 (0.4 A apart): its flux is not Case B H8
+    cb = {k: v for k, v in CASE_B.items() if k != "H8"} if extinction else None
+    m.add(_lines("narrow", names, case_b=cb, role="narrow", fwhm=(150, 20, 800), shift=(0, -400, 400),
+                 profile=narrow_profile))
     if outflow:
         m.add(_lines("outflow", _inside(WING_LINES, wave_range), case_b=cb, role="outflow",
                      fwhm=(600, 200, 2500), shift=(0, -800, 400)))
@@ -650,10 +730,10 @@ def starforming(host="bc03", outflow=False, extinction=True, wolf_rayet=False, r
     if extinction:
         m.add(Extinction(law="calzetti" if extinction == "calzetti" else "F99"))
     m.wave_range = wave_range
-    return m
+    return _calibrate(m, calibration)
 
 
-def passive(host=True, red=True, wave_range=None):
+def passive(host=True, red=True, wave_range=None, calibration=0):
     """
     Passive or retired galaxy (EW(H-alpha) < 3 A): stellar populations with
     dust for sigma*, v*, age and metallicity, plus weak narrow lines with
@@ -666,14 +746,99 @@ def passive(host=True, red=True, wave_range=None):
                      "[OI]6364", "[NII]6548", "Ha", "[NII]6583", "[SII]6716", "[SII]6731"], wave_range)
     m.add(_lines("narrow", names, role="narrow", fwhm=(300, 50, 600), shift=(0, -400, 400)))
     m.wave_range = wave_range
-    return m
+    return _calibrate(m, calibration)
 
 
 retired = passive
 
+TDE_BROAD = dict(fwhm=(8000, 1000, 20000), shift=(0, -5000, 5000))
+HEI_6678_5876 = 0.28            # He I 6678/5876, Case B at 10^4 K (Benjamin, Skillman & Smits 1999)
+
+
+def tde(host=True, bowen=True, helium=True, narrow=True, broad_profile="gaussian", feii=False,
+        coronal=False, temperature=(20000.0, 5000.0, 80000.0), wave_range=(3800, 7000),
+        broad_fwhm=None):
+    """
+    Tidal disruption event (TDE) in the optical: a hot blackbody continuum
+    (T 1-5e4 K) plus the host galaxy (stellar populations with dust, usually
+    quiescent or post-starburst), broad H-delta/H-gamma/H-beta (shared
+    kinematics) and H-alpha (own kinematics), broad He II 4686 with the Bowen
+    fluorescence lines N III 4640 (and N III 4100, O III 3760 with
+    ``bowen=True`` where they are in the range) sharing its kinematics, broad
+    He I 5876, 6678, and weak narrow host-galaxy lines. Classes of
+    van Velzen et al. (2021): TDE-H (Balmer), TDE-H+He (Balmer + He II / N III),
+    TDE-He; Bowen lines: Blagorodnova et al. (2019), Leloudas et al. (2019).
+
+    TDE lines are broad (FWHM up to ~2e4 km/s) and often have extended wings
+    (electron scattering, Roth & Kasen 2018; or a stratified emitting region):
+    try ``broad_profile='lorentzian'`` or ``'stratified'``.
+
+    :param temperature: (start, min, max) in K; fix it (e.g. from UV photometry)
+        with ``model.fix('continuum.temperature', T)`` -- the optical alone barely
+        constrains it.
+    :param bowen: True (default): N III 4640 with He II; 'all': also N III 4100 (blended
+        with H-delta) and O III 3760 (at the blue edge, where a broad line can act as
+        continuum); False: He II only.
+    :param helium: add He II 4686 (and He II 5412) and He I 5876, 6678.
+    :param feii: add the optical Fe II template (strong in some nuclear transients,
+        e.g. Bowen fluorescence flares; Baldini et al. 2025).
+    :param coronal: add the coronal iron lines ([Fe VII], [Fe X], [Fe XIV]; extreme
+        coronal line emitters).
+    :param broad_fwhm: (start, min, max) FWHM of the broad lines in km/s.
+    """
+    broad_kin = dict(TDE_BROAD, fwhm=broad_fwhm) if broad_fwhm else TDE_BROAD
+    m = Model(Blackbody("continuum", pivot=5100, temperature=temperature))
+    if host:
+        m.add(_stars(host))
+    if feii:
+        m.add(FeII(fwhm=(2000, 800, 8000), shift=(0, -2000, 2000)))
+    if narrow:
+        names = _inside(["[OII]3726", "[OII]3729", "Hb", "[OIII]4959", "[OIII]5007", "[NII]6548", "Ha",
+                         "[NII]6583", "[SII]6716", "[SII]6731"], wave_range)
+        m.add(_lines("narrow", names, role="narrow", fwhm=(300, 50, 1000), shift=(0, -400, 400)))
+    m.add(Lines("broad", _inside(["Hd", "Hg", "Hb"], wave_range), role="broad", profile=broad_profile,
+                **broad_kin))
+    if wave_range[0] < 6563 < wave_range[1]:
+        m.add(Lines("broad_ha", ["Ha"], role="broad", profile=broad_profile, **broad_kin))
+    if helium:
+        he2 = ["HeII4686"] + (["HeII5412"] if wave_range[0] < 5412 < wave_range[1] else [])
+        if bowen:
+            he2 = _inside(["OIII3760", "NIII4100", "NIII4640"] if bowen == "all" else ["NIII4640"],
+                          wave_range) + he2
+        m.add(Lines("broad_heii", he2, role="broad", profile=broad_profile, **broad_kin))
+        hei = _inside(["HeI5876", "HeI6678"], wave_range)
+        if hei:
+            # He I 6678 fixed to 5876 by the Case B ratio (0.28, Benjamin et al. 1999) and the
+            # kinematics tied to broad H-alpha: 6678 sits in the telluric water band of nearby
+            # objects and next to H-alpha, where a free broad line would act as continuum
+            ratios = {"HeI6678": ("HeI5876", HEI_6678_5876)} if len(hei) == 2 else None
+            m.add(Lines("broad_hei", hei, role="broad", ratios=ratios, **broad_kin))
+            if any(c.name == "broad_ha" for c in m.components):
+                m.tie("broad_hei.fwhm", "broad_ha.fwhm")
+                m.tie("broad_hei.shift", "broad_ha.shift")
+    if coronal:
+        _coronal(m, wave_range)
+    m.wave_range = wave_range
+    return m
+
+
+def bff(host=True, broad_profile="gaussian", temperature=(20000.0, 5000.0, 80000.0),
+        wave_range=(3800, 7000)):
+    """
+    Bowen fluorescence flare / extreme coronal line emitter: a nuclear transient
+    with relatively narrow broad Balmer lines (FWHM ~1500 km/s), strong He II
+    4686 with the Bowen lines N III 4640, 4100 and O III 3760, Fe II and coronal
+    iron lines (Trakhtenbrot et al. 2019; Baldini et al. 2025, A&A 701, A224).
+    The :func:`tde` model with Fe II and coronal lines and broad lines from 1500 km/s.
+    """
+    return tde(host=host, bowen=True, helium=True, narrow=True, broad_profile=broad_profile, feii=True,
+               coronal=True, temperature=temperature, wave_range=wave_range,
+               broad_fwhm=(1500, 600, 10000))
+
+
 DEFAULT_RANGES = {"optical": (3700, 6900), "seyfert2": (3700, 7500), "liner": (3700, 7500),
                   "composite": (3700, 7500), "starforming": (3700, 7500), "passive": (3700, 7500)}   # presets whose default window depends on options
-PRESETS = {"optical": optical, "hbeta": hbeta, "halpha": halpha, "mgii": mgii, "civ": civ,
+PRESETS = {"tde": tde, "bff": bff, "optical": optical, "hbeta": hbeta, "halpha": halpha, "mgii": mgii, "civ": civ,
            "type2": type2, "galaxy": galaxy, "seyfert2": seyfert2, "liner": liner,
            "composite": composite, "starforming": starforming, "passive": passive}
 

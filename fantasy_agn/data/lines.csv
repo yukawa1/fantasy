@@ -1,0 +1,340 @@
+# FANTASY emission-line library.
+# name: identifier used in models (unchanged across versions); wavelength in Angstrom in the stated medium
+# (converted to vacuum on import); ion; type: recombination, permitted, semi-forbidden, forbidden, coronal
+# (forbidden, ionisation potential > 100 eV), bowen (Bowen fluorescence), molecular, feature (broad dust band);
+# series: hydrogen series or doublet/multiplet the line belongs to; note: blends and caveats.
+# Sources: NIST ASD (air above 2000 A); Vanden Berk et al. 2001 (UV, vacuum); hydrogen Paschen, Brackett and
+# Pfund lines from the Rydberg formula with the fine-structure offset of the NIST values (-2.0 / -1.5 km/s);
+# near-infrared forbidden, coronal and H2 lines from Riffel et al. 2006 and Rodriguez-Ardila et al. 2011 (vacuum).
+name,wavelength,medium,ion,type,series,note
+CIII977,977.02,vacuum,C III,permitted,,
+Lyb,1025.72,vacuum,H I,recombination,Lyman,
+OVI1034,1033.82,vacuum,O VI,permitted,O VI 1032+1038,doublet blend
+Lya,1215.67,vacuum,H I,recombination,Lyman,
+NV1240,1240.14,vacuum,N V,permitted,N V 1239+1243,doublet blend
+SiII1263,1262.59,vacuum,Si II,permitted,,
+OI1304,1304.35,vacuum,O I,permitted,,blend with Si II 1307
+CII1335,1335.30,vacuum,C II,permitted,,
+SiIV1397,1396.76,vacuum,Si IV,permitted,Si IV 1394+1403,blend with O IV] 1402
+OIV]1402,1402.06,vacuum,O IV,semi-forbidden,,blend with Si IV
+NIV]1486,1486.50,vacuum,N IV,semi-forbidden,,
+CIV1548,1548.19,vacuum,C IV,permitted,C IV 1548+1551,
+CIV1549,1549.06,vacuum,C IV,permitted,C IV 1548+1551,doublet blend
+CIV1551,1550.77,vacuum,C IV,permitted,C IV 1548+1551,
+HeII1640,1640.42,vacuum,He II,recombination,,
+OIII]1663,1663.48,vacuum,O III,semi-forbidden,,doublet blend
+NIII]1750,1750.26,vacuum,N III,semi-forbidden,,multiplet blend
+AlIII1857,1857.40,vacuum,Al III,permitted,Al III 1855+1863,doublet blend
+SiIII]1892,1892.03,vacuum,Si III,semi-forbidden,,
+CIII]1909,1908.73,vacuum,C III,semi-forbidden,,
+CII]2326,2326.44,vacuum,C II,semi-forbidden,,multiplet blend
+[NeIV]2424,2423.83,vacuum,Ne IV,forbidden,,doublet blend; vacuum value (Vanden Berk et al. 2001)
+[OII]2471,2471.03,vacuum,O II,forbidden,,
+HeII2733,2733.29,air,He II,recombination,,
+MgII2796,2795.53,air,Mg II,permitted,Mg II 2796+2803,
+MgII2798,2798.75,vacuum,Mg II,permitted,Mg II 2796+2803,doublet blend; vacuum value (Vanden Berk et al. 2001)
+MgII2803,2802.70,air,Mg II,permitted,Mg II 2796+2803,
+HeI2945,2945.10,air,He I,recombination,,
+OIII3133,3132.79,air,O III,bowen,,
+HeI3188,3187.74,air,He I,recombination,,
+HeII3203,3203.10,air,He II,recombination,,
+[NeV]3346,3345.82,air,Ne V,forbidden,[Ne V] 3346+3426,
+[NeV]3426,3425.87,air,Ne V,forbidden,[Ne V] 3346+3426,
+OIII3444,3444.07,air,O III,bowen,,
+[FeVII]3586,3586.32,air,Fe VII,coronal,,
+[OII]3726,3726.03,air,O II,forbidden,[O II] 3726+3729,
+[OII]3729,3728.82,air,O II,forbidden,[O II] 3726+3729,
+H12,3750.15,air,H I,recombination,Balmer,
+[FeVII]3759,3758.92,air,Fe VII,coronal,,
+OIII3760,3759.87,air,O III,bowen,,Bowen O III 3754.7+3759.9 (TDEs)
+H11,3770.63,air,H I,recombination,Balmer,
+H10,3797.90,air,H I,recombination,Balmer,
+HeI3819,3819.61,air,He I,recombination,,
+H9,3835.38,air,H I,recombination,Balmer,
+[NeIII]3869,3868.76,air,Ne III,forbidden,[Ne III] 3869+3968,
+HeI3889,3888.65,air,He I,recombination,,blend with H8
+H8,3889.05,air,H I,recombination,Balmer,
+[NeIII]3968,3967.47,air,Ne III,forbidden,[Ne III] 3869+3968,
+He,3970.08,air,H I,recombination,Balmer,H-epsilon
+HeI4026,4026.19,air,He I,recombination,,
+[SII]4069,4068.60,air,S II,forbidden,[S II] 4069+4076,
+[SII]4076,4076.35,air,S II,forbidden,[S II] 4069+4076,
+NIII4100,4100.04,air,N III,bowen,,Bowen N III 4097.3+4103.4; blended with H-delta
+Hd,4101.74,air,H I,recombination,Balmer,
+Hg,4340.47,air,H I,recombination,Balmer,
+[OIII]4363,4363.21,air,O III,forbidden,,
+HeI4388,4387.93,air,He I,recombination,,
+HeI4471,4471.48,air,He I,recombination,,
+HeII4542,4541.59,air,He II,recombination,,
+NIII4640,4640.64,air,N III,bowen,,Bowen N III 4634.1+4640.6+4641.9 (TDEs; X-ray binaries)
+[FeIII]4658,4658.05,air,Fe III,forbidden,,
+HeII4686,4685.71,air,He II,recombination,,
+[ArIV]4711,4711.37,air,Ar IV,forbidden,[Ar IV] 4711+4740,blend with He I 4713
+HeI4713,4713.14,air,He I,recombination,,
+[ArIV]4740,4740.17,air,Ar IV,forbidden,[Ar IV] 4711+4740,
+Hb,4861.33,air,H I,recombination,Balmer,
+HeI4922,4921.93,air,He I,recombination,,
+[OIII]4959,4958.91,air,O III,forbidden,[O III] 4959+5007,
+[OIII]5007,5006.84,air,O III,forbidden,[O III] 4959+5007,
+HeI5016,5015.68,air,He I,recombination,,
+[FeVI]5146,5145.75,air,Fe VI,forbidden,,
+[FeVII]5159,5158.89,air,Fe VII,coronal,,
+[FeVI]5176,5176.04,air,Fe VI,forbidden,,
+[NI]5198,5197.90,air,N I,forbidden,[N I] 5198+5200,
+[NI]5200,5200.26,air,N I,forbidden,[N I] 5198+5200,
+[FeIII]5270,5270.40,air,Fe III,forbidden,,
+[FeXIV]5303,5302.86,air,Fe XIV,coronal,,
+[CaV]5309,5309.11,air,Ca V,forbidden,,
+HeII5412,5411.52,air,He II,recombination,,
+[ClIII]5518,5517.71,air,Cl III,forbidden,[Cl III] 5518+5538,
+[ClIII]5538,5537.88,air,Cl III,forbidden,[Cl III] 5518+5538,
+[OI]5577,5577.34,air,O I,forbidden,,also a strong night-sky line
+[FeVII]5721,5720.70,air,Fe VII,coronal,,
+[NII]5755,5754.59,air,N II,forbidden,,
+HeI5876,5875.62,air,He I,recombination,,
+NaI5890,5889.95,air,Na I,permitted,Na I D,usually interstellar/stellar absorption
+NaI5896,5895.92,air,Na I,permitted,Na I D,usually interstellar/stellar absorption
+OI6046,6046.44,air,O I,permitted,,
+[FeVII]6087,6087.00,air,Fe VII,coronal,,
+[OI]6300,6300.30,air,O I,forbidden,[O I] 6300+6364,
+[SIII]6312,6312.06,air,S III,forbidden,,
+[OI]6364,6363.78,air,O I,forbidden,[O I] 6300+6364,
+[FeX]6375,6374.51,air,Fe X,coronal,,
+[NII]6548,6548.05,air,N II,forbidden,[N II] 6548+6583,
+Ha,6562.82,air,H I,recombination,Balmer,
+[NII]6583,6583.45,air,N II,forbidden,[N II] 6548+6583,
+HeI6678,6678.15,air,He I,recombination,,
+[SII]6716,6716.44,air,S II,forbidden,[S II] 6716+6731,
+[SII]6731,6730.82,air,S II,forbidden,[S II] 6716+6731,
+HeI7065,7065.20,air,He I,recombination,,
+[ArIII]7136,7135.79,air,Ar III,forbidden,[Ar III] 7136+7751,
+[FeII]7155,7155.16,air,Fe II,forbidden,,
+HeI7281,7281.35,air,He I,recombination,,
+[CaII]7291,7291.47,air,Ca II,forbidden,[Ca II] 7291+7324,
+[OII]7320,7319.99,air,O II,forbidden,[O II] 7320+7330,doublet blend
+[CaII]7324,7323.89,air,Ca II,forbidden,[Ca II] 7291+7324,
+[OII]7330,7330.20,air,O II,forbidden,[O II] 7320+7330,doublet blend
+[NiII]7378,7377.83,air,Ni II,forbidden,,
+[ArIII]7751,7751.10,air,Ar III,forbidden,[Ar III] 7136+7751,
+OI7774,7774.17,air,O I,permitted,,triplet 7771.9+7774.2+7775.4
+OI8446,8446.36,air,O I,permitted,,Lyman-beta fluorescence
+CaII8498,8498.02,air,Ca II,permitted,Ca II triplet,
+CaII8542,8542.09,air,Ca II,permitted,Ca II triplet,
+Pa14,8600.75,vacuum,H I,recombination,Paschen,
+[FeII]8617,8616.95,air,Fe II,forbidden,,
+CaII8662,8662.14,air,Ca II,permitted,Ca II triplet,
+Pa13,8667.39,vacuum,H I,recombination,Paschen,
+Pa12,8752.87,vacuum,H I,recombination,Paschen,
+Pa11,8865.21,vacuum,H I,recombination,Paschen,
+Pa10,9017.38,vacuum,H I,recombination,Paschen,
+[SIII]9069,9068.60,air,S III,forbidden,[S III] 9069+9531,
+Pa9,9229.01,air,H I,recombination,Paschen,
+[SIII]9531,9530.60,air,S III,forbidden,[S III] 9069+9531,
+Pae,9548.59,vacuum,H I,recombination,Paschen,Pa-epsilon
+[CI]9824,9824.13,air,C I,forbidden,[C I] 9824+9850,
+[CI]9850,9850.26,air,C I,forbidden,[C I] 9824+9850,
+[SVIII]9913,9913.0,vacuum,S VIII,coronal,,approximate (+-3 A)
+Pad,10049.37,air,H I,recombination,Paschen,Pa-delta
+HeII10124,10123.60,air,He II,recombination,,
+[SII]10287,10286.73,air,S II,forbidden,[S II] 1.03 um,
+[SII]10320,10320.49,air,S II,forbidden,[S II] 1.03 um,
+[SII]10336,10336.41,air,S II,forbidden,[S II] 1.03 um,
+[SII]10371,10370.50,air,S II,forbidden,[S II] 1.03 um,
+[FeXIII]10747,10746.80,air,Fe XIII,coronal,,
+[FeXIII]10798,10797.95,air,Fe XIII,coronal,,
+HeI10830,10830.34,air,He I,recombination,,triplet blend
+Pag,10938.09,air,H I,recombination,Paschen,Pa-gamma
+OI11287,11286.91,air,O I,permitted,,Lyman-beta fluorescence
+[PII]11886,11886.10,vacuum,P II,forbidden,,
+[SIX]12520,12520.0,vacuum,S IX,coronal,,approximate (+-3 A)
+[FeII]12570,12570.21,vacuum,Fe II,forbidden,,
+Pab,12821.58,vacuum,H I,recombination,Paschen,Pa-beta
+[FeII]13209,13209.10,vacuum,Fe II,forbidden,,
+[SiX]14301,14301.0,vacuum,Si X,coronal,,approximate (+-3 A)
+Br13,16113.70,vacuum,H I,recombination,Brackett,
+Br12,16411.66,vacuum,H I,recombination,Brackett,
+[FeII]16440,16440.02,vacuum,Fe II,forbidden,,
+Br11,16811.10,vacuum,H I,recombination,Brackett,
+Br10,17366.83,vacuum,H I,recombination,Brackett,
+Bre,18179.07,vacuum,H I,recombination,Brackett,Br-epsilon
+Paa,18756.14,vacuum,H I,recombination,Paschen,Pa-alpha
+Brd,19450.85,vacuum,H I,recombination,Brackett,Br-delta
+H2-1-0S(3),19576.0,vacuum,H2,molecular,H2 1-0,
+[SiVI]19630,19630.0,vacuum,Si VI,coronal,,approximate (+-3 A)
+H2-1-0S(2),20338.0,vacuum,H2,molecular,H2 1-0,
+HeI20587,20586.90,vacuum,He I,recombination,,
+H2-1-0S(1),21218.0,vacuum,H2,molecular,H2 1-0,
+Brg,21661.18,vacuum,H I,recombination,Brackett,Br-gamma
+H2-1-0S(0),22235.0,vacuum,H2,molecular,H2 1-0,
+H2-2-1S(1),22477.0,vacuum,H2,molecular,H2 2-1,
+[CaVIII]23218,23218.0,vacuum,Ca VIII,coronal,,approximate (+-3 A)
+H2-1-0Q(1),24066.0,vacuum,H2,molecular,H2 1-0,
+[SiVII]24833,24833.0,vacuum,Si VII,coronal,,approximate (+-3 A)
+Brb,26258.65,vacuum,H I,recombination,Brackett,Br-beta
+Pfe,30391.96,vacuum,H I,recombination,Pfund,Pf-epsilon
+Pfd,32969.85,vacuum,H I,recombination,Pfund,Pf-delta
+PAH3.3,32900.0,vacuum,PAH,feature,,broad aromatic band (FWHM ~ 0.04 um); not a line
+Pfg,37405.49,vacuum,H I,recombination,Pfund,Pf-gamma
+Bra,40522.62,vacuum,H I,recombination,Brackett,Br-alpha
+Pfb,46537.69,vacuum,H I,recombination,Pfund,Pf-beta
+# Lines of the FANTASY 1 line lists (data/coronal.csv, feII_forbidden.csv, narrow_plus.csv, broad.csv,
+# helium.csv, feii_IZw1.csv) not listed above; wavelengths as in those lists (air above 2000 A).
+[FeV]3839,3839.27,air,Fe V,forbidden,,FANTASY 1 list coronal.csv
+[FeV]3891,3891.28,air,Fe V,forbidden,,FANTASY 1 list coronal.csv
+[FeV]3911,3911.33,air,Fe V,forbidden,,FANTASY 1 list coronal.csv
+[FeV]4071,4071.24,air,Fe V,forbidden,,FANTASY 1 list coronal.csv
+[FeV]4181,4180.60,air,Fe V,forbidden,,FANTASY 1 list coronal.csv
+[FeV]4227,4227.19,air,Fe V,forbidden,,FANTASY 1 list coronal.csv
+[ArXIV]4412,4412.30,air,Ar XIV,coronal,,FANTASY 1 list coronal.csv
+FeXI4567,4567.47,air,Fe XI,coronal,,permitted coronal-ion identification; uncertain; FANTASY 1 list coronal.csv
+FeIX4589,4588.55,air,Fe IX,coronal,,permitted coronal-ion identification; uncertain; FANTASY 1 list coronal.csv
+[FeVII]4698,4698.24,air,Fe VII,coronal,,FANTASY 1 list coronal.csv
+[FeVII]4893,4893.37,air,Fe VII,coronal,,FANTASY 1 list coronal.csv
+[FeIV]4903,4903.07,air,Fe IV,forbidden,,FANTASY 1 list coronal.csv
+[FeVII]4942,4942.48,air,Fe VII,coronal,,FANTASY 1 list coronal.csv
+[FeIII]5085,5084.77,air,Fe III,forbidden,,FANTASY 1 list coronal.csv
+[FeV]5236,5236.06,air,Fe V,forbidden,,FANTASY 1 list coronal.csv
+[FeVI]5335,5335.18,air,Fe VI,forbidden,,FANTASY 1 list coronal.csv
+[FeVI]5424,5424.22,air,Fe VI,forbidden,,FANTASY 1 list coronal.csv
+ArX5536,5535.56,air,Ar X,coronal,,permitted coronal-ion identification; uncertain; FANTASY 1 list coronal.csv
+[FeVI]5638,5637.60,air,Fe VI,forbidden,,FANTASY 1 list coronal.csv
+[FeVI]5677,5677.00,air,Fe VI,forbidden,,FANTASY 1 list coronal.csv
+ArXV5945,5945.31,air,Ar XV,coronal,,permitted coronal-ion identification; uncertain; FANTASY 1 list coronal.csv
+[ArV]6435,6435.10,air,Ar V,forbidden,,FANTASY 1 list coronal.csv
+ArXI6918,6918.02,air,Ar XI,coronal,,permitted coronal-ion identification; uncertain; FANTASY 1 list coronal.csv
+[ArV]7006,7005.87,air,Ar V,forbidden,,FANTASY 1 list coronal.csv
+FeXIX7047,7046.73,air,Fe XIX,coronal,,permitted coronal-ion identification; uncertain; FANTASY 1 list coronal.csv
+FeXV7062,7062.15,air,Fe XV,coronal,,permitted coronal-ion identification; uncertain; FANTASY 1 list coronal.csv
+[ArIV]7171,7170.62,air,Ar IV,forbidden,,FANTASY 1 list coronal.csv
+[ArIV]7237,7237.26,air,Ar IV,forbidden,,FANTASY 1 list coronal.csv
+[ArIV]7263,7262.76,air,Ar IV,forbidden,,FANTASY 1 list coronal.csv
+[FeXI]7892,7891.80,air,Fe XI,coronal,,FANTASY 1 list coronal.csv
+[FeII]4114,4114.47,air,Fe II,forbidden,[Fe II] 23F,FANTASY 1 list feII_forbidden.csv
+[FeII]4147,4146.65,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4177,4177.21,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4179,4178.96,air,Fe II,forbidden,[Fe II] 23F,FANTASY 1 list feII_forbidden.csv
+[FeII]4232,4231.56,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4244,4243.98,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4245,4244.81,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4251,4251.44,air,Fe II,forbidden,[Fe II] 23F,FANTASY 1 list feII_forbidden.csv
+[FeII]4277,4276.83,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4287,4287.39,air,Fe II,forbidden,[Fe II] 7F,FANTASY 1 list feII_forbidden.csv
+[FeII]4306,4305.89,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4320,4319.62,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4347,4346.85,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4353,4352.78,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4358,4358.35,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4359,4359.34,air,Fe II,forbidden,[Fe II] 7F,FANTASY 1 list feII_forbidden.csv
+[FeII]4372,4372.43,air,Fe II,forbidden,[Fe II] 21F,FANTASY 1 list feII_forbidden.csv
+[FeII]4383,4382.74,air,Fe II,forbidden,[Fe II] 6F,FANTASY 1 list feII_forbidden.csv
+[FeII]4414,4413.78,air,Fe II,forbidden,[Fe II] 7F,FANTASY 1 list feII_forbidden.csv
+[FeII]4416,4416.27,air,Fe II,forbidden,[Fe II] 6F,FANTASY 1 list feII_forbidden.csv
+[FeII]4432,4432.45,air,Fe II,forbidden,[Fe II] 6F,FANTASY 1 list feII_forbidden.csv
+[FeII]4452,4452.11,air,Fe II,forbidden,[Fe II] 7F,FANTASY 1 list feII_forbidden.csv
+[FeII]4458,4457.94,air,Fe II,forbidden,[Fe II] 6F,FANTASY 1 list feII_forbidden.csv
+[FeII]4475,4474.90,air,Fe II,forbidden,[Fe II] 7F,FANTASY 1 list feII_forbidden.csv
+[FeII]4489,4488.75,air,Fe II,forbidden,[Fe II] 6F,FANTASY 1 list feII_forbidden.csv
+[FeII]4493,4492.63,air,Fe II,forbidden,[Fe II] 6F,FANTASY 1 list feII_forbidden.csv
+[FeII]4528,4528.38,air,Fe II,forbidden,[Fe II] 6F,FANTASY 1 list feII_forbidden.csv
+[FeII]4664,4664.44,air,Fe II,forbidden,[Fe II] 4F,FANTASY 1 list feII_forbidden.csv
+[FeII]4728,4728.07,air,Fe II,forbidden,[Fe II] 4F,FANTASY 1 list feII_forbidden.csv
+[FeII]4775,4774.72,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]4798,4798.27,air,Fe II,forbidden,[Fe II] 4F,FANTASY 1 list feII_forbidden.csv
+[FeII]4815,4814.53,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]4874,4874.48,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]4890,4889.62,air,Fe II,forbidden,[Fe II] 4F,FANTASY 1 list feII_forbidden.csv
+[FeII]4899,4898.61,air,Fe II,forbidden,,FANTASY 1 list feII_forbidden.csv
+[FeII]4905,4905.34,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]4947,4947.37,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]4951,4950.74,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]4973,4973.39,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]5006,5005.51,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]5020,5020.23,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]5044,5043.52,air,Fe II,forbidden,[Fe II] 20F,FANTASY 1 list feII_forbidden.csv
+[FeII]5060,5060.08,air,Fe II,forbidden,,FANTASY 1 list feII_forbidden.csv
+[FeII]5072,5072.39,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv
+[FeII]5108,5107.94,air,Fe II,forbidden,[Fe II] 18F,FANTASY 1 list feII_forbidden.csv
+[FeII]5112,5111.63,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv
+[FeII]5182,5181.95,air,Fe II,forbidden,[Fe II] 18F,FANTASY 1 list feII_forbidden.csv
+[FeII]5185,5184.80,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv
+[FeII]5220,5220.06,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv
+[FeII]5262,5261.62,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv
+[FeII]5269,5268.87,air,Fe II,forbidden,[Fe II] 18F,FANTASY 1 list feII_forbidden.csv
+[FeII]5273,5273.35,air,Fe II,forbidden,[Fe II] 18F,FANTASY 1 list feII_forbidden.csv
+[FeII]5297,5296.83,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv
+[FeII]5334,5333.65,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv
+[FeII]5348,5347.65,air,Fe II,forbidden,[Fe II] 18F,FANTASY 1 list feII_forbidden.csv
+[FeII]5376,5376.45,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv
+[FeII]5433,5433.13,air,Fe II,forbidden,[Fe II] 18F,FANTASY 1 list feII_forbidden.csv
+[FeII]5477,5477.24,air,Fe II,forbidden,[Fe II] 34F,FANTASY 1 list feII_forbidden.csv
+[FeII]5496,5495.82,air,Fe II,forbidden,[Fe II] 17F,FANTASY 1 list feII_forbidden.csv
+[FeII]5527,5527.34,air,Fe II,forbidden,[Fe II] 17F,FANTASY 1 list feII_forbidden.csv
+[FeII]5528,5527.61,air,Fe II,forbidden,[Fe II] 34F,FANTASY 1 list feII_forbidden.csv
+[FeII]5556,5556.29,air,Fe II,forbidden,[Fe II] 18F,FANTASY 1 list feII_forbidden.csv
+[FeII]5747,5746.97,air,Fe II,forbidden,[Fe II] 34F,FANTASY 1 list feII_forbidden.csv
+[FeII]7172,7172.00,air,Fe II,forbidden,[Fe II] 14F,FANTASY 1 list feII_forbidden.csv
+CrII4003,4003.33,air,Cr II,permitted,Cr II 194,FANTASY 1 list narrow_plus.csv
+NiII4016,4015.50,air,Ni II,permitted,Ni II 12,FANTASY 1 list narrow_plus.csv
+TiII4054,4053.81,air,Ti II,permitted,Ti II 87,FANTASY 1 list narrow_plus.csv
+CrII4064,4063.94,air,Cr II,permitted,Cr II 19,FANTASY 1 list narrow_plus.csv
+NIII4097,4097.33,air,N III,bowen,,FANTASY 1 list narrow_plus.csv
+TiII4164,4163.64,air,Ti II,permitted,Ti II 105,FANTASY 1 list narrow_plus.csv
+TiII4395,4395.03,air,Ti II,permitted,Ti II 19,FANTASY 1 list narrow_plus.csv
+OII4415,4414.90,air,O II,permitted,,FANTASY 1 list narrow_plus.csv
+TiII4422,4421.95,air,Ti II,permitted,Ti II 93,FANTASY 1 list narrow_plus.csv
+TiII4444,4443.80,air,Ti II,permitted,Ti II 19,FANTASY 1 list narrow_plus.csv
+TiII4450,4450.49,air,Ti II,permitted,Ti II 19,FANTASY 1 list narrow_plus.csv
+NIII4511,4510.91,air,N III,permitted,N III 1,FANTASY 1 list narrow_plus.csv
+CrII4617,4616.64,air,Cr II,permitted,Cr II 44,FANTASY 1 list narrow_plus.csv
+NII4643,4643.09,air,N II,permitted,N II 5,FANTASY 1 list narrow_plus.csv
+CIII4647,4647.42,air,C III,permitted,,FANTASY 1 list narrow_plus.csv
+CIII4650,4650.25,air,C III,permitted,,FANTASY 1 list narrow_plus.csv
+CIII4651,4651.47,air,C III,permitted,,FANTASY 1 list narrow_plus.csv
+CrII4698,4697.60,air,Cr II,permitted,,FANTASY 1 list narrow_plus.csv
+CrII4824,4824.13,air,Cr II,permitted,Cr II 30,FANTASY 1 list narrow_plus.csv
+CrII4876,4876.48,air,Cr II,permitted,Cr II 30,FANTASY 1 list narrow_plus.csv
+TiII4911,4911.20,air,Ti II,permitted,Ti II 114,FANTASY 1 list narrow_plus.csv
+TiII5072,5072.28,air,Ti II,permitted,Ti II 113,FANTASY 1 list narrow_plus.csv
+NII5667,5666.64,air,N II,permitted,,FANTASY 1 list narrow_plus.csv
+NII5676,5676.02,air,N II,permitted,,FANTASY 1 list narrow_plus.csv
+NII5680,5679.56,air,N II,permitted,,FANTASY 1 list narrow_plus.csv
+NII5686,5686.21,air,N II,permitted,,FANTASY 1 list narrow_plus.csv
+CIII5696,5695.92,air,C III,permitted,,FANTASY 1 list narrow_plus.csv
+SiII5958,5957.56,air,Si II,permitted,,FANTASY 1 list narrow_plus.csv
+SII6288,6288.09,air,S II,permitted,,FANTASY 1 list narrow_plus.csv
+SiII6347,6347.10,air,Si II,permitted,,FANTASY 1 list narrow_plus.csv
+SiII6371,6371.36,air,Si II,permitted,,FANTASY 1 list narrow_plus.csv
+[NiII]7411,7411.16,air,Ni II,forbidden,,FANTASY 1 list narrow_plus.csv
+[NiIII]7890,7889.90,air,Ni III,forbidden,,FANTASY 1 list narrow_plus.csv
+AlIII1855,1854.72,vacuum,Al III,permitted,,FANTASY 1 list broad.csv
+AlIII1863,1862.79,vacuum,Al III,permitted,,FANTASY 1 list broad.csv
+OI7002,7002.23,air,O I,permitted,,FANTASY 1 list broad.csv
+OI7254,7254.45,air,O I,permitted,,FANTASY 1 list broad.csv
+NI8680,8680.28,air,N I,permitted,,FANTASY 1 list broad.csv
+NI8703,8703.25,air,N I,permitted,,FANTASY 1 list broad.csv
+NI8712,8711.70,air,N I,permitted,,FANTASY 1 list broad.csv
+HeI4144,4143.76,air,He I,recombination,,FANTASY 1 list helium.csv
+HeI7816,7816.14,air,He I,recombination,,FANTASY 1 list helium.csv
+HeII8237,8236.79,air,He II,recombination,,FANTASY 1 list helium.csv
+HeI10028,10027.73,air,He I,recombination,,FANTASY 1 list helium.csv
+HeI10031,10031.16,air,He I,recombination,,FANTASY 1 list helium.csv
+FeII4419,4418.96,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4450,4449.62,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4494,4493.53,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4615,4614.55,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4625,4625.48,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4629,4628.79,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4632,4631.87,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4661,4660.59,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4669,4668.92,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII5131,5131.21,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII5369,5369.19,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII5396,5396.23,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII5428,5427.83,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeX5539,5538.94,air,Fe X,coronal,,permitted coronal-ion identification; uncertain; FANTASY 1 list coronal.csv
+[FeII]4640,4639.67,air,Fe II,forbidden,[Fe II] 4F,FANTASY 1 list feII_forbidden.csv
+[FeII]5413,5412.65,air,Fe II,forbidden,[Fe II] 17F,FANTASY 1 list feII_forbidden.csv
+FeII4471,4471.27,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+FeII4741,4740.83,air,Fe II,permitted,Fe II (I Zw 1),FANTASY 1 list feii_IZw1.csv
+[FeII]5158,5158.00,air,Fe II,forbidden,[Fe II] 18F,FANTASY 1 list feII_forbidden.csv
+[FeII]5159,5158.78,air,Fe II,forbidden,[Fe II] 19F,FANTASY 1 list feII_forbidden.csv

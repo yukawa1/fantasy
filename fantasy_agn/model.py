@@ -6,7 +6,9 @@ import numpy as np
 from .components import Component
 from .parameters import ParameterSet
 
-__all__ = ("Model",)
+__all__ = ("Model", "load_model")
+
+MODEL_FORMAT = 1         # version of the saved-model format (Model.to_dict)
 
 
 class Model:
@@ -48,6 +50,68 @@ class Model:
         for name, target, ratio in getattr(component, "default_ties", lambda: [])():
             self.params.tie(name, target, factor=ratio)
         return self
+
+    # ------------------------------------------------------- save, load
+    def to_dict(self):
+        """
+        The model as a recipe of plain data (JSON-compatible): for each component its class and
+        the arguments it was made with, then every parameter's value, limits, fixed flag and tie.
+        :meth:`from_dict` rebuilds the same model; :meth:`save` writes it to a JSON file.
+        """
+        comps = []
+        for c in self.components:
+            recipe = c.__dict__.get("_recipe")
+            if recipe is None:
+                raise ValueError(f"component {c.name!r} cannot be saved (made by an older version or by hand)")
+            kind, args, kwargs = recipe
+            comps.append({"type": kind, "args": _plain(args), "kwargs": _plain(kwargs)})
+        params = [{"name": p.name, "value": _plain(p.value), "min": _plain(p.min), "max": _plain(p.max),
+                   "fixed": bool(p.fixed),
+                   "tie": None if p.tie is None else [p.tie[0], float(p.tie[1]), float(p.tie[2])]}
+                  for p in self.params]
+        return {"fantasy_model": MODEL_FORMAT, "wave_range": _plain(self.wave_range),
+                "components": comps, "params": params}
+
+    @classmethod
+    def from_dict(cls, d):
+        """The model described by :meth:`to_dict` (only FANTASY components are made)."""
+        from . import components as C
+        from . import host
+        if not isinstance(d, dict) or "components" not in d:
+            raise ValueError("not a FANTASY model")
+        if int(d.get("fantasy_model", 1)) > MODEL_FORMAT:
+            raise ValueError("this model was saved by a newer FANTASY version")
+        known = {k: v for mod in (C, host) for k, v in vars(mod).items()
+                 if isinstance(v, type) and issubclass(v, Component) and not k.startswith("_")}
+        m = cls(wave_range=_tuples(d.get("wave_range")))
+        for c in d["components"]:
+            kind = c.get("type")
+            if kind not in known:
+                raise ValueError(f"unknown component type {kind!r}")
+            m.add(known[kind](*_tuples(c.get("args") or []), **_tuples(c.get("kwargs") or {})))
+        inf = float("inf")
+        for q in d.get("params") or []:
+            if q["name"] not in m.params.names:
+                raise ValueError(f"parameter {q['name']!r} does not belong to the model")
+            p = m.params[q["name"]]
+            p.min = -inf if q.get("min") is None else float(q["min"])     # float("-inf") also reads "-inf"
+            p.max = inf if q.get("max") is None else float(q["max"])
+            p.value = float(q["value"])
+            p.fixed = bool(q.get("fixed"))
+            p.tie = None
+        for q in d.get("params") or []:
+            if q.get("tie"):
+                to, factor, offset = q["tie"]
+                m.params.tie(q["name"], to, factor=factor, offset=offset)
+        m.params._resolve()
+        return m
+
+    def save(self, path):
+        """Write the model to a JSON file (see :meth:`to_dict`); read it back with :func:`load_model`."""
+        import json
+        with open(path, "w") as fh:
+            json.dump(self.to_dict(), fh, indent=1)
+        return path
 
     def __add__(self, other):
         new = self.copy()
@@ -97,6 +161,42 @@ class Model:
         self.params.tie(pattern, to, factor, offset)
         return self
 
+    def untie(self, pattern):
+        """Free tied parameter(s) again (they keep their current value)."""
+        self.params.untie(pattern)
+        return self
+
+    def set_profile(self, name, profile, **options):
+        """
+        Change the line profile of the Lines component ``name`` ('gaussian', 'lorentzian', 'voigt',
+        'gauss-hermite' or 'stratified'), keeping its lines, flux ratios and role. Parameters
+        present in both profiles (fluxes, shift, fwhm) keep their values, limits and ties; ``options``
+        are passed to :class:`Lines` (e.g. ``h3=(0, -0.2, 0.2)``)::
+
+            model.set_profile("broad", "lorentzian")
+        """
+        from .components import Lines
+        old = self.component(name)
+        args = getattr(old, "_args", None)
+        if not isinstance(old, Lines) or args is None:
+            raise ValueError(f"{name!r} is not a Lines component made by this FANTASY version: "
+                             "remove it and add it again")
+        new = Lines(name, **{**args, "profile": profile, **options})
+        if "role" not in options:
+            new.role = old.role
+        before = {p.name: p for p in self.params if p.name.startswith(name + ".")}
+        for p in new.params:
+            q = before.get(p.name)
+            if q is not None and q.linear == p.linear:
+                p.value, p.min, p.max, p.fixed, p.tie = q.value, q.min, q.max, q.fixed, q.tie
+        self.components[self.components.index(old)] = new
+        self.params = ParameterSet([p for c in self.components for p in c.params])
+        for p in self.params:                      # ties to parameters the new profile has not
+            if p.tie and p.tie[0] not in self.params:
+                p.tie = None
+        self.params._resolve()
+        return self
+
     def copy(self):
         return copy.deepcopy(self)
 
@@ -115,8 +215,9 @@ class Model:
         return idx[0] if idx else None
 
     # Multiplicative components: an Extinction dims everything but the host; an
-    # Absorption (troughs of absorbers in front of the AGN) acts on everything.
-    _MULTIPLY = ("attenuation", "absorption")
+    # Absorption (troughs of absorbers in front of the AGN) and a Calibration
+    # (smooth flux-calibration correction) act on everything.
+    _MULTIPLY = ("attenuation", "absorption", "calibration")
 
     @staticmethod
     def _applies(mult, comp):
@@ -203,3 +304,40 @@ class Model:
         for c in self.components:
             lines.append(f"  {c.name:14s} {type(c).__name__}")
         return "\n".join(lines)
+
+
+def load_model(path):
+    """A model saved with :meth:`Model.save` (a JSON recipe; no code is run)."""
+    import json
+    with open(path) as fh:
+        return Model.from_dict(json.load(fh))
+
+
+def _plain(v):
+    """Arguments and values as JSON data: tuples and arrays as lists, numpy numbers as Python numbers,
+    infinities as the strings 'inf' and '-inf' (standard JSON has no infinity)."""
+    if isinstance(v, dict):
+        return {str(k): _plain(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple, np.ndarray)):
+        return [_plain(x) for x in list(v)]
+    if isinstance(v, (bool, np.bool_)):
+        return bool(v)
+    if isinstance(v, (int, np.integer)):
+        return int(v)
+    if isinstance(v, (float, np.floating)):
+        return float(v) if np.isfinite(v) else (None if np.isnan(v) else ("inf" if v > 0 else "-inf"))
+    if v is None or isinstance(v, str):
+        return v
+    raise ValueError(f"cannot save {type(v).__name__} values in a model file")
+
+
+def _tuples(v):
+    """Lists back to tuples (limits such as (start, min, max) and line entries such as (name, wavelength)),
+    'inf' and '-inf' back to infinities."""
+    if isinstance(v, dict):
+        return {k: _tuples(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return tuple(_tuples(x) for x in v)
+    if v in ("inf", "-inf"):
+        return float(v)
+    return v

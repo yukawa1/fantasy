@@ -38,6 +38,7 @@ def _process(job):
     matplotlib.use("Agg")
     import fantasy_agn as fa
     from .plotting import main_line
+    from .refine import EXTENSIONS
     t0 = time.time()
     row = {"file": os.path.basename(path), "path": path}
     try:
@@ -57,6 +58,10 @@ def _process(job):
             c = fa.classify(spec)
             row.update(cls=c.label, cls_uncertain=bool(c.uncertain))
             preset, kw = c.RECOMMENDED[c.label]
+        mask_sky = opts.get("mask_sky", "auto")
+        if mask_sky is True or (mask_sky == "auto" and preset in ("starforming", "seyfert2", "composite",
+                                                                   "liner", "passive", "type2", "galaxy")):
+            spec = spec.mask_sky()
         row["preset"] = preset + (f"({', '.join(f'{k}={v!r}' for k, v in kw.items())})" if kw else "()")
         r = fa.fit(spec, getattr(fa.presets, preset)(**kw), verbose=False)
         # borderline starlight: keep the host if the BIC prefers it
@@ -67,6 +72,13 @@ def _process(job):
             if r_host.bic < r.bic - 10:
                 r = r_host
                 row["preset"] = row["preset"][:-1] + (", " if kw else "") + "host=True)"
+        # high S/N narrow-line galaxies: extensions of the preset where the BIC wants them
+        if opts.get("refine", True) and preset in EXTENSIONS and r.rchi2 > 1.2:
+            r = fa.refine(spec, preset, kw, result=r)
+            kept = r.refinement[r.refinement.kept].extension.tolist()
+            if kept:
+                row["preset"] = preset + "(" + ", ".join(f"{k}={v!r}" for k, v in r.preset_options.items()) + ")"
+                row["refined"] = "; ".join(kept)
         row.update(rchi2=r.rchi2, n_free=r.n_free, n_at_limit=len(r.at_limit),
                    at_limit=", ".join(r.at_limit))
         for q in r.key_results().itertuples():
@@ -157,7 +169,7 @@ class SampleResult:
 
 
 def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mask_absorption=False,
-               diagnostics=True, n_jobs=-1, verbose=True):
+               mask_sky="auto", refine=True, diagnostics=True, n_jobs=-1, verbose=True):
     """
     Classify and fit many spectra in parallel; returns a :class:`SampleResult`.
 
@@ -168,6 +180,10 @@ def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mas
     :param deredden: correct the Galactic extinction (looked up, or ``ebv``).
     :param z: redshift for all spectra (when the files have none).
     :param mask_absorption: mask narrow absorption lines (CIV, MgII quasars).
+    :param mask_sky: mask telluric bands and strong sky lines ('auto': for the
+        narrow-line galaxy presets, whose high-S/N fits they would dominate).
+    :param refine: for narrow-line galaxies with reduced chi2 > 1.2, add the preset
+        extensions the BIC prefers (:func:`fantasy_agn.refine`).
     :param n_jobs: processes (-1: all cores but one).
     """
     from ._threads import SINGLE_THREADED, environment
@@ -179,7 +195,7 @@ def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mas
     if out:
         os.makedirs(out, exist_ok=True)
     opts = dict(out=out, model=model, deredden=deredden, ebv=ebv, z=z, mask_absorption=mask_absorption,
-                diagnostics=diagnostics)
+                mask_sky=mask_sky, refine=refine, diagnostics=diagnostics)
     jobs = [(f, opts) for f in files]
     n = len(jobs)
     workers = _n_workers(n_jobs, n)

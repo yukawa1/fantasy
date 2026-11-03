@@ -26,6 +26,7 @@ PROFILES = {
     "lorentzian": ("shift", "fwhm"),
     "voigt": ("shift", "fwhm", "fwhm_l"),
     "gauss-hermite": ("shift", "fwhm", "h3", "h4"),
+    "stratified": ("shift", "fwhm", "span", "gamma"),
 }
 
 # Gauss-Hermite polynomials normalised as in van der Marel & Franx (1993)
@@ -105,6 +106,50 @@ def _voigt(x, lam0, shift, fwhm_g, fwhm_l, sig_inst):
     return V, d_shift, d_fwhm_g, d_fwhm_l
 
 
+# Radially stratified BLR: a continuous sum of Gaussians over radius. Gas at radius
+# r has a Gaussian velocity distribution of FWHM v(r) = fwhm (r/r_out)^(-1/2)
+# (virial), and emits with a volume emissivity j ~ r^(-gamma): dL = 4 pi r^2 j dr,
+# so dL/d ln r ~ r^(3 - gamma) between r_in and r_out = 10^span r_in. The line
+# wings fall roughly as a power law (steeper than the v^(2 gamma - 7) of a single
+# velocity per radius): gamma ~ 3 gives Lorentzian-like v^-2 wings; span = 0 is a
+# single Gaussian. Gauss-Legendre quadrature in u = ln(r/r_out).
+_STRAT_T, _STRAT_Q = np.polynomial.legendre.leggauss(12)
+
+
+def _stratified(x, lam0, kin, sig_inst):
+    shift, fwhm, span, gamma = (np.asarray(k, float) for k in kin)
+    s = span * np.log(10.0)                         # ln(r_out / r_in), per line
+    a = 3.0 - gamma
+    P = 0.0
+    d_shift = d_fwhm = d_s = d_g = 0.0
+    # nodes: u_k = -s (1 - t_k) / 2 in [-s, 0]; du_k/ds = -(1 - t_k) / 2
+    terms = []
+    logw = []
+    for t, q in zip(_STRAT_T, _STRAT_Q):
+        dudss = -(1 - t) / 2
+        u = s * dudss
+        logw.append(np.log(q) + a * u)
+        terms.append((u, dudss))
+    logw = np.array(logw)                           # (K, n_lines)
+    w = np.exp(logw - logw.max(axis=0))
+    w /= w.sum(axis=0)
+    # d ln w~ / ds = a du/ds (the 1/s Jacobian cancels on normalisation); d ln w~ / dgamma = -u
+    dls = np.array([a * dudss for _, dudss in terms])
+    dlg = np.array([-u for u, _ in terms])
+    dws = w * (dls - (w * dls).sum(axis=0))
+    dwg = w * (dlg - (w * dlg).sum(axis=0))
+    for k, (u, dudss) in enumerate(terms):
+        fk = fwhm * np.exp(-u / 2)
+        G, (gs, gf) = _gaussian(x, lam0, shift, fk, sig_inst)
+        P = P + w[k] * G
+        d_shift = d_shift + w[k] * gs
+        d_fwhm = d_fwhm + w[k] * gf * np.exp(-u / 2)
+        # fwhm_k changes with s through u_k: d fwhm_k / ds = -fwhm_k / 2 * du_k/ds
+        d_s = d_s + dws[k] * G + w[k] * gf * (-fk / 2 * dudss)
+        d_g = d_g + dwg[k] * G
+    return P, [d_shift, d_fwhm, d_s * np.log(10.0), d_g]
+
+
 def evaluate_profile(name, x, lam0, kin, sig_inst):
     """
     Profiles of all lines. ``kin`` is a list of per-line arrays in the order of
@@ -114,6 +159,8 @@ def evaluate_profile(name, x, lam0, kin, sig_inst):
         return _gaussian(x, lam0, kin[0], kin[1], sig_inst)
     if name == "gauss-hermite":
         return _gauss_hermite(x, lam0, kin, sig_inst)
+    if name == "stratified":
+        return _stratified(x, lam0, kin, sig_inst)
     if name == "lorentzian":
         shift, fwhm = kin
         V, d_shift, _, d_fwhm_l = _voigt(x, lam0, shift, np.zeros_like(fwhm), fwhm, sig_inst)

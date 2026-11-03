@@ -129,11 +129,13 @@ def galactic_ebv(ra=None, dec=None, source="auto", sf11=True, file_value=None):
                 sfd, where = float(file_value), "from the file (SFD98)"
             elif s == "sfd":
                 if ra is None or dec is None:
-                    raise ValueError("no coordinates")
+                    raise ValueError("no coordinates (give them: fa.read(path, ra=..., dec=...) or "
+                                     "spec.with_coordinates(ra, dec))")
                 sfd, where = ebv_sfd(ra, dec), "SFD98 maps (sfdmap2)"
             elif s == "irsa":
                 if ra is None or dec is None:
-                    raise ValueError("no coordinates")
+                    raise ValueError("no coordinates (give them: fa.read(path, ra=..., dec=...) or "
+                                     "spec.with_coordinates(ra, dec))")
                 sfd, sandf = ebv_irsa(ra, dec)
                 if sf11:
                     return sandf, "IRSA dust service, Schlafly & Finkbeiner 2011"

@@ -2,6 +2,7 @@
 Fitting engine: data-driven initial guess, trust-region least squares with
 exact Jacobians, and uncertainty estimation.
 """
+import multiprocessing
 import os
 import time
 import warnings
@@ -403,12 +404,12 @@ def _interior(theta, lb, ub, linear):
     return np.clip(theta, lb + eps, ub - eps)
 
 
-def _least_squares(prob, theta0, max_nfev=None):
+def _least_squares(prob, theta0, max_nfev=None, tol=1e-10):
     if prob.linear.any() and (~prob.linear).any() and os.environ.get("FANTASY_VARPRO", "1") != "0":
-        return _projected_least_squares(prob, theta0, max_nfev)
+        return _projected_least_squares(prob, theta0, max_nfev, tol)
     return least_squares(prob.residuals, _interior(theta0, prob.lb, prob.ub, prob.linear),
                          jac=prob.jacobian, bounds=(prob.lb, prob.ub), method="trf",
-                         x_scale="jac", ftol=1e-10, xtol=1e-10, gtol=1e-10,
+                         x_scale="jac", ftol=tol, xtol=tol, gtol=tol,
                          max_nfev=max_nfev)
 
 
@@ -420,7 +421,7 @@ class _Solution:
         self.nfev, self.success, self.message = nfev, success, message
 
 
-def _projected_least_squares(prob, theta0, max_nfev=None):
+def _projected_least_squares(prob, theta0, max_nfev=None, tol=1e-10):
     """
     Variable projection: the trust-region iterations run over the nonlinear
     parameters only (shifts, widths, slopes, E(B-V)); at every step the
@@ -459,7 +460,7 @@ def _projected_least_squares(prob, theta0, max_nfev=None):
     z0 = _interior(theta0, prob.lb, prob.ub, L)[N]
     res = least_squares(lambda z: solve(z)[1], z0, jac=lambda z: solve(z)[2],
                         bounds=(prob.lb[N], prob.ub[N]), method="trf", x_scale="jac",
-                        ftol=1e-10, xtol=1e-10, gtol=1e-10, max_nfev=max_nfev)
+                        ftol=tol, xtol=tol, gtol=tol, max_nfev=max_nfev)
     t, r, _, J = solve(res.x)
     return _Solution(t, r, J, res.nfev, res.success, res.message)
 
@@ -468,10 +469,16 @@ def guess(spectrum, model, wave_range=None, verbose=False):
     """Return a copy of ``model`` with data-driven initial parameter values."""
     model = model.copy()
     good = _prepare(spectrum, wave_range or model.wave_range)
-    prob = Problem(model, spectrum.wave[good], spectrum.flux[good], spectrum.err[good],
-                   spectrum.context)
+    args = (spectrum.wave[good], spectrum.flux[good], spectrum.err[good], spectrum.context)
+    work = model.copy()
+    # amplitudes without fitted pixels (lines in masked bands or outside the range)
+    # are 0, as in fit(); they stay free in the returned model
+    weak = _fix_unconstrained(Problem(work, *args), work)
+    prob = Problem(work, *args)
     theta, _ = _initial_guess(prob, verbose=verbose)
     model.params.set_full_values(prob.full(theta))
+    for name in weak:
+        model.params[name].value = work.params[name].value
     return model
 
 
@@ -495,8 +502,9 @@ def fit(spectrum, model, wave_range=None, guess=True, errors="covariance", n_mc=
     :param scale_errors: if the reduced chi2 > 1, inflate uncertainties by
         sqrt(reduced chi2) (the error spectrum is then assumed underestimated).
     :param seed: random seed for the Monte Carlo errors.
-    :param n_jobs: processes for Monte Carlo (default 1; -1 = all cores). In a
-        script, parallel runs need the code under  if __name__ == "__main__":
+    :param n_jobs: processes for Monte Carlo (default: all cores, or 1 inside the
+        workers of fit_many / fit_sample; 1 = serial). In a script, parallel runs
+        need the code under  if __name__ == "__main__":  (else it runs serially).
     :param build_up: for models with overlapping components (several broad
         components of the same lines, outflow wings), also fit by adding them
         one at a time and keep the better of the two solutions
@@ -506,6 +514,18 @@ def fit(spectrum, model, wave_range=None, guess=True, errors="covariance", n_mc=
     """
     t0 = time.time()
     model = model.copy()
+    learned = False
+    if guess is not True and guess is not False and guess is not None:
+        # guess="ml" (or an Initializer): a machine-learned start (fantasy_agn.ml). Only the
+        # non-linear parameters are predicted; the amplitudes are solved exactly and the fit
+        # itself is the usual one.
+        from . import ml
+        if guess != "ml" and not isinstance(guess, ml.Initializer):
+            raise ValueError("guess must be True, False, 'ml' or a fantasy_agn.ml.Initializer")
+        learned = ml.apply(model, spectrum, None if guess == "ml" else guess)
+        if not learned:
+            warnings.warn("no machine-learned initializer for this model: using the data-driven guess")
+        guess = not learned
     if wave_range is None:
         wave_range = model.wave_range
     good = _prepare(spectrum, wave_range)
@@ -519,7 +539,15 @@ def fit(spectrum, model, wave_range=None, guess=True, errors="covariance", n_mc=
     if guess:
         theta, _ = _initial_guess(prob, verbose=False)
     res = _least_squares(prob, theta)
-    start_method = "direct"
+    start_method = "learned" if learned else "direct"
+    if learned:
+        # one cheap check for a better nearby solution instead of the full search
+        start = _escape_local_minimum(prob, res.x, float(res.fun @ res.fun))
+        if start is not None:
+            new = _least_squares(prob, start)
+            if new.fun @ new.fun < res.fun @ res.fun:
+                new.nfev += res.nfev
+                res = new
     if guess:
         for _ in range(3):
             start = _escape_local_minimum(prob, res.x, float(res.fun @ res.fun))
@@ -684,7 +712,8 @@ def _mc_worker(args):
         rng = np.random.default_rng(s)
         prob.y = y0 + rng.normal(0.0, prob.err * noise_scale)
         prob._cache = {}
-        r = _least_squares(prob, theta, max_nfev=200)
+        # 1e-8 instead of 1e-10: the same errors (tested on SDSS-RM stratified fits), 1.3x fewer evaluations
+        r = _least_squares(prob, theta, max_nfev=200, tol=1e-8)
         out.append(prob.full(r.x))
     prob.y = y0
     return out
@@ -692,13 +721,15 @@ def _mc_worker(args):
 
 def _monte_carlo(prob, theta, n, noise_scale, seed, n_jobs):
     seeds = np.random.SeedSequence(seed).generate_state(n)
-    n_jobs = (os.cpu_count() or 1) if n_jobs == -1 else (n_jobs or 1)
+    if n_jobs is None:                     # all cores, but not inside a worker process
+        n_jobs = 1 if multiprocessing.parent_process() is not None or n < 8 else -1
+    n_jobs = (os.cpu_count() or 1) if n_jobs == -1 else max(int(n_jobs), 1)
     n_jobs = min(n_jobs, n)
     if n_jobs > 1:
         chunks = [seeds[i::n_jobs] for i in range(n_jobs)]
         prob._cache = {}
         try:
-            with ProcessPoolExecutor(n_jobs) as ex:
+            with environment(SINGLE_THREADED), ProcessPoolExecutor(n_jobs) as ex:
                 results = list(ex.map(_mc_worker, [(prob, theta, c, noise_scale) for c in chunks]))
             return np.array([row for chunk in results for row in chunk])
         except (RuntimeError, BrokenProcessPool, OSError) as exc:

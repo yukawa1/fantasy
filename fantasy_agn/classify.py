@@ -16,8 +16,12 @@ much of the light is starlight, and what ionises the narrow-line gas?
    region the "broad" component turns into a shallow, very wide bump that
    absorbs residuals of the stellar subtraction. The thresholds come from 300
    SDSS quasars at z < 0.35 and 650 narrow-line galaxies (MPA-JHU classes):
-   76% of the quasars and 0.9% of the galaxies pass (calibration/ in the
-   repository). Spurious bumps are wide (median FWHM 11000 km/s) and weak
+   79% of the quasars and 1.4% of the galaxies pass (calibration/ in the
+   repository). The lines are fitted twice with a broad component: once with
+   the outflow wing on the Balmer and forbidden lines, once with the wing on
+   the forbidden lines only and a broad core plus a very broad wing; the
+   better fit (BIC) is kept and the test uses the whole broad profile, so that
+   the outflow wing cannot take the broad core of a Seyfert 1. Spurious bumps are wide (median FWHM 11000 km/s) and weak
    (EW 9 A, 99%: 42 A); real broad lines have FWHM 2300-9500 km/s and EW
    14-210 A (10-90%). The broad flux S/N is a poor criterion on its own: the
    broad line trades flux with the outflow wing and the continuum, so real
@@ -127,7 +131,7 @@ def _stellar_fit(spec, wave_range, masks, templates="emiles"):
     return r, r_smooth
 
 
-def _line_model(lines, broad):
+def _line_model(lines, broad, balmer_wing=True, broad_wing=False):
     narrow = [ln for ln in DIAG_LINES if ln in lines]
     ratios = {a: b for a, b in {"[OIII]4959": ("[OIII]5007", 1 / 2.98),
                                 "[NII]6548": ("[NII]6583", 1 / 3.05),
@@ -137,14 +141,20 @@ def _line_model(lines, broad):
               Lines("narrow", narrow, role="narrow", ratios=ratios,
                     fwhm=(300, 50, NARROW_FWHM_MAX), shift=(0, -600, 600)))
     wing = [ln for ln in ("Hb", "[OIII]4959", "[OIII]5007", "[NII]6548", "Ha", "[NII]6583")
-            if ln in narrow]
+            if ln in narrow and (balmer_wing or ln not in ("Hb", "Ha"))]
     m.add(Lines("outflow", wing, role="outflow",
                 ratios={a: b for a, b in ratios.items() if a in wing and b[0] in wing},
                 fwhm=(1100, NARROW_FWHM_MAX, 2500), shift=(-200, -1500, 500)))
     if broad:
         bl = [ln for ln in ("Hb", "Ha") if ln in narrow]
-        m.add(Lines("broad", bl, role="broad", tie_kinematics=True,
-                    fwhm=(3000, 1200, BROAD_FWHM_MAX), shift=(0, -3000, 3000)))
+        if broad_wing:                      # broad core + very broad wing; the core is tested
+            m.add(Lines("broad", bl, role="broad", tie_kinematics=True,
+                        fwhm=(3000, 1200, 7000), shift=(0, -3000, 3000)))
+            m.add(Lines("broad_wing", bl, role="broad", tie_kinematics=True,
+                        fwhm=(9000, 5000, BROAD_FWHM_MAX), shift=(0, -3000, 3000)))
+        else:
+            m.add(Lines("broad", bl, role="broad", tie_kinematics=True,
+                        fwhm=(3000, 1200, BROAD_FWHM_MAX), shift=(0, -3000, 3000)))
     return m
 
 
@@ -281,10 +291,32 @@ class Classification:
             savefig(fig, save)
         return fig
 
-    def plot(self, fig=None, save=None):
-        """BPT ([NII], [SII], [OI]) and WHAN diagrams with this object."""
-        from .plotting import new_figure, paper_style, savefig
+    def plot(self, fig=None, save=None, others=None, highlight=True):
+        """
+        BPT ([NII], [SII], [OI]) and WHAN diagrams with this object; ``others``
+        (e.g. the classifications of all epochs) are drawn too, this one
+        highlighted (``highlight=False``: all alike, as for a paper). The axes
+        widen to show every point.
+        """
+        from .plotting import COLORS, new_figure, paper_style, savefig
         m = self.measurements
+        group = [c for c in (others or []) if c is not self]
+        alike = bool(group) and not highlight
+        col_other, col_self = (COLORS["broad"], COLORS["broad"]) if alike else (COLORS["data"], COLORS["feii"])
+        ms_self = 3 if alike else 4
+
+        def widen(ax, xlim, ylim, xs, ys):
+            xs, ys = np.asarray(xs, float), np.asarray(ys, float)
+            ok = np.isfinite(xs) & np.isfinite(ys)
+            if ok.any():
+                xlim = (min(xlim[0], xs[ok].min() - 0.1), max(xlim[1], xs[ok].max() + 0.1))
+                ylim = (min(ylim[0], ys[ok].min() - 0.15), max(ylim[1], ys[ok].max() + 0.15))
+            ax.set_xlim(*xlim)
+            ax.set_ylim(*ylim)
+
+        def get(c, key):
+            v = c.measurements.get(key, np.nan)
+            return float(v) if isinstance(v, (int, float, np.floating)) else np.nan
         with paper_style():
             fig = new_figure(fig, figsize=(7.1, 2.1))
             axes = fig.subplots(1, 4)
@@ -292,40 +324,55 @@ class Classification:
                       ("sii", "log_sii_ha", r"log [S$\,$II]/H$\alpha$"),
                       ("oi", "log_oi_ha", r"log [O$\,$I]/H$\alpha$")]
             for ax, (d, key, xl) in zip(axes, panels):
-                x = np.linspace(-2.2, _XMAX[d] - 0.01, 200)
+                x = np.linspace(-3.5, _XMAX[d] - 0.01, 300)
                 ax.plot(x, kewley01(x, d), color="k", lw=0.8)
                 if d == "nii":
-                    xk = np.linspace(-2.2, 0.04, 200)
+                    xk = np.linspace(-3.5, 0.04, 300)
                     ax.plot(xk, kauffmann03(xk), color="k", lw=0.8, ls="--")
                 else:
                     # Seyfert/LINER line, drawn where it lies above the Kewley (2001) curve
-                    xs = np.linspace(-2.2, 0.6, 400)
+                    xs = np.linspace(-3.5, 2.0, 600)
                     above = (xs >= _XMAX[d]) | (kewley06(xs, d) > kewley01(np.minimum(xs, _XMAX[d] - 1e-3), d))
                     ax.plot(xs[above], kewley06(xs[above], d), color="k", lw=0.8, ls=":")
+                for c in group:
+                    ax.errorbar(get(c, key), get(c, "log_oiii_hb"), xerr=get(c, key + "_err"),
+                                yerr=get(c, "log_oiii_hb_err"), fmt="o", ms=3, color=col_other, lw=0.6, zorder=2)
                 if np.isfinite(m.get(key, np.nan)) and np.isfinite(m.get("log_oiii_hb", np.nan)):
                     ax.errorbar(m[key], m["log_oiii_hb"], xerr=m[key + "_err"],
-                                yerr=m["log_oiii_hb_err"], fmt="o", ms=4, color="#D55E00")
-                ax.set_xlim({"nii": (-1.6, 0.6), "sii": (-1.3, 0.5), "oi": (-2.3, 0.0)}[d])
-                ax.set_ylim(-1.2, 1.5)
+                                yerr=m["log_oiii_hb_err"], fmt="o", ms=ms_self, color=col_self, zorder=3)
                 ax.set_xlabel(xl)
+                widen(ax, {"nii": (-1.6, 0.6), "sii": (-1.3, 0.5), "oi": (-2.3, 0.0)}[d], (-1.2, 1.5),
+                      [get(c, key) for c in group + [self]], [get(c, "log_oiii_hb") for c in group + [self]])
             axes[0].set_ylabel(r"log [O$\,$III]/H$\beta$")
             ax = axes[3]
             ax.axhline(np.log10(RETIRED_EW), color="k", lw=0.8)
             ax.axhline(np.log10(PASSIVE_EW), color="k", lw=0.8, ls=":")
-            ax.plot([-0.4, -0.4], [np.log10(RETIRED_EW), 3], color="k", lw=0.8)
-            ax.plot([-0.4, 1.0], [np.log10(6), np.log10(6)], color="k", lw=0.8, ls="--")
+            ax.plot([-0.4, -0.4], [np.log10(RETIRED_EW), 5], color="k", lw=0.8)
+            ax.plot([-0.4, 2.0], [np.log10(6), np.log10(6)], color="k", lw=0.8, ls="--")
+
+            def whan(c):
+                ew = get(c, "ew_ha")
+                return get(c, "log_nii_ha"), (np.log10(ew) if ew > 0 else np.nan)
+            for c in group:
+                x, y = whan(c)
+                ax.errorbar(x, y, xerr=get(c, "log_nii_ha_err"), fmt="o", ms=3, color=col_other, lw=0.6, zorder=2)
             if np.isfinite(m.get("log_nii_ha", np.nan)) and m.get("ew_ha", 0) > 0:
                 ax.errorbar(m["log_nii_ha"], np.log10(m["ew_ha"]), xerr=m["log_nii_ha_err"],
-                            fmt="o", ms=4, color="#D55E00")
-            ax.set_xlim(-1.6, 0.8)
-            ax.set_ylim(-1.0, 3.0)
+                            fmt="o", ms=ms_self, color=col_self, zorder=3)
+            pts = [whan(c) for c in group + [self]]
+            widen(ax, (-1.6, 0.8), (-1.0, 3.0), [p[0] for p in pts], [p[1] for p in pts])
             ax.set_xlabel(r"log [N$\,$II]/H$\alpha$")
             ax.set_ylabel(r"log EW(H$\alpha$) [$\mathrm{\AA}$]")
             for x, y, t in ((-1.5, 2.6, "SF"), (0.1, 2.6, "sAGN"), (0.1, 0.62, "wAGN"),
                             (-1.5, 0.05, "retired"), (-1.5, -0.8, "passive")):
                 ax.text(x, y, t, fontsize=6)
             label = self.label + (" (uncertain)" if self.uncertain else "")
-            fig.suptitle(f"{self.spectrum.name}: {label}", fontsize=9, y=1.04)
+            if alike:
+                labels = sorted({c.label for c in group + [self]})
+                fig.suptitle(f"{len(group) + 1} spectra: {', '.join(labels)}", fontsize=9, y=1.04)
+            else:
+                extra = (f"  (grey: the other {len(group)} spectr{'um' if len(group) == 1 else 'a'})" if group else "")
+                fig.suptitle(f"{self.spectrum.name}: {label}{extra}", fontsize=9, y=1.04)
             fig.tight_layout(w_pad=0.6)
         if save:
             savefig(fig, save)
@@ -367,16 +414,27 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
             warnings.simplefilter("ignore")
             r_n = fit(resid, _line_model(lines, False), wave_range=lrange, verbose=False)
             r_b = fit(resid, _line_model(lines, True), wave_range=lrange, verbose=False)
+            # In Seyfert 1s with broad lines of ~3000 km/s the Balmer part of the outflow wing (FWHM up to
+            # 2500 km/s) can take the broad line, leaving the broad component only the far wings (very wide,
+            # no H-beta), which fails the broad-line test. A model with the wing on the forbidden lines only,
+            # and a broad core plus a very broad wing, is fitted too; the better of the two (BIC) is kept,
+            # and the broad-line test is applied to the core.
+            r_f = fit(resid, _line_model(lines, True, balmer_wing=False, broad_wing=True), wave_range=lrange,
+                      verbose=False)
+            if r_f.bic < r_b.bic:
+                r_b = r_f
         return stellar, smooth, cont, r_n, r_b
 
     def broad_stats(r_n, r_b):
+        # the whole broad profile (core, and the very broad wing when it is fitted): flux, its S/N, FWHM
+        comps = [c.name for c in r_b.model.components if c.name in ("broad", "broad_wing")]
         bl = r_b.lines[r_b.lines.component == "broad"].set_index("line")
         bline = "Ha" if "Ha" in bl.index else ("Hb" if "Hb" in bl.index else None)
         if bline is None:
             return None, 0.0, 0.0, np.nan, np.nan
-        f, e = bl.loc[bline, "flux"], bl.loc[bline, "flux_err"]
-        return (bline, float(r_n.bic - r_b.bic), float(f / e) if e > 0 else 0.0,
-                float(bl.loc[bline, "fwhm"]), float(f))
+        m = r_b.measure(bline, comps)
+        f, e = m["flux"], m["flux_err"]
+        return (bline, float(r_n.bic - r_b.bic), float(f / e) if e > 0 else 0.0, float(m["fwhm"]), float(f))
 
     # 1.-2. stellar continuum (narrow masks) and emission lines
     masks = _MASK_NARROW

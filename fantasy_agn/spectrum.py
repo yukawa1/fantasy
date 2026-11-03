@@ -5,8 +5,9 @@ Preprocessing methods return a new Spectrum, so steps can be chained::
 
     spec = fa.read("spec-0461-51910-0361.fits").deredden(ebv=0.03).to_rest_frame()
 """
+import datetime
 import os
-
+import re
 import warnings
 
 import numpy as np
@@ -119,6 +120,28 @@ class Spectrum:
         return self.copy(wave=self.wave / (1 + z), flux=self.flux * (1 + z),
                          err=self.err * (1 + z), z=z, rest_frame=True,
                          resolution_curve=curve)
+
+    # observed-frame telluric bands (O2 B band, H2O, O2 A band) and strong sky lines, A
+    TELLURIC = ((6860.0, 6960.0), (7160.0, 7340.0), (7590.0, 7700.0))
+    SKY_LINES = (5577.3, 5889.9, 5895.9, 6300.3, 6363.8)
+
+    def mask_sky(self, telluric=True, sky_lines=True, width=5.0):
+        """
+        Mask the telluric absorption bands and the strongest night-sky emission
+        lines (observed frame; their residuals after the standard corrections
+        dominate chi2 of high-S/N galaxy spectra). Works before and after
+        ``to_rest_frame``. Returns a new spectrum (masked pixels get an infinite error).
+        """
+        z = (self.z or 0.0) if self.rest_frame else 0.0
+        w = self.wave * (1 + z)
+        bad = np.zeros(w.size, bool)
+        if telluric:
+            for a, b in self.TELLURIC:
+                bad |= (w > a) & (w < b)
+        if sky_lines:
+            for line in self.SKY_LINES:
+                bad |= np.abs(w - line) < width
+        return self.copy(err=np.where(bad, np.inf, self.err))
 
     def deredden(self, ebv=None, r_v=3.1, source="auto", sf11=True):
         """
@@ -268,7 +291,7 @@ class Spectrum:
 
     # ------------------------------------------------------------ readers
     @classmethod
-    def read(cls, path, format="auto", **kw):
+    def read(cls, path, format="auto", ra=None, dec=None, coords=None, **kw):
         """
         Read a spectrum file. format: 'auto', 'sdss', 'desi', 'ozdes', 'gama',
         'fits1d' (linear or log-linear WCS in the primary HDU) or 'text' (2-3
@@ -277,7 +300,51 @@ class Spectrum:
         index=..., and optionally redrock=... for the redshift (see
         fantasy_agn.desi). OzDES DR2 files hold the stack and every epoch: pass
         epoch=... for one epoch (see fantasy_agn.ozdes).
+
+        :param ra, dec: sky position, overriding the file (needed for the Galactic
+            extinction of files without coordinates, e.g. text files): degrees or
+            sexagesimal strings ('12:34:56.7', '+12:34:56'); see :func:`parse_coordinates`.
+        :param coords: the position as one string ('12:34:56.7 +12:34:56') or a SkyCoord.
+
+            spec = fa.read("spectrum.txt", z=0.123, ra="12:34:56.7", dec="+12:34:56").deredden()
         """
+        position = None
+        if coords is not None:
+            position = parse_coordinates(coords)
+        elif ra is not None or dec is not None:
+            if ra is None or dec is None:
+                raise ValueError("give both ra and dec (or coords=...)")
+            position = parse_coordinates(ra, dec)
+        spec = cls._read(path, format, **kw)
+        if position is not None:
+            spec.ra, spec.dec = position
+            spec.meta["coordinates_source"] = "given"
+        return spec
+
+    def with_flux_unit(self, unit):
+        """
+        A copy whose flux values are declared to be in units of ``unit`` erg/s/cm2/A (the values are not
+        changed), e.g. ``spec.with_flux_unit(1e-16)`` for a text file in units of 1e-16 erg/s/cm2/A.
+        Luminosities and black-hole masses need the flux unit.
+        """
+        unit = float(unit)
+        if not unit > 0:
+            raise ValueError("the flux unit must be positive, e.g. 1e-17")
+        new = self.copy()
+        new.flux_unit = unit
+        new.meta["flux_unit_source"] = "given"
+        new.meta.pop("flux_unit_unknown", None)
+        return new
+
+    def with_coordinates(self, ra, dec=None):
+        """A copy at the given sky position (degrees, sexagesimal or SkyCoord; see :func:`parse_coordinates`)."""
+        new = self.copy()
+        new.ra, new.dec = parse_coordinates(ra, dec)
+        new.meta["coordinates_source"] = "given"
+        return new
+
+    @classmethod
+    def _read(cls, path, format="auto", **kw):
         if format == "auto":
             format = _detect_format(path)
         if format == "desi":
@@ -293,14 +360,83 @@ class Spectrum:
                 args = ozdes.read_public(path)
             args.update(kw)
             return cls(**args)
-        reader = {"sdss": _read_sdss, "gama": _read_gama, "fits1d": _read_fits1d,
-                  "text": _read_text}[format]
-        args = reader(path)
+        if format == "text":
+            args = _read_text(path, autoscale="flux_unit" not in kw)
+        else:
+            args = {"sdss": _read_sdss, "gama": _read_gama, "fits1d": _read_fits1d}[format](path)
         args.update(kw)
         return cls(**args)
 
 
 read = Spectrum.read
+
+
+_DATE = re.compile(r"(?<!\d)((?:19|20)\d\d)[-_]?(0[1-9]|1[0-2])[-_]?(0[1-9]|[12]\d|3[01])(?!\d)")
+_MJD0 = datetime.date(1858, 11, 17)
+
+
+def date_from_name(path):
+    """'YYYY-MM-DD' from a date (YYYYMMDD, YYYY-MM-DD or YYYY_MM_DD) in a file name, else None."""
+    m = _DATE.search(os.path.basename(str(path)))
+    if not m:
+        return None
+    try:
+        return datetime.date(*map(int, m.groups())).isoformat()
+    except ValueError:
+        return None
+
+
+def mjd_from_name(path):
+    """MJD (at 0h) of the date in a file name, e.g. 'tAT2024zkr_20241031_0.txt' -> 60614.0; None without one."""
+    date = date_from_name(path)
+    return None if date is None else float((datetime.date.fromisoformat(date) - _MJD0).days)
+
+
+def mjd_to_date(mjd):
+    """'YYYY-MM-DD' of an MJD (None for None)."""
+    if mjd is None or not np.isfinite(mjd):
+        return None
+    return (_MJD0 + datetime.timedelta(days=float(mjd))).isoformat()
+
+
+def parse_coordinates(ra, dec=None):
+    """
+    (RA, Dec) in degrees from: numbers (degrees); sexagesimal strings
+    ('12:34:56.7', '+12:34:56' or '12h34m56.7s', '+12d34m56s'); one string with
+    both ('12:34:56.7 +12:34:56', '188.7362 12.5822'); or an astropy SkyCoord.
+    A sexagesimal RA is in hours, a sexagesimal Dec in degrees.
+    """
+    from astropy import units as u
+    from astropy.coordinates import SkyCoord
+    if isinstance(ra, SkyCoord):
+        c = ra.icrs
+        return float(c.ra.deg), float(c.dec.deg)
+    if dec is None:
+        if not isinstance(ra, str):
+            ra, dec = ra
+        else:
+            parts = ra.replace(",", " ").split()
+            if len(parts) == 2:
+                ra, dec = parts
+            elif len(parts) == 6:
+                ra, dec = " ".join(parts[:3]), " ".join(parts[3:])
+            else:
+                raise ValueError(f"cannot read coordinates from {ra!r}: give RA and Dec")
+
+    def number(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    r, d = number(ra), number(dec)
+    if r is not None and d is not None:
+        c = SkyCoord(r * u.deg, d * u.deg)
+    else:
+        c = SkyCoord(str(ra), str(dec), unit=(u.hourangle, u.deg))
+    if not -90 <= c.dec.deg <= 90:
+        raise ValueError(f"declination {c.dec.deg} is outside -90..90 degrees")
+    return float(c.ra.deg), float(c.dec.deg)
 
 
 # ------------------------------------------------------------------ helpers
@@ -343,8 +479,8 @@ def _detect_format(path):
         if is_original(hdul):
             return "ozdes"
         data = hdul[0].data
-        if ("GAMA" in str(h0.get("SURVEY", "")).upper()
-                or ("WMIN" in h0 and data is not None and data.ndim == 2)):
+        if (any("GAMA" in str(h0.get(k, "")).upper() for k in ("SURVEY", "ORIGIN"))
+                or (data is not None and data.ndim == 2 and ("WMIN" in h0 or "CATAID" in h0 or "GAMANAME" in h0))):
             return "gama"
     return "fits1d"
 
@@ -386,17 +522,48 @@ def _read_sdss(path):
 
 
 def _read_gama(path):
+    """
+    A GAMA spectrum (GAMA/AAOmega and the other surveys of the GAMA data releases): rows of flux, error, ...
+    in the primary HDU. The flux unit is taken from the description of the first row (GAMA/AAOmega:
+    'Flux-calibrated spectrum in 10^-17 erg/s/cm^2/A') or BUNIT; spectra that are not flux-calibrated get
+    flux_unit None. The date is UTMJD (or MJD, DATE-OBS).
+    """
     with fits.open(path) as hdul:
         h = hdul[0].header
         data = np.asarray(hdul[0].data, float)
-        if str(h.get("TELESCOP", "")).startswith("SDSS"):
-            wave = 10 ** (h["CRVAL1"] + h["CDELT1"] * np.arange(h["NAXIS1"]))
-        else:
-            wave = np.linspace(h["WMIN"], h["WMAX"], h["NAXIS1"])
-        flux, err = data[0], data[1]
-        return dict(wave=wave, flux=flux, err=np.where(np.isfinite(err), err, np.inf),
-                    z=h.get("Z"), name=_name(path), medium="air", ra=h.get("RA"),
-                    dec=h.get("DEC"))
+    n = data.shape[-1]
+    if str(h.get("TELESCOP", "")).startswith("SDSS"):
+        wave = 10 ** (h["CRVAL1"] + h["CDELT1"] * np.arange(n))
+    elif "WMIN" in h and "WMAX" in h:
+        wave = np.linspace(h["WMIN"], h["WMAX"], n)
+    else:
+        step = h.get("CD1_1", h.get("CDELT1", 1.0))
+        wave = h["CRVAL1"] + step * (np.arange(n) + 1 - h.get("CRPIX1", 1))
+    flux = data[0] if data.ndim == 2 else data
+    err = data[1] if data.ndim == 2 and data.shape[0] > 1 else None
+    meta = {k.lower(): h[k] for k in ("SPECID", "CATAID", "GAMANAME", "SURVEY", "NQ", "PROB", "SN") if k in h}
+    row1 = f"{h.get('ROW1', '')} {h.comments['ROW1'] if 'ROW1' in h else ''}"
+    unit, source = None, None
+    for text, where in ((row1, "ROW1"), (str(h.get("BUNIT", "")), "BUNIT")):
+        unit = flux_unit_from_text(text)
+        if unit:
+            source = f"{where}: {text.strip()[:80]}"
+            break
+    if unit:
+        meta["flux_unit_source"] = source
+    else:
+        meta["flux_unit_unknown"] = ("no flux unit in the header (spectra of some surveys in the GAMA releases are "
+                                     "not flux-calibrated); give it with flux_unit=... if it is known")
+    mjd = h.get("UTMJD", h.get("MJD"))
+    if mjd is None and h.get("DATE-OBS"):
+        try:
+            mjd = (datetime.date.fromisoformat(str(h["DATE-OBS"])[:10]) - _MJD0).days
+        except ValueError:
+            mjd = None
+    return dict(wave=wave, flux=flux, err=None if err is None else np.where(np.isfinite(err), err, np.inf),
+                z=h.get("Z"), name=str(h.get("SPECID", "")).strip() or _name(path), medium="air",
+                ra=h.get("RA"), dec=h.get("DEC"), flux_unit=unit, mjd=float(mjd) if mjd is not None else None,
+                meta=meta)
 
 
 def _read_fits1d(path):
@@ -408,14 +575,129 @@ def _read_fits1d(path):
     pix = np.arange(flux.size) + 1 - h.get("CRPIX1", 1)
     lam = h["CRVAL1"] + h.get("CDELT1", h.get("CD1_1", 1)) * pix
     wave = 10 ** lam if h.get("DC-FLAG", 0) == 1 or h["CRVAL1"] < 5 else lam
-    return dict(wave=wave, flux=flux, err=err, z=h.get("Z"), name=_name(path),
+    bunit = str(h.get("BUNIT", ""))
+    unit = flux_unit_from_text(bunit)
+    meta = {}
+    if unit is None and "erg" in bunit.lower() and np.nanmedian(np.abs(flux)) < 1e-10:
+        unit = 1.0                                             # BUNIT in erg/s/cm2/A, physical values
+    if unit is not None:
+        meta["flux_unit_source"] = f"BUNIT = {bunit}"
+    else:
+        meta["flux_unit_unknown"] = "no flux unit (BUNIT) in the header; give it with flux_unit=..."
+    return dict(wave=wave, flux=flux, err=err, z=h.get("Z"), name=_name(path), flux_unit=unit, meta=meta,
                 medium="air" if "AIR" in str(h.get("CTYPE1", "")).upper() else "vacuum")
 
 
-def _read_text(path):
-    df = pd.read_csv(path, sep=None, engine="python", comment="#", header=None)
-    if not np.issubdtype(df.dtypes.iloc[0], np.number):
-        df = pd.read_csv(path, sep=None, engine="python", comment="#")
+def _text_separator(path):
+    """',', tab or ';' if the data lines use one, else any run of whitespace."""
+    with open(path, errors="replace") as fh:
+        lines = [ln for ln in (next(fh, "") for _ in range(50)) if ln.strip() and not ln.lstrip().startswith("#")]
+    for sep in (",", "\t", ";"):
+        if lines and all(sep in ln for ln in lines[1:] or lines):
+            return sep
+    return r"\s+"
+
+
+def _local_noise(flux, half=25):
+    """Noise per pixel from the scatter of neighbouring pixels in a running window (no error column)."""
+    d = np.abs(np.diff(flux)) / np.sqrt(2)
+    d = np.concatenate([d[:1], d])
+    out = np.empty_like(flux)
+    for i in range(flux.size):
+        w = d[max(0, i - half):i + half + 1]
+        out[i] = 1.4826 * np.nanmedian(w)
+    good = np.isfinite(out) & (out > 0)
+    if good.any():
+        out[~good] = np.nanmedian(out[good])
+    return out
+
+
+_SUPERSCRIPT = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻", "0123456789-")
+_UNIT_SCALE = [re.compile(p, re.I) for p in (
+    r"(?<![\w.])(\d+(?:\.\d+)?)?\s*(?:x|×|\*|\\times)?\s*10\s*(?:\^|\*\*)\s*[({]?\s*(-\d+)",   # 1e-16 as 10^-16, 2.5x10**-17
+    r"(?<![\w.])(\d+(?:\.\d+)?)\s*[eE]\s*(-\d+)(?![\d.])",                                          # 1e-16, 1.0E-17
+    r"(?<![\w.])()10(-\d+)(?![\d.])",                                                                   # 10-16 (after removing ^)
+    r"[x×]\s*()10\s*(-\d+)(?![\d.])")                                                                   # x10⁻¹⁶
+]
+
+
+def flux_unit_from_text(text):
+    """
+    The flux unit (erg/s/cm2/A per unit of the flux values) written in a header line or keyword, e.g.
+    '1e-16 erg/s/cm2/A', 'flux [10^-17 erg s-1 cm-2 A-1]', 'F_lambda (x10⁻¹⁶)'; None if there is none.
+    Only scales from 1e-25 to 1e-10 are taken (flux densities of astronomical sources).
+    """
+    t = str(text).translate(_SUPERSCRIPT).replace("−", "-")
+    for rx in _UNIT_SCALE:
+        for m in rx.finditer(t):
+            mant, exp = m.group(1), int(m.group(2))
+            if -25 <= exp <= -10:
+                return float(mant or 1.0) * 10.0 ** exp
+    return None
+
+
+def _header_lines(path, n=40):
+    """The comment and header lines at the top of a text file."""
+    out = []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for _ in range(n):
+            line = fh.readline()
+            if not line:
+                break
+            body = line.strip()
+            if not body:
+                continue
+            first = re.split(r"[\s,;]+", body.lstrip("#"))[0]
+            try:
+                float(first)
+                if not body.startswith("#"):
+                    break                                   # the data begin
+            except ValueError:
+                pass
+            out.append(body)
+    return out
+
+
+def _read_text(path, autoscale=True):
+    sep = _text_separator(path)
+    df = pd.read_csv(path, sep=sep, engine="python", comment="#", header=None)
+    if not pd.api.types.is_numeric_dtype(df.dtypes.iloc[0]):          # a header line
+        df = pd.read_csv(path, sep=sep, engine="python", comment="#")
     arr = df.apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    arr = arr[:, np.isfinite(arr).any(axis=0)]        # columns that are empty (e.g. double separators)
+    arr = arr[np.isfinite(arr[:, 0]) & np.isfinite(arr[:, 1])]
+    if arr.shape[1] < 2:
+        raise ValueError(f"{os.path.basename(path)}: need at least two numeric columns (wavelength, flux)")
+    wave, flux = arr[:, 0], arr[:, 1]
     err = arr[:, 2] if arr.shape[1] > 2 else None
-    return dict(wave=arr[:, 0], flux=arr[:, 1], err=err, name=_name(path), medium="air")
+    meta = {}
+    if err is not None and np.nanmax(err) - np.nanmin(err) <= 1e-9 * abs(np.nanmax(err)):
+        # one value in every pixel: a placeholder, not a measured error
+        err = None
+        meta["err_column_constant"] = True
+    if err is None:
+        order = np.argsort(wave)
+        e = np.empty_like(flux)
+        e[order] = _local_noise(flux[order])
+        err = e
+        meta["err_estimated"] = "local scatter (no error column)"
+    flux_unit = None
+    scale = np.nanmedian(np.abs(flux))
+    header = [ln for ln in _header_lines(path) if re.search(r"flux|f_?lam|erg|unit|w/m|f\(", ln, re.I)]
+    stated = next(((u, ln) for ln in header for u in [flux_unit_from_text(ln)] if u), None)
+    if not autoscale:
+        pass                                                   # the caller gives flux_unit
+    elif stated:
+        # the values are in units of the scale written in the header (e.g. '1e-16 erg/s/cm2/A')
+        flux_unit = stated[0]
+        meta["flux_unit_source"] = f"file header: {stated[1][:120]}"
+    elif np.isfinite(scale) and 0 < scale < 1e-10:
+        # physical units (erg/s/cm2/A): store in units of 1e-17 as for SDSS (numerically safer)
+        flux, err, flux_unit = flux * 1e17, err * 1e17, 1e-17
+        meta["flux_scaled"] = "values multiplied by 1e17; flux_unit = 1e-17"
+        meta["flux_unit_source"] = "values in erg/s/cm2/A"
+    else:
+        # neither physical values nor a unit in the header: luminosities need flux_unit=...
+        meta["flux_unit_unknown"] = ("the flux unit is not in the file; give it with flux_unit=..., e.g. "
+                                     "fa.read(path, flux_unit=1e-16) for values in units of 1e-16 erg/s/cm2/A")
+    return dict(wave=wave, flux=flux, err=err, name=_name(path), medium="air", flux_unit=flux_unit, meta=meta)

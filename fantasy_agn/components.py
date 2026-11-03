@@ -12,6 +12,7 @@ provide a derivative for some parameter list it in ``numeric_derivatives``;
 instrumental resolution (FWHM in km/s), which is added in quadrature to every
 line width so fitted widths are intrinsic.
 """
+import functools
 import os
 
 import numpy as np
@@ -23,7 +24,7 @@ from .profiles import PROFILES, evaluate_profile
 from .wavelengths import vac_to_air
 
 __all__ = ("Component", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
-           "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "Extinction",
+           "BrokenPowerLaw", "Blackbody", "Polynomial", "Calibration", "BalmerContinuum", "HostGalaxy", "Extinction",
            "Absorption", "calzetti00")
 
 C_KMS = 299792.458
@@ -62,6 +63,21 @@ class Component:
     """Base class. Subclasses fill ``self.params`` and implement ``evaluate``."""
     kind = "other"           # 'line', 'continuum', 'host' or 'template'
     numeric_derivatives = ()  # local parameter names without analytic derivative
+
+    def __init_subclass__(cls, **kw):
+        # remember how each component was made (class and arguments of the outermost constructor),
+        # so that a model can be saved as a recipe and rebuilt (Model.to_dict / Model.from_dict)
+        super().__init_subclass__(**kw)
+        if "__init__" not in cls.__dict__:
+            return
+        init = cls.__init__
+
+        @functools.wraps(init)
+        def recorded(self, *args, **kwargs):
+            if "_recipe" not in self.__dict__:
+                self._recipe = (type(self).__name__, args, kwargs)
+            init(self, *args, **kwargs)
+        cls.__init__ = recorded
 
     def __init__(self, name):
         if "." in name:
@@ -132,6 +148,17 @@ class _GaussianSet(Component):
         self._n_amp, self._n_kin = n_amp, n_kin
         self._W = np.zeros((len(self._wave), n_amp))
         self._W[np.arange(len(self._wave)), self._amp_index] = self._weight
+        self._ratio_rows = np.zeros(0, int)      # lines whose flux is ratio * flux of another line
+        self._ratio_cols = np.zeros(0, int)
+
+    def _weights(self, p):
+        """Line weights per amplitude; the free flux ratios (if any) are the last parameters."""
+        rows = getattr(self, "_ratio_rows", ())         # absent in components saved before 2.0.0 had ratios
+        if not len(rows):
+            return self._W
+        W = self._W.copy()
+        W[rows, self._ratio_cols] = np.asarray(p, float)[len(p) - len(rows):]
+        return W
 
     def _split(self, p):
         """Amplitudes and one array per kinematic parameter (shift, fwhm, ...)."""
@@ -151,12 +178,15 @@ class _GaussianSet(Component):
     def evaluate(self, x, p, ctx):
         amp, kin = self._split(p)
         P, derivs = self._profiles(x, kin, ctx)
-        line_amp = self._W @ amp
+        W = self._weights(p)
+        line_amp = W @ amp
         f = P @ line_amp
         K = np.zeros((len(self._wave), self._n_kin))
         K[np.arange(len(self._wave)), self._kin_index] = line_amp
-        J = np.hstack([P @ self._W] + [d @ K for d in derivs])
-        return f, J
+        cols = [P @ W] + [d @ K for d in derivs]
+        if len(getattr(self, "_ratio_rows", ())):   # d f / d ratio = profile of the line * reference flux
+            cols.append(P[:, self._ratio_rows] * amp[self._ratio_cols])
+        return f, np.hstack(cols)
 
     def value(self, x, p, ctx):
         amp, kin = self._split(p)
@@ -170,18 +200,18 @@ class _GaussianSet(Component):
             P = np.exp(-0.5 * u * u) / (SQRT_2PI * sig_lam)
         else:
             P, _ = evaluate_profile(self.profile, x, lam0, per_line, sig_inst)
-        return P @ (self._W @ amp)
+        return P @ (self._weights(p) @ amp)
 
     def line_fluxes(self, p):
         """Integrated flux of every line (amplitude parameters mixed by W)."""
-        return self._W @ np.asarray(p, float)[:self._n_amp]
+        return self._weights(p) @ np.asarray(p, float)[:self._n_amp]
 
     def line_profile(self, x, p, ctx, line):
         """Profile of one line only."""
         amp, kin = self._split(p)
         P, _ = self._profiles(x, kin, ctx)
         k = self.line_names.index(line)
-        return P[:, k] * (self._W[k] @ amp)
+        return P[:, k] * (self._weights(p)[k] @ amp)
 
     def evaluate_basis(self, x, p, ctx):
         amp, kin = self._split(p)
@@ -195,7 +225,7 @@ class _GaussianSet(Component):
             P = np.exp(-0.5 * u * u) / (SQRT_2PI * sig_lam)
         else:
             P, _ = evaluate_profile(self.profile, x, lam0, per_line, sig_inst)
-        A = P @ self._W
+        A = P @ self._weights(p)
         J = np.zeros((x.size, len(p)))
         J[:, :self._n_amp] = A
         return A @ amp, J
@@ -204,7 +234,7 @@ class _GaussianSet(Component):
         """Profile of each amplitude parameter at unit amplitude."""
         _, kin = self._split(p)
         P, _ = self._profiles(x, kin, ctx)
-        return P @ self._W
+        return P @ self._weights(p)
 
 
 class Lines(_GaussianSet):
@@ -228,6 +258,10 @@ class Lines(_GaussianSet):
         The reference line is then parametrised by its flux in excess of
         flux(line) / ratio (``<name>.<reference>.excess``, >= 0), which keeps
         the problem linear in the fluxes with simple bounds.
+    :param line_ratios: dict {line: (reference line, (start, min, max))} making the flux ratio
+        line/reference a free parameter within physical limits (``<name>.<line>.ratio``) instead of a
+        free flux, e.g. {'Hg': ('Hb', (0.35, 0.1, 0.5))} keeps the Balmer decrement H-gamma/H-beta
+        between 0.1 and 0.5 (case B: 0.47). The reference keeps its flux parameter.
     :param absorption: if True, fluxes are negative (absorption lines).
     :param role: 'narrow', 'broad', 'outflow' or None (guessed from the name,
         else from the initial FWHM). Used to pick components for black-hole
@@ -240,6 +274,11 @@ class Lines(_GaussianSet):
         - 'gauss-hermite': Gaussian core ``fwhm`` with skewness ``h3`` and
           kurtosis ``h4`` (van der Marel & Franx 1993); the flux does not
           depend on h3 and h4.
+        - 'stratified': a radially stratified, virialised BLR: Gaussians of FWHM
+          ``fwhm`` (r/r_out)^(-1/2) summed from r_in to r_out = 10^``span`` r_in with
+          dL/d ln r ~ r^(3 - ``gamma``). ``fwhm`` is the width at the outer edge (the
+          core), fwhm 10^(span/2) the width at the inner edge; the wings fall
+          roughly as a power law, v^-2 (Lorentzian-like) for gamma ~ 3. span = 0 is a single Gaussian.
 
         For non-Gaussian profiles, ``result.measure(line)`` gives the actual
         FWHM, line dispersion and centroid of the profile.
@@ -250,11 +289,17 @@ class Lines(_GaussianSet):
     def __init__(self, name, lines, fwhm=(500, 50, 2000), shift=(0, -1000, 1000),
                  ratios=None, tie_kinematics=True, absorption=False, flux_max=np.inf,
                  role=None, profile="gaussian", h3=(0, -0.3, 0.3), h4=(0, -0.3, 0.3),
-                 fwhm_l=None, max_ratios=None):
+                 fwhm_l=None, max_ratios=None, span=(0.6, 0.0, 2.5), gamma=(2.5, 0.0, 5.0),
+                 line_ratios=None):
         super().__init__(name)
         if profile not in PROFILES:
             raise ValueError(f"profile must be one of {sorted(PROFILES)}")
         self.profile = profile
+        # the arguments, to rebuild the component with another profile (Model.set_profile)
+        self._args = dict(lines=list(lines), fwhm=fwhm, shift=shift, ratios=ratios, tie_kinematics=tie_kinematics,
+                          absorption=absorption, flux_max=flux_max, role=role, h3=h3, h4=h4, fwhm_l=fwhm_l,
+                          max_ratios=max_ratios, span=span, gamma=gamma, line_ratios=line_ratios)
+        self.absorption = bool(absorption)
         entries = []
         for item in lines:
             if isinstance(item, str):
@@ -273,6 +318,13 @@ class Lines(_GaussianSet):
         self.role = role
         lo, hi = (-flux_max, 0.0) if absorption else (0.0, flux_max)
         self.max_ratios = dict(max_ratios or {})
+        self.line_ratios = {a: (b, _limits(r, (r, r, r)) if np.ndim(r) else (float(r),) * 3)
+                            for a, (b, r) in (line_ratios or {}).items()}
+        for a, (b, _) in self.line_ratios.items():
+            if a not in self.line_names or b not in self.line_names or a == b or b in self.line_ratios:
+                raise ValueError(f"line_ratios: bad entry {a!r}: reference {b!r}")
+            if a in self.max_ratios or any(a == ref for ref, _ in self.max_ratios.values()):
+                raise ValueError(f"line_ratios: {a!r} is also in max_ratios")
         refs = {b: a for a, (b, _) in self.max_ratios.items()}
         for a, (b, r) in self.max_ratios.items():
             if a not in self.line_names or b not in self.line_names or r <= 0 or a == b:
@@ -280,6 +332,8 @@ class Lines(_GaussianSet):
             if a in refs or len([x for x in refs if x == b]) > 1:
                 raise ValueError("max_ratios: a line cannot be both bounded and a reference")
         for ln in self.line_names:
+            if ln in self.line_ratios:
+                continue
             if ln in refs:
                 self._par(f"{ln}.excess", -1.0 if absorption else 1.0, lo, hi, linear=True,
                           unit="flux*A",
@@ -291,20 +345,31 @@ class Lines(_GaussianSet):
         fwhm_l = _limits(fwhm_l, (fwhm[0], max(fwhm[1], 1.0), fwhm[2]))
         specs = {"shift": (shift, "km/s", "velocity shift"),
                  "fwhm": (fwhm, "km/s", "Lorentzian FWHM" if profile == "lorentzian"
-                          else "Gaussian FWHM" if profile == "voigt" else "intrinsic FWHM"),
+                          else "Gaussian FWHM" if profile == "voigt"
+                          else "FWHM at the outer BLR edge" if profile == "stratified" else "intrinsic FWHM"),
                  "fwhm_l": (fwhm_l, "km/s", "Lorentzian FWHM"),
                  "h3": (_limits(h3, (0, -0.3, 0.3)), "", "Gauss-Hermite skewness"),
-                 "h4": (_limits(h4, (0, -0.3, 0.3)), "", "Gauss-Hermite kurtosis")}
+                 "h4": (_limits(h4, (0, -0.3, 0.3)), "", "Gauss-Hermite kurtosis"),
+                 "span": (_limits(span, (0.6, 0.0, 2.5)), "dex", "log10 r_out/r_in of the stratified BLR"),
+                 "gamma": (_limits(gamma, (2.5, 0.0, 5.0)), "", "emissivity index, dL/dlnr ~ r^(3-gamma)")}
         for par in PROFILES[profile]:
             limits, unit, description = specs[par]
             for kn in kin_names:
                 self._par(par if kn is None else f"{kn}.{par}", *limits, unit=unit,
                           description=description)
-        self._setup([w for _, w in entries], np.ones(n), np.arange(n),
+        for a, (b, lim) in self.line_ratios.items():
+            self._par(f"{a}.ratio", *lim, fixed=lim[1] == lim[2], unit="", description=f"flux ratio {a}/{b}")
+        amp_lines = [ln for ln in self.line_names if ln not in self.line_ratios]
+        col = {ln: k for k, ln in enumerate(amp_lines)}
+        amp_index = [col[self.line_ratios[ln][0]] if ln in self.line_ratios else col[ln] for ln in self.line_names]
+        weight = [self.line_ratios[ln][1][0] if ln in self.line_ratios else 1.0 for ln in self.line_names]
+        self._setup([w for _, w in entries], weight, amp_index,
                     np.arange(n) if not tie_kinematics else np.zeros(n, int),
-                    n, n if not tie_kinematics else 1)
+                    len(amp_lines), n if not tie_kinematics else 1)
+        self._ratio_rows = np.array([self.line_names.index(a) for a in self.line_ratios], int)
+        self._ratio_cols = np.array([col[b] for b, _ in self.line_ratios.values()], int)
         for a, (b, r) in self.max_ratios.items():
-            self._W[self.line_names.index(b), self.line_names.index(a)] = 1.0 / r
+            self._W[self.line_names.index(b), col[a]] = 1.0 / r
         self.ratios = dict(ratios or {})
 
     def default_ties(self):
@@ -338,13 +403,20 @@ class FeII(_Template):
     FeII emission template: lines grouped in multiplets with relative
     intensities fixed within each multiplet and a common shift and FWHM.
     ``kind='optical'`` uses the Kovacevic et al. (2010) / Shapovalova et al.
-    (2012) model (3700-10900 A); ``kind='uv'`` the UV template around MgII.
+    (2012) model (3700-10900 A); ``kind='uv'`` the UV model around Mg II of
+    Kovacevic-Dojcinovic & Popovic (2015, 2690-3005 A: multiplets UV 60-63, 78 and
+    the I Zw 1 lines); ``kind='uv_extended'`` a UV model built as the optical one
+    (2200-3500 A: lines grouped by lower term, a4D split into UV 60-63 as in 2015,
+    intensities at 10^4 K from NIST atomic data, and the I Zw 1 lines).
     """
 
     def __init__(self, name="feii", kind="optical", fwhm=(2000, 1000, 6000),
                  shift=(0, -1500, 1500), amp_max=np.inf):
-        super().__init__(name, "feii" if kind == "optical" else "feii_uv",
-                         fwhm, shift, amp_max)
+        templates = {"optical": "feii", "uv": "feii_uv", "uv_extended": "feii_uv_extended"}
+        if kind not in templates:
+            raise ValueError(f"FeII kind must be one of {sorted(templates)}")
+        self.feii_kind = kind
+        super().__init__(name, templates[kind], fwhm, shift, amp_max)
 
 
 class HighOrderBalmer(_Template):
@@ -382,6 +454,41 @@ class PowerLaw(Component):
         shape = r ** index
         f = amp * shape
         return f, np.column_stack([shape, f * np.log(r)])
+
+
+class Blackbody(Component):
+    """
+    Blackbody continuum f = amp * B_lambda(x, T) / B_lambda(pivot, T); amp is the
+    flux density at ``pivot`` and ``temperature`` the blackbody temperature (K).
+    The hot (1-5e4 K) continuum of tidal disruption events; in the optical it is
+    close to the Rayleigh-Jeans tail, so T is constrained only loosely without UV
+    data (fix it if it is known).
+    """
+    kind = "continuum"
+    C2 = 1.438776877e8          # h c / k in A K
+
+    def __init__(self, name="continuum", pivot=5100.0, temperature=(20000.0, 5000.0, 80000.0)):
+        super().__init__(name)
+        self.pivot = float(pivot)
+        self._par("amp", 1.0, 0.0, np.inf, linear=True, unit="flux/A",
+                  description=f"flux density at {pivot:g} A")
+        self._par("temperature", *_limits(temperature, (20000.0, 5000.0, 80000.0)), unit="K",
+                  description="blackbody temperature")
+
+    @classmethod
+    def _log_b(cls, x, t):
+        """ln B_lambda (up to a constant) and its derivative with respect to T."""
+        y = cls.C2 / (x * t)
+        em1 = np.expm1(y)
+        return -5 * np.log(x) - np.log(em1), (y / t) * (em1 + 1) / em1
+
+    def evaluate(self, x, p, ctx):
+        amp, t = p
+        lb, dlb = self._log_b(np.asarray(x, float), t)
+        lp, dlp = self._log_b(self.pivot, t)
+        shape = np.exp(lb - lp)
+        f = amp * shape
+        return f, np.column_stack([shape, f * (dlb - dlp)])
 
 
 class BrokenPowerLaw(Component):
@@ -616,6 +723,45 @@ class Extinction(Component):
         k = self.curve(x)
         T = 10 ** (-0.4 * p[0] * k)
         return T, (-0.4 * np.log(10) * k * T)[:, None]
+
+
+class Calibration(Component):
+    """
+    Smooth multiplicative correction of the whole model, 1 + sum_k c_k P_k(u)
+    (Legendre polynomials P_1..P_degree of u in [-1, 1] over ``wave_range``),
+    as the multiplicative polynomial of full-spectrum fitting (pPXF ``mdegree``,
+    Cappellari 2017). It absorbs the errors of the spectrophotometric
+    calibration and of the dust law, at the 1-3% level over hundreds of A,
+    which in spectra of S/N > ~40 are as large as the noise. The constant term
+    is fixed (1): fluxes keep the calibration of the data on average.
+
+    :param wave_range: (min, max) wavelength over which u runs from -1 to 1.
+    :param degree: number of Legendre terms; keep it low (3-8 over the optical)
+        so that it cannot follow absorption or emission features.
+    :param limit: bound on every coefficient.
+    :param start: first Legendre term; 2 leaves out the linear tilt, which is
+        degenerate with a fitted dust screen (E(B-V) of the stars or the gas).
+    """
+    kind = "calibration"
+
+    def __init__(self, wave_range, degree=4, name="calibration", limit=0.3, start=1):
+        super().__init__(name)
+        self.wave_range = (float(wave_range[0]), float(wave_range[1]))
+        self.degree = int(degree)
+        self.start = int(start)
+        for k in range(self.start, self.degree + 1):
+            self._par(f"c{k}", 0.0, -limit, limit, description=f"Legendre coefficient {k}")
+
+    def _basis(self, x):
+        from numpy.polynomial import legendre
+        a, b = self.wave_range
+        u = np.clip(2 * (np.asarray(x, float) - a) / (b - a) - 1, -1, 1)
+        return np.stack([legendre.legval(u, np.eye(self.degree + 1)[k]) for k in range(self.start, self.degree + 1)],
+                        axis=1)
+
+    def evaluate(self, x, p, ctx):
+        B = self._basis(x)
+        return 1.0 + B @ np.asarray(p, float), B
 
 
 class Absorption(Component):

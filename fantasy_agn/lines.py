@@ -1,108 +1,87 @@
 """
 Line library and emission templates.
 
-All wavelengths are stored in vacuum. Following the IAU convention the
-reference values below are given in air above 2000 A and in vacuum below, and
-are converted once at import. Models convert them to the medium of the
-spectrum being fitted, so SDSS-like vacuum spectra are fitted without
-resampling.
+All wavelengths are stored in vacuum. The library (data/lines.csv) lists each
+line with its wavelength, the medium that wavelength refers to (air or vacuum),
+ion, type, series and notes; it is converted to vacuum once at import. Models
+convert wavelengths to the medium of the spectrum being fitted, so SDSS-like
+vacuum spectra are fitted without resampling. The FeII and Balmer templates
+follow the IAU convention (air above 2000 A, vacuum below).
 """
 import os
+import re
 
 import numpy as np
 import pandas as pd
 
 from .wavelengths import air_to_vac
 
-__all__ = ("LINES", "line_wavelength", "read_line_list", "load_template")
+__all__ = ("LINES", "LINE_SETS", "line_wavelength", "line_table", "lines_in", "line_info", "line_set",
+           "read_line_list", "load_template")
 
 DATA = os.path.join(os.path.dirname(__file__), "data")
 
-# name: wavelength in Angstrom (air above 2000 A, vacuum below)
-_REFERENCE = {
-    "Lya": 1215.67,
-    "NV1240": 1240.14,
-    "SiIV1397": 1396.76,
-    "CIV1549": 1549.06,
-    "CIV1548": 1548.19,
-    "CIV1551": 1550.77,
-    "HeII1640": 1640.42,
-    "OIII]1663": 1663.48,
-    "AlIII1857": 1857.40,
-    "CIII]1909": 1908.73,
-    "[NeIV]2424": 2423.83,
-    "MgII2798": 2798.75,
-    "MgII2796": 2795.53,
-    "MgII2803": 2802.70,
-    "[NeV]3426": 3425.87,
-    "[OII]3726": 3726.03,
-    "[OII]3729": 3728.82,
-    "[NeIII]3869": 3868.76,
-    "[FeVII]3759": 3758.92,
-    "[NeIII]3968": 3967.47,
-    "H12": 3750.15,
-    "H11": 3770.63,
-    "H10": 3797.90,
-    "H9": 3835.38,
-    "H8": 3889.05,
-    "HeI3889": 3888.65,
-    "He": 3970.08,
-    "[SII]4069": 4068.60,
-    "[SII]4076": 4076.35,
-    "Hd": 4101.74,
-    "Hg": 4340.47,
-    "[OIII]4363": 4363.21,
-    "HeI4471": 4471.48,
-    "HeII4686": 4685.71,
-    "Hb": 4861.33,
-    "[OIII]4959": 4958.91,
-    "[OIII]5007": 5006.84,
-    "[NI]5198": 5197.90,
-    "[NI]5200": 5200.26,
-    "[FeVII]5159": 5158.89,
-    "[FeXIV]5303": 5302.86,
-    "[FeVII]5721": 5720.70,
-    "[NII]5755": 5754.59,
-    "HeI5876": 5875.62,
-    "OI6046": 6046.44,
-    "[FeVII]6087": 6087.00,
-    "[OI]6300": 6300.30,
-    "[SIII]6312": 6312.06,
-    "[OI]6364": 6363.78,
-    "[FeX]6375": 6374.51,
-    "[NII]6548": 6548.05,
-    "Ha": 6562.82,
-    "[NII]6583": 6583.45,
-    "HeI6678": 6678.15,
-    "[SII]6716": 6716.44,
-    "[SII]6731": 6730.82,
-    "HeI7065": 7065.20,
-    "[ArIII]7136": 7135.79,
-    "[OII]7320": 7319.99,
-    "[OII]7330": 7330.20,
-    "OI8446": 8446.36,
-    "CaII8498": 8498.02,
-    "CaII8542": 8542.09,
-    "CaII8662": 8662.14,
-    "Pa9": 9229.01,
-    "[SIII]9069": 9068.60,
-    "[SIII]9531": 9531.10,
-    "Pad": 10049.37,
-    "HeI10830": 10830.34,
-    "Pag": 10938.09,
-}
-
 _ALIASES = {"Halpha": "Ha", "Hbeta": "Hb", "Hgamma": "Hg", "Hdelta": "Hd",
-            "Hepsilon": "He", "H-epsilon": "He", "MgII": "MgII2798", "CIV": "CIV1549",
-            "CIII]": "CIII]1909", "HeII": "HeII4686", "HeI": "HeI5876"}
+            "Hepsilon": "He", "H-epsilon": "He", "Lyalpha": "Lya", "Lybeta": "Lyb",
+            "MgII": "MgII2798", "CIV": "CIV1549", "CIII]": "CIII]1909", "OVI": "OVI1034",
+            "HeII": "HeII4686", "HeI": "HeI5876", "NIII": "NIII4640",
+            "Paalpha": "Paa", "Pabeta": "Pab", "Pagamma": "Pag", "Padelta": "Pad", "Paepsilon": "Pae",
+            "Bralpha": "Bra", "Brbeta": "Brb", "Brgamma": "Brg", "Brdelta": "Brd", "Brepsilon": "Bre",
+            "Pfbeta": "Pfb", "Pfgamma": "Pfg", "Pfdelta": "Pfd", "Pfepsilon": "Pfe"}
+for _k in [k for k in _ALIASES if k[:2] in ("Pa", "Br", "Pf")]:
+    _ALIASES[_k[:2] + "-" + _k[2:]] = _ALIASES[_k]          # 'Pa-alpha', 'Br-gamma', ...
 
 
 def _to_vacuum(wave):
+    """Air to vacuum above 2000 A (IAU convention), unchanged below; used for the templates."""
     wave = np.asarray(wave, dtype=float)
     return np.where(wave > 2000, air_to_vac(wave), wave)
 
 
-LINES = {name: float(_to_vacuum(w)) for name, w in _REFERENCE.items()}
+def _load_library():
+    """The line library (data/lines.csv): every wavelength with its medium, converted to vacuum."""
+    df = pd.read_csv(os.path.join(DATA, "lines.csv"), comment="#", skipinitialspace=True,
+                     keep_default_na=False)
+    if df.name.duplicated().any():
+        raise ValueError(f"duplicate line names: {sorted(df.name[df.name.duplicated()])}")
+    wave = df.wavelength.to_numpy(dtype=float)
+    air = (df.medium == "air").to_numpy()
+    df.insert(1, "vacuum", np.where(air, air_to_vac(wave), wave))
+    return df.sort_values("vacuum", kind="stable").set_index("name")
+
+
+_LIBRARY = _load_library()
+LINES = {name: float(w) for name, w in _LIBRARY.vacuum.items()}
+
+
+def line_table():
+    """
+    The line library as a table (one row per line, sorted by wavelength): vacuum
+    wavelength, the tabulated wavelength and its medium, ion, type (recombination,
+    permitted, semi-forbidden, forbidden, coronal, bowen, molecular, feature), the
+    series or multiplet, and notes on blends and caveats.
+    """
+    return _LIBRARY.copy()
+
+
+def lines_in(wmin=0.0, wmax=np.inf, type=None, ion=None, series=None):
+    """
+    Names of the library lines with vacuum wavelengths in [wmin, wmax] (A), optionally
+    only of the given type(s), ion(s) or series, e.g.
+    ``lines_in(10000, 25000, type="recombination")`` or ``lines_in(series="Brackett")``.
+    """
+    t = _LIBRARY[(_LIBRARY.vacuum >= wmin) & (_LIBRARY.vacuum <= wmax)]
+    for col, val in (("type", type), ("ion", ion), ("series", series)):
+        if val is not None:
+            t = t[t[col].isin([val] if isinstance(val, str) else list(val))]
+    return list(t.index)
+
+
+def line_info(name):
+    """Everything the library knows about one line (accepts aliases)."""
+    name = _ALIASES.get(name, name)
+    line_wavelength(name)
+    return {"name": name, **_LIBRARY.loc[name].to_dict()}
 
 
 def line_wavelength(name):
@@ -114,6 +93,50 @@ def line_wavelength(name):
         raise KeyError(
             f"unknown line {name!r}; give (name, wavelength) or use one of "
             f"{sorted(LINES)}") from None
+
+
+# The line lists of FANTASY 1 (data/<file>.csv, columns line, position) as named sets of library lines.
+LINE_SETS = {
+    "narrow_basic": ("Narrow lines, basic", "narrow_basic"),
+    "narrow_plus": ("Narrow lines, extended", "narrow_plus"),
+    "oiii_nii": ("[O III] and [N II]", "oiii_nii"),
+    "hydrogen": ("Hydrogen", "hydrogen"),
+    "helium": ("Helium", "helium"),
+    "broad": ("Other broad lines", "broad"),
+    "coronal": ("Coronal and high-ionisation", "coronal"),
+    "feII_forbidden": ("[Fe II] forbidden", "feII_forbidden"),
+    "feii_IZw1": ("Fe II permitted (I Zw 1)", "feii_IZw1"),
+}
+
+
+def _ion(label):
+    """'[FeII]21F' -> 'Fe II', 'Hb' -> 'H I', 'feii' -> 'Fe II' (labels of the FANTASY 1 line lists)."""
+    label = label.strip()
+    if label in ("Ha", "Hb", "Hg", "Hd", "Heps") or label[:2] in ("Pa", "Ly", "Br", "Pf"):
+        return "H I"
+    if label.lower() == "feii":
+        return "Fe II"
+    m = re.match(r"\[?([A-Z][a-z]?)([IVX]+)", label)
+    return f"{m.group(1)} {m.group(2)}" if m else label
+
+
+def line_set(name, wmin=0.0, wmax=np.inf):
+    """
+    Library names of a FANTASY 1 line list (see ``LINE_SETS``: 'narrow_basic',
+    'narrow_plus', 'oiii_nii', 'hydrogen', 'helium', 'broad', 'coronal',
+    'feII_forbidden', 'feii_IZw1'), optionally only those with vacuum
+    wavelengths in [wmin, wmax], e.g. ``Lines("coronal", fa.line_set("coronal", 4000, 7000))``.
+    """
+    if name not in LINE_SETS:
+        raise KeyError(f"unknown line set {name!r}; one of {sorted(LINE_SETS)}")
+    df = pd.read_csv(os.path.join(DATA, LINE_SETS[name][1] + ".csv"), skipinitialspace=True)
+    out = []
+    for label, w in zip(df.line, df.position.astype(float)):
+        c = _LIBRARY[_LIBRARY.ion == _ion(label)]
+        d = np.minimum((c.wavelength - w).abs(), (c.vacuum - w).abs()).drop(out, errors="ignore")
+        if len(d) and d.min() < 3.0:
+            out.append(d.idxmin())
+    return [n for n in out if wmin <= LINES[n] <= wmax]
 
 
 def read_line_list(path, medium="air"):
@@ -136,10 +159,15 @@ def load_template(kind):
     group names, group index of each line).
 
     kind: 'feii' (optical FeII, Kovacevic et al. 2010 / Shapovalova et al. 2012),
-          'feii_uv' (UV FeII around MgII), 'balmer' (high-order Balmer lines).
+          'feii_uv' (the UV model around MgII of Kovacevic-Dojcinovic & Popovic 2015, 2690-3005 A),
+          'feii_uv_extended' (UV FeII 2200-3500 A, grouped by lower term as the optical model),
+          'balmer' (high-order Balmer lines).
     """
     if kind == "feii":
         df = pd.read_csv(os.path.join(DATA, "feII_model.csv"))
+        names, wave, inten = df.ime, df.wav, df.Int
+    elif kind == "feii_uv_extended":
+        df = pd.read_csv(os.path.join(DATA, "uvfe2.csv"), comment="#")
         names, wave, inten = df.ime, df.wav, df.Int
     elif kind == "feii_uv":
         df = pd.read_csv(os.path.join(DATA, "uvfe.csv"))

@@ -44,8 +44,17 @@ def _level_ratios(data):
     return np.array(out)
 
 
+def _legendre_basis(x, wave_range, degree):
+    """Legendre polynomials P_1..P_degree of u in [-1, 1] over wave_range (u clipped outside)."""
+    from numpy.polynomial import legendre
+    a, b = wave_range
+    u = np.clip(2 * (np.asarray(x, float) - a) / (b - a) - 1, -1, 1)
+    return np.stack([legendre.legval(u, np.eye(degree + 1)[j]) for j in range(1, degree + 1)], axis=1)
+
+
 class _JointProblem:
-    def __init__(self, model, spectra, masks, shared, intercalibrate):
+    def __init__(self, model, spectra, masks, shared, intercalibrate, calibration_degree=0, wave_range=None,
+                 epoch_scaled=(), calibration_limit=0.3, calibration_groups=None):
         self.model = model
         self.n = len(spectra)
         self.data = [(s.wave[m], s.flux[m], s.err[m], s.context) for s, m in zip(spectra, masks)]
@@ -84,10 +93,47 @@ class _JointProblem:
                 joint.add(Parameter(f"scale@{k}", g, g / 3.0, g * 3.0, fixed=(k == 0),
                                     description="flux calibration factor"))
                 self.scale_names.append(f"scale@{k}")
+        # wavelength-dependent calibration: s_k(lambda) = scale_k (1 + sum_j c_kj P_j(u)),
+        # anchored by the shared narrow lines (and host) over the whole fitted range
+        self.cal_degree = int(calibration_degree) if intercalibrate else 0
+        self.cal_range = tuple(wave_range) if wave_range is not None else (
+            min(d[0].min() for d in self.data), max(d[0].max() for d in self.data))
+        if self.cal_degree:
+            for k in range(self.n):
+                for j in range(1, self.cal_degree + 1):
+                    joint.add(Parameter(f"cal{j}@{k}", 0.0, -calibration_limit, calibration_limit,
+                                        fixed=(k == 0), description=f"calibration Legendre coefficient {j}"))
+        # components with a shared shape and a free amplitude per epoch (e.g. the host galaxy
+        # seen through different apertures): their linear parameters are multiplied by amp@k
+        self.scaled = []
+        slices = dict(zip([c.name for c in model.components], model._slices()))
+        for comp in epoch_scaled:
+            if comp not in slices:
+                raise ValueError(f"epoch_scaled: no component {comp!r} in the model")
+            plist = list(base)
+            pos = [i for i in range(slices[comp].start, slices[comp].stop) if plist[i].linear]
+            for k in range(self.n):
+                joint.add(Parameter(f"{comp}.amp@{k}", 1.0, 0.05, 20.0, fixed=(k == 0),
+                                    description=f"amplitude of {comp} in this epoch (relative to the reference)"))
+            self.scaled.append((comp, np.array(pos)))
+        self._basis = [_legendre_basis(d[0], self.cal_range, self.cal_degree) if self.cal_degree else None
+                       for d in self.data]
+        # epochs from one instrument share its colour (Legendre) calibration: tie to the first
+        # epoch of each group; the overall scale stays free per epoch (slit losses differ)
+        if self.cal_degree and calibration_groups:
+            for group in calibration_groups:
+                lead = min(group, key=lambda k: (k != 0, k))      # the reference epoch leads its group
+                for k in group:
+                    if k != lead:
+                        for j in range(1, self.cal_degree + 1):
+                            joint[f"cal{j}@{k}"].tie = (f"cal{j}@{lead}", 1.0, 0.0)
         self.joint = joint
         jn = joint.names
         self.index = [np.array([jn.index(names[p.name][k]) for p in base]) for k in range(self.n)]
         self.scale_index = [jn.index(n) for n in self.scale_names]
+        self.cal_index = [[jn.index(f"cal{j}@{k}") for j in range(1, self.cal_degree + 1)]
+                          for k in range(self.n)]
+        self.amp_index = [[jn.index(f"{comp}.amp@{k}") for comp, _ in self.scaled] for k in range(self.n)]
         T, c, self.free = joint.affine()
         self.T, self.c = sparse.csr_matrix(T), c
         self.lb = np.array([p.min for p in self.free])
@@ -103,7 +149,8 @@ class _JointProblem:
         Tcsr = self.T.tocsr()
         self._epoch_map = []
         for k in range(self.n):
-            cols = list(self.index[k]) + ([self.scale_index[k]] if self.scale_names else [])
+            cols = (list(self.index[k]) + ([self.scale_index[k]] if self.scale_names else []) + self.cal_index[k]
+                    + self.amp_index[k])
             Tk = Tcsr[cols]
             fc = np.unique(Tk.indices)
             self._epoch_map.append((fc, Tk[:, fc].toarray()))
@@ -111,11 +158,55 @@ class _JointProblem:
     def full(self, theta):
         return self.T @ theta + self.c
 
+    def __setstate__(self, state):
+        # fits saved before the wavelength-dependent calibration existed
+        self.__dict__.update(state)
+        self.__dict__.setdefault("cal_degree", 0)
+        self.__dict__.setdefault("cal_index", [[] for _ in range(self.n)])
+        self.__dict__.setdefault("_basis", [None] * self.n)
+        self.__dict__.setdefault("scaled", [])
+        self.__dict__.setdefault("amp_index", [[] for _ in range(self.n)])
+
+    def factor(self, k, full, x=None):
+        """Calibration factor of epoch k: a number, or s(lambda) at x (default: its fitted pixels)."""
+        sc = full[self.scale_index[k]] if self.scale_names else 1.0
+        if not self.cal_degree:
+            return sc
+        B = self._basis[k] if x is None else _legendre_basis(x, self.cal_range, self.cal_degree)
+        return sc * (1.0 + B @ full[self.cal_index[k]])
+
+    def epoch_full(self, k, full):
+        """The full parameters of epoch k as in its own model (scaled components multiplied)."""
+        fk = np.array(full[self.index[k]], float)
+        for (comp, pos), ai in zip(self.scaled, self.amp_index[k]):
+            fk[pos] = fk[pos] * full[ai]
+        return fk
+
     def _epoch(self, k, full):
+        """Model of epoch k; Jb is with respect to the joint (shared) parameters of the epoch,
+        followed by d model / d amp for the scaled components."""
         x, y, err, ctx = self.data[k]
-        f, Jb = self.model.evaluate_with_jacobian(x, ctx, full[self.index[k]])
-        s = full[self.scale_index[k]] if self.scale_names else 1.0
-        return x, y, err, f, Jb, s
+        fk = self.epoch_full(k, full)
+        f, Jb = self.model.evaluate_with_jacobian(x, ctx, fk)
+        if self.scaled:
+            extra = []
+            for (comp, pos), ai in zip(self.scaled, self.amp_index[k]):
+                a = full[ai]
+                # the component is linear in its weights: d f / d amp = sum_i w_i dF/dw_i
+                extra.append(Jb[:, pos] @ (fk[pos] / a if a != 0 else full[self.index[k]][pos]))
+                Jb[:, pos] = Jb[:, pos] * a
+            Jb = np.hstack([Jb, np.stack(extra, axis=1)])
+        return x, y, err, f, Jb, self.factor(k, full)
+
+    def _calib_columns(self, k, full, f, s, err):
+        """Derivatives of the residuals with respect to scale_k and the c_kj."""
+        cols = []
+        if self.scale_names:
+            sc = full[self.scale_index[k]]
+            cols.append(np.broadcast_to(s / sc * f / err, f.shape))
+            if self.cal_degree:
+                cols += [sc * f * self._basis[k][:, j] / err for j in range(self.cal_degree)]
+        return cols
 
     def residuals(self, theta):
         return self._evaluate(theta)[0]
@@ -135,9 +226,14 @@ class _JointProblem:
         def one(k):
             x, y, err, f, Jb, s = self._epoch(k, full)
             r = (s * f - y) / err
-            Je = s * Jb / err[:, None]
-            if self.scale_names:
-                Je = np.hstack([Je, (f / err)[:, None]])
+            Je = np.asarray(s)[..., None] * Jb / err[:, None] if np.ndim(s) else s * Jb / err[:, None]
+            nb = len(self.index[k])
+            Je, Jamp = Je[:, :nb], Je[:, nb:]
+            extra = self._calib_columns(k, full, f, s, err)
+            if extra:
+                Je = np.hstack([Je, np.stack(extra, axis=1)])
+            if Jamp.shape[1]:
+                Je = np.hstack([Je, Jamp])
             fc, Tk = self._epoch_map[k]
             Jf = Je @ Tk
             return r, fc, Jf.T @ r, Jf.T @ Jf
@@ -164,15 +260,16 @@ class _JointProblem:
                                                                range(self.n))):
             resid.append((s * f - y) / err)
             rows = np.arange(self.rows[k], self.rows[k + 1])
-            vals = s * Jb / err[:, None]
-            cols = np.broadcast_to(self.index[k], vals.shape)
+            vals = (np.asarray(s)[..., None] if np.ndim(s) else s) * Jb / err[:, None]
+            cols = np.broadcast_to(np.concatenate([self.index[k], self.amp_index[k]]).astype(int), vals.shape)
             blocks_r.append(np.repeat(rows, vals.shape[1]))
             blocks_c.append(cols.ravel())
             blocks_v.append(vals.ravel())
-            if self.scale_names:
+            for ci, col in zip(([self.scale_index[k]] if self.scale_names else []) + self.cal_index[k],
+                               self._calib_columns(k, full, f, s, err)):
                 blocks_r.append(rows)
-                blocks_c.append(np.full(rows.size, self.scale_index[k]))
-                blocks_v.append(f / err)
+                blocks_c.append(np.full(rows.size, ci))
+                blocks_v.append(col)
         J = sparse.csr_matrix((np.concatenate(blocks_v),
                                (np.concatenate(blocks_r), np.concatenate(blocks_c))),
                               shape=(self.rows[-1], len(self.c)))
@@ -182,7 +279,9 @@ class _JointProblem:
 
 
 def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None,
-               errors="covariance", scale_errors=True, reference="snr", n_jobs=-1, verbose=True):
+               errors="covariance", scale_errors=True, reference="snr", calibration_degree=0,
+               epoch_scaled=(), rescale_errors=False, calibration_limit=0.3, calibration_groups=None,
+               n_jobs=-1, verbose=True):
     """
     Fit several epochs of one object jointly.
 
@@ -200,6 +299,27 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
         epoch with the highest median S/N in the fitted range) or an index into
         ``spectra``. The uncertainty of the reference enters every other
         epoch's calibration, so a high-S/N reference gives smaller errors.
+    :param calibration_degree: with ``intercalibrate``, also a smooth
+        wavelength-dependent calibration per epoch, s_k(lambda) = scale_k (1 +
+        sum_j c_kj P_j(u)) with Legendre polynomials up to this degree over the
+        fitted range (1: a tilt, 2: also curvature). SDSS flux-calibration errors
+        depend on wavelength (fibre losses, differential refraction); a single
+        scale per epoch (PrepSpec, Shen et al. 2016) leaves them in the light
+        curves. The coefficients are anchored by the shared narrow lines (and
+        host) across the range, so the model needs narrow lines at both ends
+        (e.g. [OII] or Hbeta/[OIII] and Halpha/[NII]/[SII]).
+    :param epoch_scaled: components (e.g. ``("host",)``) whose shape is shared but whose
+        amplitude is free in each epoch (``<comp>.amp@k``, 1 for the reference epoch): the host
+        galaxy seen through different slits, fibres or seeing, e.g. spectra of a transient
+        from several instruments. The component must also be shared (default for the host).
+    :param rescale_errors: multiply the errors of each epoch by sqrt(reduced chi2) of its own
+        independent fit (if > 1) before the joint fit, so that epochs with underestimated errors
+        (e.g. smoothed or averaged spectra) do not dominate it.
+    :param calibration_groups: lists of epoch indices (input order) observed with the same
+        instrument and setting: they share the colour terms of ``calibration_degree`` (the
+        overall flux scale stays free per epoch). Default: every epoch its own.
+    :param calibration_limit: bound on the Legendre coefficients of ``calibration_degree``
+        (spectra from different instruments may differ in colour by more than 30%).
     :param wave_range: fitted window (default: the model's).
     :param errors: 'covariance' or None.
     :param scale_errors: inflate errors by sqrt(reduced chi2) if > 1.
@@ -245,7 +365,22 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
     if bad:
         raise RuntimeError(f"the independent fit failed for {', '.join(bad)}")
     masks = [r.mask for r in singles]
-    prob = _JointProblem(model, spectra, masks, shared, intercalibrate)
+    if rescale_errors:
+        factors = [float(np.sqrt(max(r.rchi2, 1.0))) for r in singles]
+        spectra = [sp.copy(err=sp.err * f) for sp, f in zip(spectra, factors)]
+        for sp, f in zip(spectra, factors):
+            sp.meta["error_rescale"] = f
+    epoch_scaled = tuple(epoch_scaled or ())
+    for comp in epoch_scaled:
+        if not any(_is_shared(p.name, shared) for p in model.params if p.name.startswith(comp + ".")):
+            raise ValueError(f"epoch_scaled: share {comp!r} between epochs (shared=... '{comp}.*')")
+    groups = None
+    if calibration_groups:
+        internal = {orig: k for k, orig in enumerate(order)}
+        groups = [[internal[g] for g in grp if g in internal] for grp in calibration_groups]
+    prob = _JointProblem(model, spectra, masks, shared, intercalibrate, calibration_degree, wave_range,
+                         epoch_scaled=epoch_scaled, calibration_limit=calibration_limit,
+                         calibration_groups=groups)
 
     full0 = np.zeros(len(prob.c))
     per_epoch = np.array([r.full for r in singles])
@@ -267,6 +402,14 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
             full0[prob.index[k][i]] = vals[k]
         if _is_shared(p.name, shared):
             full0[prob.index[0][i]] = np.median(vals)
+    for j, (comp, pos) in enumerate(prob.scaled):
+        # starting amplitudes: the component's total weight in each independent fit, relative to
+        # the shared (median) weights
+        tot0 = np.sum(full0[prob.index[0][pos]])
+        for k in range(len(spectra)):
+            tot = np.sum(per_epoch[k, pos]) / scales[k]
+            a = tot / tot0 if tot0 > 0 and tot > 0 else 1.0
+            full0[prob.amp_index[k][j]] = 1.0 if k == 0 else float(np.clip(a, 0.06, 19.0))
     jn = prob.joint.names
     theta0 = np.array([full0[jn.index(p.name)] for p in prob.free])
 
@@ -291,22 +434,38 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
         for cols, cov in per_epoch:
             k = int(prob.group[cols[0]])
             idx = prob.index[k]
-            rows = list(idx) + ([prob.scale_index[k]] if intercalibrate else [])
+            rows = list(idx) + ([prob.scale_index[k]] if intercalibrate else []) + prob.cal_index[k]
             Tk = T[rows][:, cols].toarray()
-            epoch_cov[k] = (rows, Tk @ (cov * scale) @ Tk.T)
+            ck = Tk @ (cov * scale) @ Tk.T
+            if prob.scaled:
+                # covariance of the scaled weights a w: d(a w_i)/dw_i = a, d(a w_i)/da = w_i
+                amp_rows = prob.amp_index[k]
+                Ta = T[amp_rows][:, cols].toarray()
+                Tall = np.vstack([Tk, Ta])
+                call = Tall @ (cov * scale) @ Tall.T
+                M = np.zeros((len(rows), len(rows) + len(amp_rows)))
+                M[:, :len(rows)] = np.eye(len(rows))
+                for j, ((comp, pos), ai) in enumerate(zip(prob.scaled, amp_rows)):
+                    a = full[ai]
+                    for i in pos:
+                        M[i, i] = a
+                        M[i, len(rows) + j] = full[idx[i]]
+                ck = M @ call @ M.T
+            epoch_cov[k] = (rows, ck)
         cov_full = _EpochCovariance(epoch_cov, blocks.shared, shared_cov * scale, prob)
 
     epochs = []
     for k, s in enumerate(spectra):
         idx = prob.index[k]
-        sk = full[prob.scale_index[k]] if intercalibrate else 1.0
+        sk = prob.factor(k, full, s.wave) if intercalibrate else 1.0
         m = model.copy()
-        m.params.set_full_values(full[idx])
+        full_k = prob.epoch_full(k, full)
+        m.params.set_full_values(full_k)
         spec = s.copy(flux=s.flux / sk, err=s.err / sk)
         r = res.fun[prob.rows[k]:prob.rows[k + 1]]
         free_k = [p.name for p in m.params if p.free]
         epochs.append(FitResult(
-            spectrum=spec, model=m, mask=masks[k], full=full[idx],
+            spectrum=spec, model=m, mask=masks[k], full=full_k,
             cov=None if cov_full is None else cov_full.epoch(k, idx), samples=None,
             chi2=float(r @ r), dof=max(r.size - len(free_k), 1), nfev=res.nfev,
             success=res.success, message=res.message,
@@ -316,6 +475,8 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
             at_zero=[p.name.rsplit("@", 1)[0] for p, a in zip(prob.free, limit) if a and p.linear
                      and (p.name.endswith(f"@{k}") or "@" not in p.name)],
             error_scale=np.sqrt(scale), time=0.0, error_method=errors))
+        epochs[-1].calibration = np.array([full[i] for i in prob.cal_index[k]])
+        epochs[-1].amplitudes = {comp: float(full[ai]) for (comp, _), ai in zip(prob.scaled, prob.amp_index[k])}
         if intercalibrate:
             si = prob.scale_index[k]
             epochs[-1].scale = float(full[si])
@@ -329,6 +490,7 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
     result = MultiEpochResult(prob, full, cov_full, in_order, chi2, dof, res, shared,
                               np.sqrt(scale), time.time() - t0)
     result.reference = order[0]
+    result._order = order
     if intercalibrate:
         errs = [e.scale_err for k, e in enumerate(in_order) if k != result.reference and np.isfinite(e.scale_err)]
         result.calibration_error = float(np.median(errs)) if errs else np.nan
@@ -413,24 +575,40 @@ class _Blocks:
             x[e] = Aig - (AiB @ xs if s.size else 0.0)
         return x
 
+    @staticmethod
+    def _pinv(M):
+        d = np.sqrt(np.clip(np.diag(M), 1e-300, None))
+        w, V = np.linalg.eigh(M / np.outer(d, d))
+        good = w > w.max() * 1e-12 if w.size else w
+        return ((V[:, good] / w[good]) @ V[:, good].T) / np.outer(d, d)
+
+    def _inverses(self):
+        Ainv = [self._pinv(A) for A in self.A]
+        if self.shared.size:
+            S = self.C - sum(B.T @ Ai @ B for Ai, B in zip(Ainv, self.B))
+            Sss = self._pinv(S)
+        else:
+            Sss = np.zeros((0, 0))
+        return Ainv, Sss
+
+    def cross_terms(self):
+        """
+        Pieces of N^-1 between epochs: cov(theta_k, theta_j) = X_k Sss X_j^T
+        (k != j) and cov(theta_k, shared) = -X_k Sss. Returns (own indices per
+        epoch, X per epoch, Sss): the epochs are coupled only through the
+        shared parameters, so the coupling has the rank of the shared block.
+        """
+        Ainv, Sss = self._inverses()
+        return self.epochs, [Ai @ B for Ai, B in zip(Ainv, self.B)], Sss
+
     def covariance(self):
         """
         The blocks of N^-1 needed per epoch: {epoch position: (indices, cov)} for
         the epoch's parameters plus the shared ones, and the shared block. Uses
         a scaled eigen-decomposition (pseudo-inverse) for robustness.
         """
-        def pinv(M):
-            d = np.sqrt(np.clip(np.diag(M), 1e-300, None))
-            w, V = np.linalg.eigh(M / np.outer(d, d))
-            good = w > w.max() * 1e-12 if w.size else w
-            return ((V[:, good] / w[good]) @ V[:, good].T) / np.outer(d, d)
         s = self.shared
-        Ainv = [pinv(A) for A in self.A]
-        if s.size:
-            S = self.C - sum(B.T @ Ai @ B for Ai, B in zip(Ainv, self.B))
-            Sss = pinv(S)
-        else:
-            Sss = np.zeros((0, 0))
+        Ainv, Sss = self._inverses()
         out = []
         for e, Ai, B in zip(self.epochs, Ainv, self.B):
             if s.size:
@@ -553,6 +731,17 @@ def _cov_from_normal(JtJ, exclude):
     return cov
 
 
+def _line_continuum_corr(result, line, components, at):
+    """Correlation coefficient of a line flux and the continuum flux density in one fit."""
+    lam0, v, lam, profile, comps = result._line_profile_func(line, components)
+    dlam = lam[1] - lam[0]
+    _, cov = result.propagate(lambda full: np.array([profile(full).sum() * dlam,
+                                                     result._agn_continuum(at, full)[0]]), covariance=True,
+                              depends=result._depends(comps))
+    d = np.sqrt(np.diag(cov))
+    return float(np.clip(cov[0, 1] / (d[0] * d[1]), -1, 1)) if np.all(d > 0) else 0.0
+
+
 class MultiEpochResult:
     """
     Result of :func:`fit_epochs`:
@@ -606,11 +795,20 @@ class MultiEpochResult:
         return rms_spectrum([self.epochs[k] for k in self._epoch_select(mjd_range)], line, **kw)
 
     def reverberation(self, line="Hb", continuum=None, lag_range=None, dt=None, n_mc=1000,
-                      f_virial=4.47, mjd_range=None, detrend=False, seed=0):
+                      f_virial=4.47, mjd_range=None, detrend=False, methods=("iccf", "vn", "drw"),
+                      primary="iccf", width=0.0, seed=0):
         """
-        Lag of the broad ``line`` behind the continuum (ICCF with FR/RSS errors),
-        its width in the rms spectrum and the reverberation mass; returns a
+        Lag of the broad ``line`` behind the continuum, its width in the rms
+        spectrum and the reverberation mass; returns a
         :class:`fantasy_agn.rm.Reverberation` (print it, ``.table()``, ``.plot()``).
+
+        Lag methods (``methods``; ``primary`` gives the adopted lag): 'iccf'
+        (interpolated cross-correlation, FR/RSS errors), 'vn' (von Neumann
+        estimator), 'zdcf' (z-transformed discrete correlation function,
+        Alexander 1997) and 'drw' (damped-random-walk model with the correlated
+        line and continuum errors of each epoch's fit, see
+        :func:`fantasy_agn.rm.gp_lag`). All keep the primary peak of the lag
+        distribution weighted for the light-curve overlap (seasonal aliases).
 
         :param continuum: None: the fitted AGN continuum light curve of these
             epochs; or (mjd, flux, error) arrays, e.g. photometry (better sampled).
@@ -621,7 +819,7 @@ class MultiEpochResult:
         :param detrend: subtract a linear trend from both light curves (Welsh
             1999): slow variations otherwise dominate the cross-correlation.
         """
-        from .rm import Reverberation, ccf_lag
+        from .rm import Reverberation, ccf_lag, gp_lag, vn_lag, zdcf_lag
         lc = self.light_curve(lines=[line]).iloc[self._epoch_select(mjd_range)]
         if lc["mjd"].isna().any():
             raise ValueError("the epochs need MJDs for a lag")
@@ -659,16 +857,94 @@ class MultiEpochResult:
                 tau = 10 ** (1.527 + 0.533 * (np.nanmedian(lc[lcol[0]]) - 44.0)) * (1 + (z or 0))
                 lmax = min(lmax, max(5 * tau, 60.0))
             lag_range = (-lmax, lmax)
-        lag = ccf_lag(t1, f1, e1, t2, f2, e2, lag_range=lag_range, dt=dt, n_mc=n_mc, seed=seed)
+        results = {}
+        if "iccf" in methods or primary == "iccf":
+            results["iccf"] = ccf_lag(t1, f1, e1, t2, f2, e2, lag_range=lag_range, dt=dt, n_mc=n_mc, seed=seed)
+        if "vn" in methods or primary == "vn":
+            results["vn"] = vn_lag(t1, f1, e1, t2, f2, e2, lag_range=lag_range, dt=max(dt or 1.0, 0.5),
+                                   n_mc=min(n_mc, 300), seed=seed)
+        if "zdcf" in methods or primary == "zdcf":
+            results["zdcf"] = zdcf_lag(t1, f1, e1, t2, f2, e2, lag_range=lag_range, n_mc=min(n_mc, 200), seed=seed)
+        if "drw" in methods or primary == "drw":
+            cc = [c for c in lc.columns if c.startswith("cont") and not c.endswith("_err")]
+            spec = (t2, lc[cc[0]].to_numpy(float), lc[cc[0] + "_err"].to_numpy(float)) if cc else None
+            corr = lc[f"{line}_cont_corr"].to_numpy(float) if f"{line}_cont_corr" in lc else None
+            results["drw"] = gp_lag((t2, f2, e2), continuum=None if continuum is None else (t1, f1, e1),
+                                    spec_continuum=spec, corr=corr, lag_range=lag_range,
+                                    dt=max(dt or 1.0, 0.5), width=width, seed=seed)
         rms = self.rms_spectrum(line, mjd_range=mjd_range)
-        return Reverberation(line, lag, rms, label, z=z, f_virial=f_virial,
-                             lc=((t1, f1, e1), (t2, f2, e2)))
+        return Reverberation(line, results[primary], rms, label, z=z, f_virial=f_virial,
+                             lc=((t1, f1, e1), (t2, f2, e2)), methods=results)
+
+    def quantity_covariance(self, func):
+        """
+        Values of ``func(epoch_result, full) -> array (m,)`` in every epoch and
+        their joint covariance over all epochs, ``(values (n, m), cov (n*m, n*m))``
+        with rows epoch-major in input order. Within an epoch the covariance is
+        that of the epoch's fit (decomposition, flux calibration); between
+        epochs it comes from the shared parameters (e.g. a shared line shape
+        or narrow-line fluxes): linear propagation, finite-difference gradients.
+        """
+        from .fitting import _at_limit
+        prob = self._prob
+        n = len(self.epochs)
+        order = getattr(self, "_order", None) or [self.reference] + [i for i in range(n) if i != self.reference]
+        jn = prob.joint.names
+        theta = np.array([self.full[jn.index(p.name)] for p in prob.free])
+        items = prob.normal(theta)[3]
+        limit = _at_limit(theta, prob.lb, prob.ub)
+        blocks = _Blocks.from_epochs(len(theta), prob.group, ~limit, items)
+        own, X, Sss = blocks.cross_terms()
+        Sss = Sss * self.error_scale ** 2
+        T = prob.T.tocsr()
+        values, U, D = [None] * n, [None] * n, [None] * n
+        for e, cols in enumerate(own):
+            k = int(prob.group[cols[0]])
+            r = self.epochs[order[k]]
+            idx = prob.index[k]
+            full_k = np.asarray(r.full, float)
+            v = np.atleast_1d(np.asarray(func(r, full_k), float))
+            sig = r._sigma()
+            lo = np.array([p.min for p in r.model.params], float)
+            hi = np.array([p.max for p in r.model.params], float)
+            grad = np.zeros((v.size, full_k.size))
+            for i in np.nonzero(np.nan_to_num(sig) > 0)[0]:
+                a, b = full_k.copy(), full_k.copy()
+                a[i] = min(a[i] + 0.1 * sig[i], hi[i])
+                b[i] = max(b[i] - 0.1 * sig[i], lo[i])
+                if a[i] > b[i]:
+                    grad[:, i] = (np.asarray(func(r, a), float) - np.asarray(func(r, b), float)) / (a[i] - b[i])
+            G = grad @ T[idx].toarray()
+            values[order[k]] = v
+            U[order[k]] = G[:, cols] @ X[e] - G[:, blocks.shared]
+            D[order[k]] = grad @ np.nan_to_num(r.cov) @ grad.T if r.cov is not None else np.zeros((v.size, v.size))
+        m = values[0].size
+        cov = np.zeros((n * m, n * m))
+        Ust = np.vstack(U) if Sss.size else None
+        if Ust is not None:
+            cov += Ust @ Sss @ Ust.T
+        for k in range(n):
+            sl = slice(k * m, (k + 1) * m)
+            cov[sl, sl] = D[k]
+        return np.array(values), cov
 
     def light_curve(self, lines=None, continuum_at=None):
         """
         Table with, per epoch, the total broad flux and FWHM of each broad line
         (summed over broad components) and the continuum flux density.
         """
+        # computed once per choice (it propagates errors of every line in every epoch)
+        key = (None if lines is None else tuple(lines), continuum_at)
+        cache = self.__dict__.setdefault("_lc_cache", {})
+        if key not in cache:
+            cache[key] = self._light_curve(lines, continuum_at)
+        return cache[key].copy()
+
+    def has_light_curve(self):
+        """True when the default light curve was already computed (cheap to show)."""
+        return (None, None) in self.__dict__.get("_lc_cache", {})
+
+    def _light_curve(self, lines, continuum_at):
         first = self.epochs[0]
         broad = [c for c in first._line_components() if c.role == "broad"]
         if lines is None:
@@ -689,6 +965,11 @@ class MultiEpochResult:
                 row[f"{ln}_ew"], row[f"{ln}_ew_err"] = m["ew"], m["ew_err"]
             if continuum_at:
                 row[f"cont{continuum_at:g}"], row[f"cont{continuum_at:g}_err"] = r.continuum(continuum_at)
+                for ln in lines:
+                    # correlation of the line flux with the continuum in this epoch's fit
+                    # (decomposition and flux calibration): used by the lag methods
+                    row[f"{ln}_cont_corr"] = _line_continuum_corr(r, ln, [c.name for c in broad
+                                                                          if ln in c.line_names], continuum_at)
                 if r.spectrum.z and r.spectrum.flux_unit:
                     row[f"logL{continuum_at:g}"], row[f"logL{continuum_at:g}_err"] = \
                         r.luminosity(continuum_at)
