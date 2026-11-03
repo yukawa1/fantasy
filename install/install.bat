@@ -31,7 +31,7 @@ set "PATH=%USERPROFILE%\.local\bin;%PATH%"
 set "CONSTRAINTS="
 if exist "%HERE%constraints.txt" set "CONSTRAINTS=--constraints "%HERE%constraints.txt""
 echo Installing FANTASY (Python %PYTHON_VERSION%) ...
-uv tool install --force --python %PYTHON_VERSION% %CONSTRAINTS% "%SOURCE%"
+uv tool install --force --reinstall-package fantasy_agn --python %PYTHON_VERSION% %CONSTRAINTS% "%SOURCE%"
 if errorlevel 1 ( pause & exit /b 1 )
 for /f "delims=" %%b in ('uv tool dir --bin') do set "PATH=%%b;%PATH%"
 uv tool update-shell >nul 2>nul

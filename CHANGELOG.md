@@ -6,6 +6,202 @@ A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic
 derivatives.
 
 ### New
+- Saved models: `model.save("my_model.json")` and `fa.load_model(path)` keep a model (components, line
+  profiles, starting values, limits, fixed and tied parameters) as a plain JSON recipe; loading only makes
+  FANTASY components, so a model file from someone else cannot run code. App, Model step: Save model (name
+  and folder; `~/.fantasy_agn/models` by default), Download, and "Start from: a saved model" with the saved
+  models and models from a file.
+- Line profiles: `r.plot_lines(["Hg", "Hb", "Ha"], residuals=True)` draws the chosen lines in a grid (one,
+  two or three in a row, four as 2 x 2), each with its components, residuals, FWHM and flux, one legend and one
+  flux label. App, Results: Line profiles view to tick lines and save the grid (PDF, PNG, EPS).
+- Figure style: quiet grey axes with inward ticks on all sides, no grid, the model in ink over grey data, Fe II
+  filled lightly, a +-1 sigma band in the residuals, and a palette whose six line colours stay distinct for
+  colour-vision deficiencies; the app's plots match. `r.plot(styles={"feii": {"fill": False}, "broad":
+  {"lw": 1.5, "fill": True}, "model": {"ls": "--"}})` sets fill, line width and line style per kind; the app's
+  publication figure has these controls for every kind.
+- App, step-by-step interface (feedback from users). Model step: the classification is a card at the top
+  (Classify spectrum; the class, the reason and the recommended model; Use recommended model; View
+  classification with the BPT diagrams, PNG and PDF) and stays available after the fit (Results: Fit /
+  Classification switch). Start from a preset or from your own model. One "Add component" dialog for all
+  components: emission and absorption lines picked from the line list (grouped by type, limited to the fitted
+  range, searchable), kind (broad, narrow, outflow), profile (Gaussian, Lorentzian, Voigt, Gauss-Hermite,
+  stratified), width and shift limits, and shift and width fitted, fitted per line or tied to another component;
+  continua, Fe II, high-order Balmer lines, host galaxy, absorption troughs and dust extinction. The selected
+  component's panel changes the line profile and ties or frees its shift and width (e.g. Fe II to the narrow
+  lines). Fit step: MCMC errors. Results step: a summary of the fit quality and the main numbers with errors,
+  a warning for parameters at a limit that opens the component in the Model step, views for the fit, the
+  publication figure (ranges, title, components, width, font size, legend, line labels, redrawn as they
+  change; PDF, PNG, EPS), the posterior (corner plot of the Monte Carlo or MCMC samples, parameters at a limit
+  left out), the classification and, for several epochs, light curves and lags; the lines table grouped by
+  component; one Download menu with the fitted lines, the model and its components (CSV of the shown fit:
+  data, model, every component, host, AGN, spectrum minus host and, with extinction, the transmission and the
+  intrinsic components), the fit figures, the script, the notebook and the project.
+- Black-hole masses: `r.bh_mass(line, recipe=...)` with H-alpha (Greene & Ho 2005, default; Reines & Volonteri
+  2015: FWHM and broad H-alpha luminosity), H-beta from Dalla Bonta et al. (2020) with the broad H-beta
+  luminosity (`'db20'` FWHM, `'db20_sigma'` line dispersion) or L5100 (`'db20_l5100'`, `'db20_sigma_l5100'`) and
+  the SDSS-RM recalibration of Shen et al. (2024) for H-beta, Mg II and C IV (`'shen24'`), besides the defaults
+  (Vestergaard & Peterson 2006, Vestergaard & Osmer 2009) and Shen et al. (2011) for Mg II; `r.bh_masses()` gives
+  every recipe that applies; `key_results` adds the H-alpha mass when the model has broad H-alpha and H-beta.
+  App: the masses of every recipe in the Results step.
+- Fe II in the line table: `r.lines` has a row per Fe II template with its flux and EW in 4434-4684 A (UV:
+  2200-3090 A), width and shift; `r.feii()` also gives R_FeII = F(Fe II 4434-4684) / F(broad H-beta) (Mg II for
+  the UV template), which is among the key results.
+- Line library: the lines of the FANTASY 1 line lists that were missing (159; coronal and high-ionisation [Fe V],
+  [Fe VI], [Fe VII], [Ar IV], [Ar V], [Ar XIV] ... lines, the [Fe II] forbidden multiplets 4F-34F, the narrow
+  permitted Cr II, Ti II, N II, C III, Si II lines, the I Zw 1 Fe II lines, He I, O I, N I, Al III), and the old lists
+  as sets: `fa.line_set("coronal")`, `fa.LINE_SETS`. App, Add lines: one click adds a whole list (lines in the
+  fitted range).
+- Reverberation: ZDCF lags (z-transformed discrete correlation function, Alexander 1997). `fantasy_agn.zdcf`
+  is a port of pyZDCF (Jankov et al. 2022, MIT licence) that works on arrays and runs with NumPy 2 and pandas 3
+  (pyZDCF requires numpy < 2 and pandas < 3); it reproduces pyZDCF to 1e-14 for the same order of equal lags
+  (pyZDCF's unstable heapsort orders them differently in NumPy 1 and 2; the port sorts stably). `fa.rm.zdcf`,
+  `fa.rm.zdcf_lag` (lag from the ZDCF centroid with flux-randomisation / random-subset errors) and
+  `me.reverberation(..., methods=("iccf", "zdcf"))`; ZDCF option in the app.
+- Publication figure: `r.plot(colors=..., hide=..., data=, model=, legend=, label_options=...)` and
+  `label_lines="all"`; line labels sit in a row at the top, spread so they do not overlap and joined to their
+  lines by grey lines (or dotted lines across the plot); font, size, direction and colour can be set. App:
+  what is drawn and its colours, line-label options, and no title.
+- UV Fe II model built as the optical one: `fa.FeII(kind="uv_extended")`, 2200-3500 A, 325 lines from the NIST
+  Atomic Spectra Database grouped by the lower term of the transition (a6D, a4F, a4D, a4P, b4P, a4H, b4F, a4G,
+  b2H), the a4D lines split into the multiplets UV 60-63 as in Kovacevic-Dojcinovic & Popovic (2015), relative
+  intensities within a group from eq. (1) of Kovacevic et al. (2010) at 10^4 K, and the empirical I Zw 1 lines:
+  14 group amplitudes, a common width and shift (data/uvfe2.csv, with the NIST query). It covers the UV Fe II band
+  2200-3090 A, which the 2015 model (`kind="uv"`, 2690-3005 A, unchanged and still the default of
+  `presets.mgii`) does not; `presets.mgii(feii="uv_extended", wave_range=(2200, 3300))` uses it. Not yet
+  calibrated on real spectra.
+- Quasar main sequence: `r.main_sequence()` (R_FeII, FWHM of broad H-beta, population A/B and spectral type,
+  Sulentic et al. 2002, Marziani et al. 2018) and `fantasy_agn.plotting.plot_main_sequence(fits)` (every epoch,
+  one highlighted). App, Results: a Main sequence view (all epochs, click to highlight; PNG and PDF).
+- Classification of several epochs: 'Suggest from classification' classifies every epoch (the reference one
+  recommends the model) and the BPT and WHAN diagrams show all of them (coloured by class, the chosen one
+  outlined; `c.plot(others=...)` in Python). Where a classification has no narrow-line ratio (broad-line
+  spectra), the narrow lines of the fit give the point. The diagrams widen to show every point and its error bars
+  (they were cut at fixed limits).
+- Colours: one palette for the figures and the app (broad blue, narrow green, outflow amber, Fe II magenta,
+  host brown, Balmer sky blue, model vermilion, continuum near-black), checked for colour-vision deficiency;
+  Fe II has its own colour in the app.
+- GAMA spectra: the flux unit is read from the header (GAMA/AAOmega: 'Flux-calibrated spectrum in 10^-17
+  erg/s/cm^2/A', was taken as 1, so luminosities and black-hole masses were wrong), the date from UTMJD (or MJD,
+  DATE-OBS), the spectrum name and GAMA IDs (SPECID, CATAID, GAMANAME, NQ) into `meta`; GAMA files are also
+  recognised by ORIGIN = 'GAMA', CATAID or GAMANAME. App, Read step: a File format choice (automatic, SDSS, DESI,
+  OzDES, GAMA, 1D FITS, text) for files that are read wrongly, and GAMA and OzDES listed among the formats.
+- Flux units of text and 1-D FITS files: the unit is read from a header or comment line ("flux in 1e-16
+  erg/s/cm2/A", "F_lambda [10^-17 erg s^-1 cm^-2 A^-1]", "x10⁻¹⁶") and from the BUNIT keyword; values in erg/s/cm2/A
+  are stored in units of 1e-17 as before. When the file gives no unit and the values are not physical, `flux_unit`
+  is now None (was 1): luminosities and black-hole masses are refused instead of computed from a wrong unit, and
+  `luminosity` also refuses a unit that makes the source implausibly bright (> 1e-10 erg/s/cm2/A).
+  `Spectrum.with_flux_unit(unit)` sets it (`fa.read(path, flux_unit=1e-16)` too); `fa.spectrum.flux_unit_from_text`
+  parses one. App, Prepare step: a Flux unit field shows the unit from the file and sets it when it is missing.
+- App, Fit step: what will be fitted (with links to change it), choices in plain words for fitting the epochs
+  together or on their own and for the uncertainties (with how long each takes), the rarely needed options under
+  Advanced options, a run button that says what it does, and when the fit is done its quality, the parameters at a
+  limit (once each, with the epochs) and links to the results and the Model step.
+- `Model.set_profile(name, profile)` changes the line profile of a `Lines` component in place, keeping its lines,
+  flux ratios, role, and the values, limits and ties of the parameters both profiles have; `Model.untie(pattern)`
+  frees tied parameters.
+- Broad Balmer decrement in the `hbeta` and `optical` presets (`balmer_decrement=True`, default): in every
+  broad component H-gamma is a ratio to H-beta, `broad.Hg.ratio`, free between 0.1 and 0.5 (case B 0.47), and
+  broad H-delta is tied to it by the case-B ratio H-delta/H-gamma = 0.553 (`broad.Hd.ratio`); `hbeta` adds broad
+  H-delta when the window starts below 4250 A (its wing enters the default 4150-5550 A window). Before, the
+  broad H-gamma flux was free: in the multi-epoch fits of the nuclear transient PS1-10adi the second, very
+  broad component made H-gamma/H-beta 0.5-1.6 (up to 4.7 in one component), a broad hump at 4250-4450 A that
+  took the H-delta wing, FeII and continuum. `balmer_decrement=False` restores the free fluxes. H-beta keeps
+  its `broad.Hb.flux` parameter; `broad.Hg.flux` is replaced by `broad.Hg.ratio` (use
+  `result.measure("Hg")` for the flux). New `Lines(..., line_ratios={line: (reference, (start, min, max))})`
+  makes any flux ratio a free parameter within limits.
+- Line library reorganised and extended from 74 to 170 lines: one table, `fantasy_agn/data/lines.csv`, gives
+  for every line its wavelength with the medium it refers to (air or vacuum), ion, type (recombination,
+  permitted, semi-forbidden, forbidden, coronal, Bowen, molecular, dust feature), series or multiplet, and
+  notes on blends. New: the far-UV lines (Ly-beta, O VI, Si II, O I 1304, C II, O IV], N IV], N III],
+  Si III], C II], [O II] 2471), He I/He II and Bowen O III lines in the near-UV and optical, [Ar IV], [Fe III],
+  [Fe VI], [Ca V], [Cl III], [Ca II], [Ni II], forbidden [Fe II], Na I D, O I 7774 and 11287, the complete
+  Paschen series (Pa-alpha to Pa14), Brackett (Br-alpha to Br13) and Pfund (Pf-beta to Pf-epsilon) lines,
+  He I 1.083 and 2.059 um, near-infrared [Fe II], [S II], [C I], [P II] and coronal lines, H2 rovibrational
+  lines and the 3.3 um PAH band, covering the SPHEREx range (to 5 um). `fa.line_table()` returns the table,
+  `fa.lines_in(wmin, wmax, type=..., ion=..., series=...)` selects lines, `fa.line_info(name)` describes one;
+  names such as 'Pa-alpha', 'Brgamma' are accepted. Existing line names are unchanged. The Fe II templates are
+  unchanged.
+- Faster Monte Carlo errors: `errors="mc"` uses all cores by default (one inside the workers of `fit_many`
+  and `fit_sample`), and the re-fits stop at a tolerance of 1e-8 instead of 1e-10 (1.3x fewer model
+  evaluations, the same errors on SDSS-RM stratified fits). 100 realizations of a stratified H-beta fit:
+  73 s -> 24 s on a busy 10-core machine. Covariance errors stay the default; for line widths, sigma and the
+  continuum of degenerate models they differed from Monte Carlo by up to 3x in either direction.
+- App, Fit step (joint fit): "Shared broad-line shape (only fluxes vary)", on by default. The shape parameters
+  of every broad component (shift, widths, stratified span and gamma, Gauss-Hermite h3/h4, ...) and the Fe II width
+  are shared between the epochs on top of the narrow lines and the host. With free shapes per epoch the line flux
+  trades with the continuum and Fe II at SDSS S/N: in SDSS-RM quasars the broad-H-beta light curves then recovered
+  the published reverberation lag in only 24 of 81 objects, with shared shapes in all 8 objects tested.
+- App: a new step-by-step interface (Read, Prepare, Model, Fit, Results) for one spectrum, a sample,
+  several epochs of one object or classification only. Read: files, path/glob, DESI TARGETIDs or SDSS
+  plate-mjd-fiber (`fa.sdss.fetch`), epochs ordered by the date in the file names
+  (`fa.spectrum.mjd_from_name`) or the MJD; Prepare: redshift, Galactic extinction from the position or by
+  hand, range, telluric/sky/absorption masks and ranges dragged on the plot, with a raw/prepared preview;
+  Model: preset and options, component list, initial guess on the reference epoch, parameter table
+  (initial, limits, fixed, tie); Fit: independent or joint epochs (reference, shared parameters, calibration
+  degree, host amplitude per epoch, error rescaling), progress, chi2 and parameters at limits; Results:
+  interactive fit with components, residuals and line labels per epoch, line table with flags, continuum,
+  all epochs, parameters, downloads (CSV, FITS, PDF, script, notebook). The Python session panel mirrors
+  every step and is hidden by default. The earlier interface is at `/classic`.
+- Residual analysis: `fa.analyze_residuals(r)` (also a joint fit or a list of fits) finds coherent residual
+  features on several scales (relative to the scatter of the residuals), measures them (centre, FWHM, flux,
+  significance), identifies them with the line library and suggests a change with its code: a missing line
+  (doublets together), a broad component or wing, an outflow for forbidden-line wings, the host for stellar
+  absorption, Fe II or the Balmer continuum for broad excesses, masks for telluric/sky residuals (not on a fitted
+  line) and absorption troughs, continuum-shape mismatches. For several epochs the features are merged and
+  counted. App: "Residual analysis" on the Results step, features marked on the plot, Apply buttons and refit.
+- App, multi-epoch results: light curves (broad flux, FWHM, EW, continuum per epoch; click a point to open the
+  epoch) and reverberation mapping (line, lag methods, Monte Carlo, MJD range, detrending: lags of every method,
+  rms width, mass, aliasing warnings, figure). The result view loads the plot and line table first and the slow
+  tables (main numbers with errors, all epochs) afterwards; the light curve is computed once, in the background
+  (it blocked the page for many minutes with 12 epochs and stratified profiles). Projects keep the workflow state.
+- Faster error propagation: `measure`, `bh_mass`, `balmer_decrement`, `continuum`, `luminosity` and the
+  line-continuum correlation of the light curves only differentiate with respect to the parameters they depend on
+  (`propagate(..., depends=)`); same errors, about 2x faster on a 141-parameter model, and the light curve is cached.
+- Plots: a broad component of Bowen fluorescence and He II lines only (N III 4640, O III 3760, He II 4686/5412,
+  as in the TDE and BFF presets) is drawn in its own colour as "Bowen + He II" instead of being summed with the
+  broad Balmer lines (also in the app).
+- `fa.guess`: amplitudes of lines without fitted pixels (in masked bands or outside the range) are 0, as
+  in `fit` (they gave huge values in the initial guess).
+- Nuclear transients: `fa.Blackbody` continuum (amplitude at a pivot, temperature); Bowen lines OIII3760,
+  NIII4100, NIII4640 and HeII5412 in the line library; presets `fa.presets.tde()` (blackbody + host, broad Balmer,
+  He II + Bowen with shared kinematics, He I, narrow host lines; options for Fe II, coronal lines and broad
+  profiles) and `fa.presets.bff()` (Bowen fluorescence flares / extreme coronal line emitters, Baldini et al.
+  2025). App: both in the model menu. Text files with a constant error column (a placeholder) get errors from
+  the local scatter.
+- Text spectra: columns separated by several spaces are read correctly (they produced an empty flux column);
+  fluxes in physical units (|F| < 1e-10) are stored in units of 1e-17 (`flux_unit=1e-17`, switch off with an
+  explicit `flux_unit=`); without an error column the error is estimated from the local scatter (running window)
+  instead of one value for the whole spectrum; header lines are detected with any pandas version.
+- Stratified BLR line profile (`profile="stratified"`, presets: `broad_profile="stratified"`): a virialised,
+  radially stratified broad-line region (Gaussians of FWHM ∝ r^-1/2 summed over r_in..r_out, dL/dlnr ∝ r^(3-γ));
+  parameters outer FWHM, span = log(r_out/r_in), γ; analytic derivatives. A span at its upper limit is reported
+  as a lower limit (inner edge not constrained). App: "stratified BLR profile" tick box in the Model step and
+  the Multi-epoch view (one broad component).
+- Coordinates when reading: `fa.read(path, ra=..., dec=...)` (degrees or sexagesimal, or `coords="12:34:56.7
+  +12:34:56"` / a SkyCoord) for every format, and `spec.with_coordinates(...)`, so that the Galactic E(B-V) can be
+  looked up for files without a position (text files). App: RA and Dec fields in the Read step.
+- Wavelength-dependent intercalibration: `fit_epochs(..., calibration_degree=1|2)` fits a smooth
+  Legendre correction per epoch (scale x (1 + sum c_j P_j(lambda))) anchored by the shared narrow lines
+  and host, beyond the single scale per epoch of PrepSpec. Simulated 6% tilts per epoch: recovered to
+  1.5%, broad-line flux errors 3.9% -> 1.3%.
+- Broad lines have physical limits: no component wider than 15000 km/s (a 30000 km/s Gaussian spans the
+  whole Hb-[OIII] window and trades flux with the continuum). With two components the core is
+  1000-9000 km/s and the very broad component 3000-15000 km/s, shifts within +-3000 km/s (Sulentic et
+  al. 2000; Marziani et al. 2009). On 120 calibration spectra the fits were unchanged (median dBIC 0,
+  chi2/nu +0.001).
+- High-S/N narrow-line galaxies: `fa.refine(spec, preset)` adds the extensions of the preset that the BIC
+  prefers (flux-calibration polynomial, outflow wing, Gauss-Hermite profiles, broad Balmer lines in a
+  LINER), rejecting any whose parameters end at a limit; `spec.mask_sky()` masks telluric bands and sky
+  lines; new `fa.Calibration` (multiplicative Legendre polynomial, as pPXF mdegree) and the preset options
+  `calibration=` and `narrow_profile=`. `fit_sample` and the app's Fit step use them for the
+  narrow-line classes. Eight SDSS examples: chi2/nu 3.4 -> 2.0, 2.2 -> 1.8, 2.1 -> 1.6, 1.6 -> 1.1, 2.1 -> 1.3.
+  `starforming`: H8 (blended with HeI 3889) is no longer tied to Case B.
+- Lag methods: von Neumann estimator (`fa.rm.vn_lag`), damped-random-walk lags with the correlated line
+  and continuum errors of each fit (`fa.rm.gp_lag`), seasonal-alias weighting for all methods; 
+  `me.reverberation(methods=, primary=)`, `rm.lag_table()`, warnings when the methods disagree.
+- Spectro-temporal reverberation: `fa.rm.component_reverberation(me, ...)` gives the lag and response of
+  every spectral component (continuum, each broad component, FeII) from their fluxes and full covariance
+  over all epochs (`me.quantity_covariance`), and decomposition-cleaned light curves.
 - Multi-epoch joint fits are much faster for large models: the normal equations are assembled per
   epoch and solved block by block (Schur complement on the shared parameters), the covariance is
   kept per epoch, host template grids are shared between epochs and the Balmer-continuum
@@ -105,6 +301,17 @@ derivatives.
 - Lines: H9–H12, [NII] 5755, [SIII] 6312.
 
 ### Fixed
+- Classification: Seyfert 1s with broad lines of ~2500-3500 km/s could be classified as 'unknown' with
+  the type-2 model recommended. The Balmer part of the outflow wing (FWHM up to 2500 km/s) took the broad
+  core, the broad component kept only the far wings (FWHM > 12000 km/s, no H-beta) and failed the broad-line
+  test. `classify` now also fits the lines with the wing on the forbidden lines only and a broad core plus
+  a very broad wing, keeps the better fit (BIC), and tests the whole broad profile. On the calibration
+  sample (SDSS): type 1 quasars recognised 228 -> 238 of 300 (none lost), narrow-line galaxies called
+  type 1 6 -> 9 of 650 (the three new ones are MPA-JHU Seyfert 2s with broad H-alpha of 2000-3000 km/s).
+- Line wavelengths: the Mg II 2798 blend and [Ne IV] 2424 are vacuum values (Vanden Berk et al. 2001) but
+  were converted from air to vacuum a second time, which put them 88 and 91 km/s too far to the red: Mg II
+  velocity shifts measured with `MgII2798` (the `mgii` preset) came out 88 km/s too blue. Widths, fluxes and
+  black-hole masses are unaffected. [S III] 9531 corrected from 9531.1 to 9530.6 A (air).
 - Multi-epoch: per-epoch results did not report parameters at a limit (the names carried the
   epoch suffix), so e.g. a broad width at its maximum showed as "free" with error 0 and no warning;
   amplitudes at zero were not reported either.
@@ -264,6 +471,9 @@ derivatives.
 - Line amplitudes are now **integrated fluxes** (1.x used peak heights), so
   flux tables need no conversion.
 - `rebin()` is removed; models are evaluated on the native wavelength grid.
+- The Jupyter widget interface (`fa.gui()`, the ipywidgets extra) and the app's classic page (`/classic`) are
+  removed; the app (`fa.app()`, `fantasy-app`) does both. The tools of the classic page remain in Python:
+  reverberation `fa.rm`, comparison of decompositions `fa.compare`, single lines `r.plot_line`.
 
 ### Moving a 1.x script
 

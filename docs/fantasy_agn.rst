@@ -63,6 +63,9 @@ Building models
    :members: download, load, available, TEMPLATE_SETS
 
 .. autofunction:: fantasy_agn.line_wavelength
+.. autofunction:: fantasy_agn.line_table
+.. autofunction:: fantasy_agn.lines_in
+.. autofunction:: fantasy_agn.line_info
 .. autofunction:: fantasy_agn.read_line_list
 
 GUI

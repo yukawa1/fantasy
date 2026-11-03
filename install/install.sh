@@ -44,7 +44,7 @@ fi
 
 echo "Installing FANTASY from $(basename "$SOURCE") (Python $PYTHON_VERSION) ..."
 # shellcheck disable=SC2086
-uv tool install --force --python "$PYTHON_VERSION" $CONSTRAINTS "$SOURCE"
+uv tool install --force --reinstall-package fantasy_agn --python "$PYTHON_VERSION" $CONSTRAINTS "$SOURCE"   # never a cached older build
 BIN="$(uv tool dir --bin 2>/dev/null || echo "$HOME/.local/bin")"
 PATH="$BIN:$PATH"
 [ -n "$FANTASY_NO_PATH" ] || uv tool update-shell >/dev/null 2>&1 || true   # tool folder on the PATH of new terminals
