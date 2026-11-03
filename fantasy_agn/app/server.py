@@ -8,9 +8,13 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
                                      (body = file, ?filename=...&z=...)
     POST /api/classify
     POST /api/fit                    JSON {errors} (fits `model`; without one: {model, broad_components, outflow})
-    POST /api/model                  JSON {action: preset|add|remove|params, ...}: code for the model editor
+    POST /api/model                  JSON {action: preset|add|remove|params|save|load|upload, ...}: code for the model editor
+                                      (save {name, folder, overwrite}, load {name | path}, upload {name, text};
+                                      the library is ~/.fantasy_agn/models, models saved elsewhere are remembered)
+    GET  /api/models                 the saved models; GET /api/model.json the current model as JSON
     GET  /api/docs                   documentation pages (guides and API reference)
     GET  /api/lines                  the line list
+    GET  /api/linesets               the FANTASY 1 line lists (coronal, [Fe II], ...)
     GET  /api/plotdata               arrays for the interactive plot
     GET  /api/data                   tables for the Data tab
     POST /api/upload                 body = a file (?filename=&batch=): keep it, return its path
@@ -26,8 +30,27 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     POST /api/reset
     GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
     GET  /api/lines.csv, /api/session.py
+    GET  /api/classification.<png|pdf>    the classification figure (kept after the fit)
+    GET  /api/components.csv          wavelength, data, model, every component, host, AGN, intrinsic
+    GET  /api/corner.<png|pdf>?params=a,b   corner plot of the posterior samples
+    GET  /api/figure_custom.<png|pdf|eps>?xmin=&xmax=&ymin=&ymax=&title=&residuals=&components=&group=&label_lines=&width=&fontsize=&legend=
     GET  /api/project.fantasy        the whole session (cells, spectra, models, fits) in one file
     POST /api/project                body = a .fantasy project file: open it
+    GET  /api/session.ipynb          the session as a Jupyter notebook
+
+The step-by-step workflow (page ``/``; the earlier interface is at ``/classic``):
+
+    POST /api/wf/read                JSON {mode, paths | pattern | targetid | sdss, group}
+    POST /api/wf/prepare             JSON {z, z_source, extinction, ebv, ra, dec, wmin, wmax, masks, ...}
+    POST /api/wf/suggest             classify the reference spectrum (recommended model)
+    POST /api/wf/fit                 JSON {epochs, reference, shared, errors, n_jobs, ...}
+    GET  /api/wf/preview?k=&kind=raw|prepared, /api/wf/guess?k=, /api/wf/result?k=
+    GET  /api/wf/classify?k=, /api/wf/classify.png?k=
+    GET  /api/wf/lines.csv, /api/wf/lines.fits, /api/wf/plots.pdf, /api/wf/components.csv?k=
+    GET  /api/wf/classify.<png|pdf>?k=&kind=, /api/wf/corner.<png|pdf>?k=&params=,
+         /api/wf/line_list?k=, /api/wf/linegrid.<png|pdf|eps>?k=&lines=Hb,Ha&velocity=&residuals=&info=&others=&ncols=&width=
+         /api/wf/figure.<png|pdf|eps>?k=&xmin=&xmax=&ymin=&ymax=&title=&residuals=&components=&group=
+                                      &label_lines=&width=&fontsize=&legend=  (dl=1: as a download)
 
 The app runs Python code, so the API only answers requests that carry the
 token created when the server starts (it is put into the page) and that are
@@ -52,6 +75,8 @@ def _options(opts):
     out = {k: bool(opts.get(k)) for k in ("coronal", "oi6046", "red") if k in opts}
     if opts.get("host"):
         out["host"] = str(opts["host"])
+    if opts.get("stratified"):
+        out["broad_profile"] = "stratified"         # radially stratified BLR for the broad lines
     return out
 
 
@@ -121,6 +146,8 @@ class Handler(BaseHTTPRequestHandler):
         s = self.session
         if url.path in ("/", "/index.html"):
             return self._index()
+        if url.path in ("/classic", "/classic/"):
+            return self._index("classic.html")
         if url.path.startswith("/static/"):
             return self._static(url.path[len("/static/"):])
         if not url.path.startswith("/api/"):
@@ -129,6 +156,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._error("forbidden", 403)
         if url.path == "/api/state":
             return self._send(s.state())
+        if url.path == "/api/models":
+            return self._send({"models": s.saved_models(), "folders": s.model_folders()})
+        if url.path == "/api/model.json":
+            try:
+                return self._send(s.model_json(), "application/json", filename="model.json")
+            except ValueError as exc:
+                return self._error(str(exc), 404)
         if url.path == "/api/plotdata":
             return self._send(s.plot_data() or {})
         if url.path == "/api/data":
@@ -138,9 +172,14 @@ class Handler(BaseHTTPRequestHandler):
                 from .docs import all_pages
                 Handler._docs = all_pages()
             return self._send(Handler._docs)
+        if url.path == "/api/linesets":
+            from ..lines import LINE_SETS, line_set
+            return self._send([{"key": k, "label": lab, "lines": line_set(k)} for k, (lab, _) in LINE_SETS.items()])
         if url.path == "/api/lines":
-            from ..lines import LINES
-            return self._send([{"name": n, "wave": w} for n, w in sorted(LINES.items(), key=lambda kv: kv[1])])
+            from ..lines import line_table
+            t = line_table()
+            return self._send([{"name": n, "wave": float(r.vacuum), "ion": r.ion, "type": r.type,
+                                "series": r.series} for n, r in t.iterrows()])
         if url.path.startswith("/api/figure."):
             fmt = url.path.rsplit(".", 1)[1]
             if fmt not in ("png", "pdf", "eps"):
@@ -152,6 +191,41 @@ class Handler(BaseHTTPRequestHandler):
             ctype = {"png": "image/png", "pdf": "application/pdf",
                      "eps": "application/postscript"}[fmt]
             return self._send(data, ctype, filename=f"{s.figure_stem}.{fmt}" if dl else None)
+        if url.path.startswith("/api/classification."):
+            fmt = url.path.rsplit(".", 1)[1]
+            if fmt not in ("png", "pdf"):
+                return self._error("unknown format", 404)
+            data = s.class_figure_bytes(fmt, dpi=300 if "dl" in q else 110)
+            if data is None:
+                return self._error("no classification yet", 404)
+            return self._send(data, "image/png" if fmt == "png" else "application/pdf",
+                              filename=f"classification.{fmt}" if "dl" in q else None)
+        if url.path == "/api/components.csv":
+            data = s.components_csv()
+            if data is None:
+                return self._error("no fit yet", 404)
+            return self._send(data.encode(), "text/csv", filename="components.csv")
+        if url.path.startswith("/api/corner."):
+            fmt = url.path.rsplit(".", 1)[1]
+            if fmt not in ("png", "pdf"):
+                return self._error("unknown format", 404)
+            try:
+                data = s.corner_figure([p for p in q.get("params", [""])[0].split(",") if p] or None, fmt,
+                                       dpi=300 if "dl" in q else 110)
+            except ValueError as e:
+                return self._error(str(e), 400)
+            return self._send(data, "image/png" if fmt == "png" else "application/pdf",
+                              filename=f"corner.{fmt}" if "dl" in q else None)
+        if url.path.startswith("/api/figure_custom."):
+            fmt = url.path.rsplit(".", 1)[1]
+            if fmt not in ("png", "pdf", "eps"):
+                return self._error("unknown format", 404)
+            try:
+                data = s.custom_figure({k: v[0] for k, v in q.items()}, fmt, dpi=300 if "dl" in q else 110)
+            except ValueError as e:
+                return self._error(str(e), 400)
+            ctype = {"png": "image/png", "pdf": "application/pdf", "eps": "application/postscript"}[fmt]
+            return self._send(data, ctype, filename=f"{s.figure_stem or 'fit'}.{fmt}" if "dl" in q else None)
         if url.path.startswith("/api/epoch."):
             fmt = url.path.rsplit(".", 1)[1]
             if fmt not in ("png", "pdf"):
@@ -210,6 +284,10 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/project.fantasy":
             name = (s.spec.name if s.spec is not None else "session") + ".fantasy"
             return self._send(s.save_project(), "application/octet-stream", filename=name)
+        if url.path.startswith("/api/wf/"):
+            return self._wf_get(url.path[len("/api/wf/"):], q)
+        if url.path == "/api/session.ipynb":
+            return self._send(s.notebook(), "application/x-ipynb+json", filename="fantasy_session.ipynb")
         if url.path == "/api/session.py":
             return self._send(s.script(), "text/x-python", filename="fantasy_session.py")
         return self._error("not found", 404)
@@ -233,12 +311,14 @@ class Handler(BaseHTTPRequestHandler):
                     code = s.read_code(path=opts.get("path"), targetid=opts.get("targetid"),
                                        z=opts.get("z"), deredden=opts.get("deredden", True),
                                        ebv=opts.get("ebv"), rest_frame=opts.get("rest_frame", True),
-                                       mask_absorption=bool(opts.get("mask_absorption")))
+                                       mask_absorption=bool(opts.get("mask_absorption")),
+                                       ra=opts.get("ra"), dec=opts.get("dec"))
                 else:
                     code = s.read_code(data=self._body(), filename=q.get("filename"), z=q.get("z"),
                                        deredden=q.get("deredden", "1") == "1", ebv=q.get("ebv"),
                                        rest_frame=q.get("rest_frame", "1") == "1",
-                                       mask_absorption=q.get("mask_absorption", "0") == "1")
+                                       mask_absorption=q.get("mask_absorption", "0") == "1",
+                                       ra=q.get("ra"), dec=q.get("dec"))
                 s.run_cell(code)
             elif url.path == "/api/classify":
                 s.run_cell(s.classify_code())
@@ -264,12 +344,37 @@ class Handler(BaseHTTPRequestHandler):
                 if action == "preset":
                     code = s.preset_code(opts.get("model", "optical"), opts.get("broad_components", 2),
                                          opts.get("outflow", True), **_options(opts))
+                    s.run_step(code, "model = fa.presets.")      # a new choice replaces the last one
+                    return self._send(s.state())
                 elif action == "add":
                     code = s.add_code(opts.get("component") or {})
                 elif action == "remove":
                     code = s.remove_code(opts.get("name", ""))
                 elif action == "params":
                     code = s.params_code(opts.get("changes") or [])
+                elif action == "tie":
+                    code = s.tie_kinematics_code(opts.get("component", ""), opts.get("to", ""))
+                elif action == "untie":
+                    code = s.untie_code(opts.get("component", ""))
+                elif action == "profile":
+                    code = s.profile_code(opts.get("component", ""), opts.get("profile", ""))
+                elif action == "save":
+                    try:
+                        code = s.save_model_code(opts.get("name"), opts.get("folder"), bool(opts.get("overwrite")))
+                    except FileExistsError as exc:
+                        return self._send({"exists": str(exc)})
+                    s.run_cell(code)
+                    return self._send(s.state())
+                elif action in ("load", "upload"):
+                    if action == "upload":
+                        code = s.load_model_code(s.store_model(opts.get("name"), opts.get("text", "")))
+                    else:
+                        code = s.load_model_code(opts.get("name"), opts.get("path"))
+                    s.run_step(code, "model = fa.")       # replaces the last model choice
+                    return self._send(s.state())
+                elif action == "empty":
+                    s.run_step(s.empty_model_code(), "model = fa.")       # replaces a preset chosen just before
+                    return self._send(s.state())
                 else:
                     raise ValueError("unknown model action")
                 s.run_cell(code)
@@ -286,6 +391,8 @@ class Handler(BaseHTTPRequestHandler):
                     shared=opts.get("shared", ""), intercalibrate=opts.get("intercalibrate", True),
                     n_jobs=opts.get("n_jobs", -1), deredden=opts.get("deredden", True), ebv=opts.get("ebv"),
                     rest_frame=opts.get("rest_frame", True), z=opts.get("z"), **extra))
+            elif url.path.startswith("/api/wf/"):
+                self._wf_post(url.path[len("/api/wf/"):], json.loads(self._body() or b"{}"))
             elif url.path == "/api/reverberation":
                 opts = json.loads(self._body() or b"{}")
                 s.run_cell(s.reverberation_code(opts.get("line", "Hb"), opts.get("n_mc", 1000)))
@@ -308,8 +415,127 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(str(exc), 409)
         return self._send(s.state())
 
-    def _index(self):
-        with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as fh:
+    # ------------------------------------------------------------- workflow
+    def _wf_get(self, name, q):
+        s = self.session
+        one = lambda key, default="0": q.get(key, [default])[0]
+        try:
+            if name == "preview":
+                return self._send(s.wf_preview(one("k"), one("kind", "prepared")) or {})
+            if name == "guess":
+                return self._send(s.wf_guess(one("k", "")) or {})
+            if name == "result":
+                return self._send(s.wf_result(one("k")) or {})
+            if name == "classify":
+                return self._send(s.classify_state(one("k")) or {})
+            if name == "result_more":
+                return self._send(s.wf_result_more(one("k"), one("part", "key")) or {})
+            if name == "lightcurve":
+                return self._send(s.wf_lightcurve() or {})
+            if name == "reverb.png":
+                data = s.wf_reverb_figure()
+                return self._send(data, "image/png") if data else self._error("no reverberation yet", 404)
+            if name == "result.png":
+                data = s.wf_result_figure(one("k"))
+                return self._send(data, "image/png") if data else self._error("no fit yet", 404)
+            if name == "sample":
+                return self._send(s.sample_view(one("k")) or {})
+            if name == "sample_points":
+                return self._send(s.sample_points() or {})
+            if name == "mainseq":
+                return self._send(s.wf_main_sequence() or {})
+            if name == "line_list":
+                return self._send(s.wf_line_list(one("k")) or {})
+            ctypes = {"png": "image/png", "pdf": "application/pdf", "eps": "application/postscript"}
+            stem_fmt = name.rsplit(".", 1)
+            if len(stem_fmt) == 2 and stem_fmt[1] in ctypes and stem_fmt[0] in ("classify", "corner", "figure", "mainseq", "linegrid"):
+                base, fmt = stem_fmt
+                dl = one("dl", "") == "1"
+                if base == "classify":
+                    data = s.classify_figure(one("k"), one("kind", "steps"), fmt)
+                    if not data:
+                        return self._error("not classified yet", 404)
+                    fn = f"classification_{one('kind', 'steps')}.{fmt}"
+                elif base == "corner":
+                    params = [p for p in one("params", "").split(",") if p]
+                    data, fn = s.wf_corner(one("k"), params or None, fmt), f"corner_{one('k')}.{fmt}"
+                elif base == "mainseq":
+                    data, fn = s.wf_main_sequence_figure(one("k"), fmt), f"main_sequence.{fmt}"
+                elif base == "linegrid":
+                    opts = {key: v[0] for key, v in q.items() if key not in ("k", "t", "dl", "v", "lines")}
+                    lines = [ln for ln in one("lines", "").split(",") if ln]
+                    data, fn = s.wf_lines_figure(one("k"), lines, opts, fmt), f"lines_{one('k')}.{fmt}"
+                elif base == "figure":
+                    opts = {key: v[0] for key, v in q.items() if key not in ("k", "t", "dl", "v")}
+                    data, fn = s.wf_custom_figure(one("k"), opts, fmt), f"fit_{one('k')}.{fmt}"
+                return self._send(data, ctypes[fmt], filename=fn if dl else None)
+            stem = (s.wf_results() or [("fantasy",)])[0][0]
+            if name == "lines.csv":
+                data = s.wf_lines_csv()
+                return self._send(data, "text/csv", filename=f"{stem}_lines.csv") if data else self._error("no fit yet", 404)
+            if name == "components.csv":
+                k = int(one("k"))
+                return self._send(s.wf_components_csv(k), "text/csv", filename=f"{stem}_model_{k}.csv")
+            if name == "lines.fits":
+                data = s.wf_lines_fits()
+                return (self._send(data, "application/fits", filename=f"{stem}_lines.fits") if data
+                        else self._error("no fit yet", 404))
+            if name == "plots.pdf":
+                data = s.wf_plots_pdf()
+                return (self._send(data, "application/pdf", filename=f"{stem}_fits.pdf") if data
+                        else self._error("no fit yet", 404))
+        except (ValueError, KeyError) as exc:
+            return self._error(str(exc), 404)
+        return self._error("not found", 404)
+
+    def _wf_post(self, name, opts):
+        s = self.session
+        if name == "mode":
+            mode = opts.get("mode")
+            from .steps import MODES
+            if mode not in MODES:
+                raise ValueError("unknown mode")
+            s.wf["mode"] = mode
+        elif name == "read":
+            s.run_step(s.wf_read_code(mode=opts.get("mode", "single"), paths=opts.get("paths"),
+                                      pattern=opts.get("pattern"), targetid=opts.get("targetid"),
+                                      sdss=opts.get("sdss"), group=opts.get("group", "date"),
+                                      format=opts.get("format", "auto")), "# read")
+        elif name == "prepare":
+            keys = ("z", "z_source", "rest_frame", "extinction", "ebv", "ra", "dec", "wmin", "wmax",
+                    "telluric", "sky_lines", "absorption", "masks", "apply_to", "flux_unit")
+            s.run_step(s.wf_prepare_code(**{k: opts[k] for k in keys if k in opts}), "# prepare")
+        elif name == "suggest":
+            sp = s.spectra
+            if sp is None:
+                raise ValueError("prepare the spectra first")
+            k = s.wf_reference()
+            if len(sp) > 1:     # every epoch, for the diagrams; the reference one recommends the model
+                s.run_cell(f"epoch_classes = [fa.classify(s) for s in spectra]\nc = epoch_classes[{k}]\n"
+                           "[(s.name, x.label) for s, x in zip(spectra, epoch_classes)]")
+            else:
+                s.run_cell("c = fa.classify(spectra[0])\nc")
+        elif name == "residuals":
+            s.run_step(s.wf_residuals_code(scope=opts.get("scope", "all"), nsigma=opts.get("nsigma", 4.0)),
+                       "# residuals")
+        elif name == "reverb":
+            s.run_step(s.wf_reverb_code(line=opts.get("line", "Hb"), n_mc=opts.get("n_mc", 1000),
+                                        methods=tuple(opts.get("methods") or ("iccf", "vn", "drw")),
+                                        detrend=bool(opts.get("detrend")), mjd_min=opts.get("mjd_min"),
+                                        mjd_max=opts.get("mjd_max")), "# reverberation")
+        elif name == "fit":
+            keys = ("epochs", "reference", "n_jobs", "shared", "errors", "scale_errors", "rescale_errors",
+                    "calibration_degree", "host_per_epoch", "uncertainty", "absorbers", "sample_model",
+                    "shared_shape")
+            code = s.wf_fit_code(**{k: opts[k] for k in keys if k in opts})
+            if s.ns.get("resid") is not None:            # residuals of the previous fit
+                code = code.replace("# fit\n", "# fit\nresid = None\n", 1)
+            s.run_step(code, "# fit")
+        else:
+            raise ValueError("unknown workflow action")
+
+    def _index(self, page="index.html"):
+        with open(os.path.join(STATIC, page), encoding="utf-8") as fh:
             page = fh.read().replace("__FANTASY_TOKEN__", self.token)
         self._send(page, "text/html; charset=utf-8")
 

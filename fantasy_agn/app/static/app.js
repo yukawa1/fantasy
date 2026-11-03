@@ -300,10 +300,10 @@ function renderProgressIn(box) {
 }
 
 // ========================================================= interactive plot
-const COLORS = {
-  data: "#5b6475", model: "#f26b3a", continuum: "#7c8698", host: "#9a9a2e", "Fe II": "#8b5cf6",
-  Balmer: "#10b981", "narrow lines": "#d6336c", "broad lines": "#0ea5e9", outflow: "#f2a33a",
-  "stars + power law": "#9a9a2e", "broad 1": "#0ea5e9", "broad 2": "#0ea5e9", "broad 3": "#0ea5e9",
+const COLORS = {      // the palette of the figures (plotting.COLORS)
+  data: "#9b9a95", model: "#0b0b0b", continuum: "#52514e", host: "#008300", "Fe II": "#e34948",
+  Balmer: "#86b6ef", "narrow lines": "#1baf7a", "broad lines": "#2a78d6", outflow: "#eda100",
+  "stars + power law": "#008300", "broad 1": "#2a78d6", "broad 2": "#104281", "broad 3": "#6da7ec",
 };
 let plotData = null, view = null, hidden = new Set(), drag = null, pv = "interactive";
 async function loadPlot() {
@@ -717,7 +717,15 @@ function renderMulti() {
       state.models.map((m) => `<option>${esc(m)}</option>`).join("");
     $("mmodel").value = "hbeta";
     applyModelDefaults("hbeta", $("moutflow"), null);
-    $("mmodel").addEventListener("change", () => applyModelDefaults($("mmodel").value, $("moutflow"), null));
+    applyStratified($("mstratified"), $("mncomp"), "hbeta");
+    $("mmodel").addEventListener("change", () => {
+      applyModelDefaults($("mmodel").value, $("moutflow"), null);
+      applyStratified($("mstratified"), $("mncomp"), $("mmodel").value);
+    });
+    $("mstratified").addEventListener("change", () => {
+      if (!$("mstratified").checked) $("mncomp").value = 2;
+      applyStratified($("mstratified"), $("mncomp"), $("mmodel").value);
+    });
     $("mjobs").value = Math.max(1, (state.cpus || 2) - 1);
     $("mcpus").textContent = `${state.cpus} processor cores on this computer; the independent fits run in parallel.`;
   }
@@ -812,6 +820,7 @@ mdrop.ondrop = (e) => { e.preventDefault(); mdrop.classList.remove("over"); mFil
 $("btn-multi").onclick = async () => {
   const opts = {
     model: $("mmodel").value, broad_components: Number($("mncomp").value), outflow: $("moutflow").checked,
+    stratified: !$("mstratified").disabled && $("mstratified").checked,
     shared: $("mshared").value, intercalibrate: $("minter").checked, n_jobs: Number($("mjobs").value),
     deredden: $("mdered").checked, ebv: $("mdered").checked && $("mebv").value !== "" ? Number($("mebv").value) : null,
     rest_frame: true, z: $("mz").value || null, pattern: $("mpattern").value.trim() || null,
@@ -1039,19 +1048,21 @@ async function post(path, body, headers) {
 }
 function prepOptions() {
   return { deredden: $("dered").checked, ebv: $("dered").checked && $("ebv").value !== "" ? Number($("ebv").value) : null,
-           rest_frame: $("restframe").checked, mask_absorption: $("absorb").checked };
+           rest_frame: $("restframe").checked, mask_absorption: $("absorb").checked,
+           ra: $("ra").value.trim() || null, dec: $("dec").value.trim() || null };
 }
 function renderPrepHint() {
   const o = prepOptions();
   const parts = [];
   parts.push(o.deredden ? (o.ebv !== null ? `extinction corrected with E(B-V) = ${o.ebv}` :
-    "E(B-V) looked up at the position (file, SFD maps or the IRSA dust service online)") : "Galactic extinction not corrected");
+    (o.ra && o.dec ? `E(B-V) looked up at RA ${o.ra}, Dec ${o.dec}` :
+     "E(B-V) looked up at the position (file, SFD maps or the IRSA dust service online)")) : "Galactic extinction not corrected");
   parts.push(o.rest_frame ? "rest frame" : "observed frame (the models need the rest frame)");
   if (o.mask_absorption) parts.push("narrow absorption lines masked");
   $("prep-hint").textContent = parts.join(" · ");
   $("ebv").disabled = !o.deredden;
 }
-for (const id of ["dered", "ebv", "restframe", "absorb"]) $(id).addEventListener("input", renderPrepHint);
+for (const id of ["dered", "ebv", "restframe", "absorb", "ra", "dec"]) $(id).addEventListener("input", renderPrepHint);
 renderPrepHint();
 function readJSON() {
   const z = $("z").value;
@@ -1066,6 +1077,7 @@ function readFile(file) {
                                   mask_absorption: o.mask_absorption ? "1" : "0" });
   if ($("z").value) q.set("z", $("z").value);
   if (o.ebv !== null) q.set("ebv", o.ebv);
+  if (o.ra && o.dec) { q.set("ra", o.ra); q.set("dec", o.dec); }
   $("message").textContent = `uploading ${file.name} …`;
   post(`/api/read?${q}`, file, { "Content-Type": "application/octet-stream" });
 }
@@ -1088,7 +1100,7 @@ $("btn-classify").onclick = () => post("/api/classify");
 function presetOptions() {
   return { model: $("preset").value, broad_components: Number($("ncomp").value), outflow: $("outflow").checked,
            coronal: $("opt-coronal").checked, oi6046: $("opt-oi").checked, red: $("opt-red").checked,
-           host: $("host").value };
+           host: $("host").value, stratified: !$("stratified").disabled && $("stratified").checked };
 }
 const TPL = { emiles: "emiles", bc03: "galaxev" };
 function tplInfo(choice) {
@@ -1114,6 +1126,7 @@ $("btn-tpl").onclick = () => post("/api/templates", { name: $("btn-tpl").dataset
 const PRESET_OPTS = { "optical": ["coronal", "oi6046", "red"], "optical + host": ["coronal", "oi6046", "red"],
                       "optical (physical)": ["coronal", "oi6046", "red"],
                       "hbeta": ["coronal"], "halpha": ["coronal"], "mgii": [], "civ": [], "seyfert2": ["coronal", "red"],
+                      "TDE (blackbody + Bowen)": ["coronal"], "Bowen flare / coronal (BFF)": [],
                       "liner": ["red"], "composite": ["red"], "starforming": ["red"], "passive / retired": ["red"],
                       "type2 (simple)": ["coronal"], "galaxy (simple)": [] };
 function renderPresetOptions() {
@@ -1127,6 +1140,15 @@ function renderPresetOptions() {
 }
 const RED_DEFAULT = ["seyfert2", "liner", "composite", "starforming", "passive / retired"];
 // the preset's own defaults (outflow wing, broad components), sent by the server
+// stratified BLR: one profile replaces core + very broad, so the number of components is 1
+function applyStratified(stratBox, ncompBox, model) {
+  const d = (state && state.model_defaults && state.model_defaults[model]) || {};
+  stratBox.disabled = !d.stratified;
+  stratBox.closest("label").style.opacity = d.stratified ? 1 : 0.45;
+  if (stratBox.disabled) stratBox.checked = false;
+  if (stratBox.checked) { ncompBox.value = 1; ncompBox.disabled = true; }
+  else if (d.broad_components !== undefined) ncompBox.disabled = false;
+}
 function applyModelDefaults(model, outflowBox, ncompBox) {
   const d = (state && state.model_defaults && state.model_defaults[model]) || {};
   if (outflowBox) {
@@ -1141,7 +1163,15 @@ function applyModelDefaults(model, outflowBox, ncompBox) {
 function presetDefaults() {
   $("opt-red").checked = RED_DEFAULT.includes($("preset").value);
   applyModelDefaults($("preset").value, $("outflow"), null);
+  applyStratified($("stratified"), $("ncomp"), $("preset").value);
 }
+$("stratified").addEventListener("change", () => {
+  if (!$("stratified").checked) {
+    const d = (state && state.model_defaults && state.model_defaults[$("preset").value]) || {};
+    if (d.broad_components !== undefined) $("ncomp").value = d.broad_components;
+  }
+  applyStratified($("stratified"), $("ncomp"), $("preset").value);
+});
 $("preset").addEventListener("change", () => { presetDefaults(); renderPresetOptions(); });
 $("btn-preset").onclick = () => modelAction(Object.assign({ action: "preset" }, presetOptions()));
 $("btn-fit").onclick = () => post("/api/fit", Object.assign({ errors: $("errors").value, uncertainty: $("uncert").checked,
@@ -1158,7 +1188,7 @@ drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); };
 
 api("/api/lines").then((ls) => {
-  $("linelist").innerHTML = ls.map((l) => `<option value="${esc(l.name)}">${l.wave.toFixed(1)} Å</option>`).join("");
+  $("linelist").innerHTML = ls.map((l) => `<option value="${esc(l.name)}">${l.wave.toFixed(1)} Å · ${esc(l.ion || "")} ${esc(l.type || "")}</option>`).join("");
 }).catch(() => {});
 
 function route() {

@@ -21,6 +21,7 @@ import traceback
 import numpy as np
 
 from .. import presets
+from .steps import StepsMixin
 
 STEPS = ("read", "classify", "model", "fit", "results")
 UPLOADS = os.path.join(os.path.expanduser("~"), ".fantasy_agn", "uploads")
@@ -34,6 +35,8 @@ MODELS = {
     "halpha": ("halpha", {}),
     "mgii": ("mgii", {}),
     "civ": ("civ", {}),
+    "TDE (blackbody + Bowen)": ("tde", {}),
+    "Bowen flare / coronal (BFF)": ("bff", {}),
     "seyfert2": ("seyfert2", {}),
     "liner": ("liner", {}),
     "composite": ("composite", {}),
@@ -57,6 +60,12 @@ def model_defaults():
         for k in ("outflow", "broad_components"):
             if k in params:
                 d[k] = kw.get(k, params[k].default)
+        d["stratified"] = "broad_profile" in params and not kw.get("physical")
+        # options the interface can switch for this preset, and their defaults
+        d["options"] = [k for k in ("broad_components", "outflow", "host", "coronal", "oi6046", "red")
+                        if k in params and not (k == "host" and kw.get("physical"))]
+        d["values"] = {k: kw.get(k, params[k].default) for k in ("coronal", "oi6046", "red") if k in params}
+        d["preset"], d["kw"] = name, kw
         out[label] = d
     return out
 
@@ -110,7 +119,15 @@ def _short_repr(value):
     return text if len(text) < MAX_OUTPUT else text[:MAX_OUTPUT] + "\n…"
 
 
-class Session:
+def _is_number(v):
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+class Session(StepsMixin):
     """One analysis: a list of code cells run in a shared namespace."""
 
     def __init__(self):
@@ -139,11 +156,13 @@ class Session:
             self.figure = None
             self.figure_version = 0
             self.figure_stem = None
+            self.class_figure = None             # the classification figure, kept when a fit replaces the plot
             self.results = []
             self.warnings = []
             self.recommended = None
             self.info = "Read a spectrum to start."
             self._seen = {}               # id() of spec, c, r at the last update
+            self._wf_reset()
 
     # ----------------------------------------------------------- objects
     @property
@@ -196,6 +215,8 @@ class Session:
                     "error": self.error, "figure_version": self.figure_version,
                     "progress": self.progress,
                     "figure_stem": self.figure_stem,
+                    "has_classification_figure": self.class_figure is not None,
+                    "has_samples": self.result is not None and self.result.samples is not None,
                     "results": [{"label": a, "value": b} for a, b in self.results],
                     "warnings": self.warnings, "recommended": self.recommended,
                     "models": list(MODELS), "model_defaults": model_defaults(), "info": self.info,
@@ -207,6 +228,7 @@ class Session:
                     "reverb": self.reverb_state(),
                     "lines": self.line_state(),
                     "sample": self.sample_state(),
+                    "wf": self.wf_state(),
                     "cpus": os.cpu_count() or 1,
                     "python": platform.python_version(),
                     "version": __import__("fantasy_agn").__version__}
@@ -228,7 +250,7 @@ class Session:
                 except Exception:
                     skipped.append(k)
             cells = [(c.code, c.out, c.n) for c in self.cells]
-            project = {"cells": cells, "ns": keep, "count": self.count, "skipped": skipped}
+            project = {"cells": cells, "ns": keep, "count": self.count, "skipped": skipped, "wf": dict(self.wf)}
         with tempfile.NamedTemporaryFile(suffix=".fantasy", delete=False) as tmp:
             path = tmp.name
         try:
@@ -262,6 +284,9 @@ class Session:
                 cell.start = cell.end = time.time()
                 self.cells.append(cell)
             self.count = project.get("count", len(self.cells))
+            self.wf.update(project.get("wf") or {})
+            if not project.get("wf") and "me" in project["ns"]:      # projects saved before the workflow
+                self.wf.update(mode="multi", fit_kind="joint")
         # figures, results and recommendations follow the restored objects
         self._seen = {}
         for name in ("spec", "c", "r", "me"):
@@ -292,6 +317,218 @@ class Session:
                 fig.savefig(buf, format=fmt, dpi=300 if fmt == "png" else None,
                             bbox_inches="tight")
         return buf.getvalue()
+
+    @staticmethod
+    def _fig_bytes(fig, fmt="png", dpi=110):
+        from ..plotting import paper_style
+        buf = io.BytesIO()
+        if fmt == "png" and dpi <= 220:
+            fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+        else:
+            with paper_style():
+                fig.savefig(buf, format=fmt, dpi=300 if fmt == "png" else None, bbox_inches="tight")
+        return buf.getvalue()
+
+    def class_figure_bytes(self, fmt="png", dpi=110):
+        """The classification figure (BPT diagrams and the steps), also after a fit."""
+        with self.lock:
+            fig = self.class_figure
+        return None if fig is None else self._fig_bytes(fig, fmt, dpi)
+
+    def components_csv(self, r=None):
+        """
+        The fitted model as a table: wavelength, observed flux, error, total model, residual, every
+        component (as observed), the host and the AGN (everything but the host), the observed spectrum
+        minus the host, and, with an Extinction component, its transmission and the intrinsic components.
+        """
+        import pandas as pd
+        r = self.result if r is None else r
+        if r is None:
+            return None
+        s, m = r.spectrum, r.model
+        keep = r.mask if r.mask is not None else np.ones(s.wave.shape, bool)
+        x = s.wave[keep]
+        comps = m.evaluate(x, s.context, components=True)
+        total = sum(comps.values(), np.zeros_like(x))
+        host = [c.name for c in m.components if c.kind == "host"]
+        cols = {"wavelength": x, "flux": s.flux[keep], "error": s.err[keep], "model": total,
+                "residual": s.flux[keep] - total}
+        cols.update({f"comp_{k}": v for k, v in comps.items()})
+        h = sum((comps[k] for k in host), np.zeros_like(x))
+        cols.update({"host": h, "agn": total - h, "flux_minus_host": s.flux[keep] - h})
+        att = [c for c in m.components if c.kind == "attenuation"]
+        if att:
+            full = m.params.full_values().copy()
+            for c in att:
+                full[m.params.names.index(f"{c.name}.ebv")] = 0.0
+            intr = m.evaluate(x, s.context, full=full, components=True)
+            now, slices = m.params.full_values(), m._slices()
+            for c in att:
+                k = m.components.index(c)
+                cols[f"transmission_{c.name}"] = c.value(x, now[slices[k]], s.context)
+            cols.update({f"intrinsic_{k}": v for k, v in intr.items() if k not in [c.name for c in att]})
+        for c in (c for c in m.components if c.kind == "absorption"):   # multiplicative troughs
+            now, slices = m.params.full_values(), m._slices()
+            cols[f"transmission_{c.name}"] = c.value(x, now[slices[m.components.index(c)]], s.context)
+        head = (f"# FANTASY fit of {s.name}: rest-frame wavelength (A, {s.medium}); fluxes in units of "
+                f"{getattr(s, 'flux_unit', 1)} erg/s/cm2/A; comp_*: components as observed"
+                + ("; intrinsic_*: without the extinction" if att else "") + "\n")
+        return head + pd.DataFrame(cols).to_csv(index=False, float_format="%.6g")
+
+    def corner_figure(self, params=None, fmt="png", dpi=110, r=None):
+        """Corner plot of the posterior samples (MCMC or Monte Carlo) of the fit."""
+        from matplotlib.figure import Figure
+        r = self.result if r is None else r
+        if r is None or r.samples is None:
+            raise ValueError("no samples: fit with errors='mcmc' (or 'mc')")
+        names = r.model.params.names
+        S = np.asarray(r.samples)
+        sel = [names.index(p) for p in (params or self.sampled_params(r)[:8]) if p in names]
+        if not sel:
+            raise ValueError("no free parameters with samples")
+        k = len(sel)
+        fig = Figure(figsize=(1.6 * k + 0.6, 1.6 * k + 0.6))
+        axs = fig.subplots(k, k, squeeze=False)
+        fig.subplots_adjust(hspace=0.06, wspace=0.06, left=0.12, bottom=0.12, right=0.98, top=0.98)
+        for i, a in enumerate(sel):
+            for j, b in enumerate(sel):
+                ax = axs[i, j]
+                if j > i:
+                    ax.set_visible(False)
+                    continue
+                if i == j:
+                    ax.hist(S[:, a], bins=30, color="#4c72b0", histtype="stepfilled", alpha=0.6)
+                    q = np.percentile(S[:, a], [15.87, 50, 84.13])
+                    for v in q:
+                        ax.axvline(v, color="k", lw=0.8, ls="--" if v != q[1] else "-")
+                    ax.set_title(f"{names[a]}\n{q[1]:.4g} +{q[2] - q[1]:.2g} -{q[1] - q[0]:.2g}", fontsize=7)
+                    ax.set_yticks([])
+                else:
+                    ax.hist2d(S[:, b], S[:, a], bins=30, cmap="Blues")
+                if i < k - 1:
+                    ax.set_xticklabels([])
+                else:
+                    ax.set_xlabel(names[b], fontsize=7)
+                if j > 0 or i == 0:
+                    ax.set_yticklabels([])
+                else:
+                    ax.set_ylabel(names[a], fontsize=7)
+                ax.tick_params(labelsize=6)
+        return self._fig_bytes(fig, fmt, dpi)
+
+    @staticmethod
+    def sampled_params(r):
+        """Free non-linear parameters that the samples constrain (not at a limit, with a spread)."""
+        if r.samples is None:
+            return []
+        S, at = np.asarray(r.samples), set(r.at_limit)
+        out = []
+        for i, n in enumerate(r.model.params.names):
+            p = r.model.params[n]
+            if p.linear or p.tie is not None or p.fixed or n in at:
+                continue
+            if np.std(S[:, i]) > 1e-6 * max(1.0, abs(np.median(S[:, i]))):
+                out.append(n)
+        return out
+
+    FIG_KINDS = ("continuum", "host", "balmer_cont", "balmer_lines", "feii", "narrow", "broad", "outflow",
+                 "bowen", "other")
+
+    def custom_figure(self, opts, fmt="png", dpi=110, r=None):
+        """
+        The fit plot with options: xmin, xmax, ymin, ymax, title (notitle=1: none),
+        residuals, components, data, model, legend (0/1), group ('auto', 'sum', 'all'),
+        show_<kind> (0 hides that kind of component), color_<kind> / color_data / color_model,
+        fill_<kind> (0/1: fill under the curve), lw_<kind> (line width, points), ls_<kind>
+        ('solid', 'dashed', 'dotted', 'dashdot'),
+        label_lines (0, 1 = strongest, 'all'), label_fs, label_font, label_color, connectors
+        ('leader', 'full', 'none'), label_rot (90/0), width ('single', 'double' or inches),
+        fontsize (points).
+        """
+        import re
+        from matplotlib.figure import Figure
+        r = self.result if r is None else r
+        if r is None:
+            raise ValueError("fit a model first")
+
+        def num(k):
+            v = opts.get(k)
+            return float(v) if v not in (None, "") else None
+
+        def on(k, default="1"):
+            return str(opts.get(k, default)) != "0"
+
+        xmin, xmax, ymin, ymax = num("xmin"), num("xmax"), num("ymin"), num("ymax")
+        width = opts.get("width") or "double"
+        width = float(width) if width not in ("single", "double") else width
+        group = {"auto": "auto", "sum": True, "all": False}.get(opts.get("group") or "auto", "auto")
+        colors = {}
+        for k in ("data", "model") + self.FIG_KINDS:
+            c = str(opts.get(f"color_{k}") or "").strip()
+            if re.fullmatch(r"#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-zA-Z]{3,20}|0?\.\d+", c):
+                colors[k] = c
+        hide = [k for k in self.FIG_KINDS if not on(f"show_{k}")]
+        styles = {}
+        dashes = {"solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-."}
+        for k in ("data", "model") + self.FIG_KINDS:
+            st = {}
+            if str(opts.get(f"fill_{k}", "")) in ("0", "1") and k not in ("data", "model"):
+                st["fill"] = opts[f"fill_{k}"] == "1"
+            if num(f"lw_{k}"):
+                st["lw"] = min(max(num(f"lw_{k}"), 0.1), 6.0)
+            if opts.get(f"ls_{k}") in dashes and k != "data":
+                st["ls"] = dashes[opts[f"ls_{k}"]]
+            if st:
+                styles[k] = st
+        labels = str(opts.get("label_lines", "0"))
+        lopt = {}
+        if num("label_fs"):
+            lopt["fontsize"] = min(max(num("label_fs"), 4.0), 20.0)
+        if opts.get("label_font") in ("serif", "sans-serif", "monospace"):
+            lopt["font"] = opts["label_font"]
+        lc = str(opts.get("label_color") or "").strip()
+        if re.fullmatch(r"#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-zA-Z]{3,20}", lc):
+            lopt["color"] = lc
+        if opts.get("connectors") in ("leader", "full", "none"):
+            lopt["connectors"] = opts["connectors"]
+        if str(opts.get("label_rot", "")) in ("0", "90"):
+            lopt["rotation"] = int(opts["label_rot"])
+        title = None if on("notitle", "0") else (opts.get("title") or None)
+        fig = r.plot(fig=Figure(), components=on("components"), residuals=on("residuals"),
+                     xlim=(xmin, xmax) if xmin is not None and xmax is not None else None,
+                     width=width, group=group,
+                     label_lines={"0": False, "1": True, "all": "all"}.get(labels, False),
+                     title=title, colors=colors, hide=hide, data=on("data"), model=on("model"),
+                     legend=on("legend"), label_options=lopt, styles=styles)
+        ax = fig.axes[0]
+        if ymin is not None or ymax is not None:
+            lo, hi = ax.get_ylim()
+            ax.set_ylim(ymin if ymin is not None else lo, ymax if ymax is not None else hi)
+        fs = num("fontsize")
+        if fs:
+            for t in fig.findobj(lambda o: hasattr(o, "set_fontsize") and o.get_gid() != "linelabel"):
+                try:
+                    t.set_fontsize(fs)
+                except Exception:                        # noqa: BLE001
+                    pass
+        return self._fig_bytes(fig, fmt, dpi)
+
+    def tie_kinematics_code(self, comp, to):
+        """Code that ties the velocity shift and width of component comp to those of component to."""
+        m = self.model
+        if m is None:
+            raise ValueError("create a model first")
+        names = [c.name for c in m.components]
+        for c in (comp, to):
+            if c not in names:
+                raise ValueError(f"no component {c!r}")
+        if comp == to:
+            raise ValueError("choose two different components")
+        lines = [f"model.tie({comp + '.' + k!r}, {to + '.' + k!r})" for k in ("shift", "fwhm")
+                 if f"{comp}.{k}" in m.params.names and f"{to}.{k}" in m.params.names]
+        if not lines:
+            raise ValueError(f"{comp} and {to} have no common shift/fwhm parameters")
+        return "\n".join(lines) + "\nmodel"
 
     def lines_csv(self):
         r = self.result
@@ -374,7 +611,7 @@ class Session:
             self._show(self.reverb.plot(fig=Figure()), "reverberation")
             self.info = "Reverberation done: lag, rms widths and mass below the light curves."
         elif "me" in changed:
-            self._show(me.plot_light_curves(fig=Figure()), "light_curves")
+            self._light_curve_job(me)
             self.info = (f"Multi-epoch fit of {len(me.epochs)} spectra done. Light curves below; "
                          "download the table or the session.")
         elif "r" in changed:
@@ -383,6 +620,7 @@ class Session:
             self.info = "Done. Download the figure, the line table or the session as a script."
         elif "c" in changed:
             self._show(c.plot_steps(fig=Figure()), f"{c.spectrum.name}_classification")
+            self.class_figure = self.figure
             self.recommended = {"model": CLASS_MODEL.get(c.label, "type2"),
                                 "broad_components": 2 if c.label.startswith("type1") else 1,
                                 "label": c.label, "uncertain": c.uncertain}
@@ -391,6 +629,7 @@ class Session:
         elif "spec" in changed:
             self._show(spec.plot(fig=Figure()).figure, f"{spec.name}_spectrum")
             self.recommended, self.results, self.warnings = None, [], []
+            self.class_figure = None
             self.info = "Next: classify the spectrum."
 
     def _results(self, r):
@@ -427,8 +666,16 @@ class Session:
         m = self.model
         if m is None:
             return None
+        def tied_to(c):
+            t = [m.params[f"{c.name}.{k}"].tie for k in ("shift", "fwhm") if f"{c.name}.{k}" in m.params.names]
+            t = [x[0].split(".")[0] for x in t if x]
+            return t[0] if t else None
+
         comps = [{"name": c.name, "type": type(c).__name__, "kind": getattr(c, "kind", ""),
                   "role": getattr(c, "role", None), "profile": getattr(c, "profile", None),
+                  "absorption": bool(getattr(c, "absorption", False)) or bool(
+                      getattr(c, "line_names", None) and all(p.max <= 0 for p in c.params if p.linear)),
+                  "tied_to": tied_to(c), "rebuildable": getattr(c, "_args", None) is not None,
                   "lines": list(getattr(c, "line_names", []) or [])[:40],
                   "n_params": len(c.params)} for c in m.components]
         params = []
@@ -444,14 +691,27 @@ class Session:
 
     # ------------------------------------------------- code for the buttons
     def read_code(self, path=None, data=None, filename=None, targetid=None, z=None,
-                  deredden=True, ebv=None, rest_frame=True, mask_absorption=False):
+                  deredden=True, ebv=None, rest_frame=True, mask_absorption=False, ra=None, dec=None):
         """
         Code that reads a spectrum, optionally corrects Galactic extinction
-        (E(B-V) looked up automatically, or ``ebv``) and moves it to the rest frame.
+        (E(B-V) looked up automatically at the position, or ``ebv``) and moves it
+        to the rest frame. ``ra``/``dec`` (degrees or sexagesimal) set the position
+        when the file has none (needed for the extinction look-up).
         """
         z = float(z) if z not in (None, "", 0, "0") else None
+        ra = str(ra).strip() if ra not in (None, "") else None
+        dec = str(dec).strip() if dec not in (None, "") else None
+        if (ra is None) != (dec is None):
+            raise ValueError("give both RA and Dec (or neither)")
+        if ra is not None:
+            from ..spectrum import parse_coordinates
+            parse_coordinates(ra, dec)                     # fails early on unreadable input
+            fmt = lambda v: repr(float(v)) if _is_number(v) else repr(v)
+            position = f"ra={fmt(ra)}, dec={fmt(dec)}"
         if targetid:
             src = f"fa.desi.fetch({int(targetid)})"
+            if ra is not None:
+                src += f".with_coordinates({position.replace('ra=', '').replace('dec=', '')})"
         else:
             if data is not None:
                 # uploaded files are kept, so that the code (and the script) can read them again
@@ -462,7 +722,7 @@ class Session:
                     fh.write(data)
             if not path:
                 raise ValueError("choose a file, give a path or a DESI TARGETID")
-            src = f"fa.read({os.path.expanduser(path.strip())!r})"
+            src = f"fa.read({os.path.expanduser(path.strip())!r}" + (f", {position}" if ra is not None else "") + ")"
         code = "spec = " + src
         if deredden:
             if ebv not in (None, ""):
@@ -507,8 +767,17 @@ class Session:
         args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
         err = f', errors="{errors}"' if errors != "covariance" else ""
         code = f"model = fa.presets.{name}({args})\nr = fa.fit(spec, model{err})"
+        from ..refine import EXTENSIONS
         if absorbers:
             code = self._absorbed(code, err)
+        elif name in EXTENSIONS and extra.get("refine", True):
+            # narrow-line galaxies: sky residuals masked; at high S/N (chi2/nu > 1.2) the
+            # extensions of the preset (calibration polynomial, outflow, Gauss-Hermite
+            # profiles, ...) that the BIC prefers
+            code = (f"r = fa.refine(spec.mask_sky(), {name!r}, {kw!r}{err})   "
+                    "# the preset, plus extensions the BIC prefers if chi2/nu > 1.2\n"
+                    "model = r.model\n"
+                    "print(r.refinement.to_string(index=False) if len(r.refinement) else 'no refinement needed')")
         elif host_choice in (None, "", "default"):
             code += self._host_check_code(name, kw, err)
         return code + "\nr.key_results()"
@@ -582,6 +851,13 @@ class Session:
         kw = dict(kw)
         params = inspect.signature(getattr(presets, name)).parameters
         host = extra.pop("host", None)
+        profile = extra.pop("broad_profile", None)
+        if profile:
+            if "broad_profile" not in params:
+                raise ValueError(f"{model} has no broad lines: the stratified BLR profile does not apply")
+            kw["broad_profile"] = profile
+            if profile == "stratified":
+                broad_components = 1           # one stratified profile replaces core + very broad
         opts = dict(broad_components=int(broad_components), outflow=bool(outflow))
         opts.update({k: bool(v) for k, v in extra.items() if v is not None})
         for k, v in opts.items():
@@ -661,20 +937,24 @@ class Session:
             if not lines or bad:
                 raise ValueError(f"choose lines from the line list{': unknown ' + ', '.join(bad) if bad else ''}")
             args += [repr(name or "lines"), repr(lines)]
+            if spec.get("absorption"):
+                args.append("absorption=True")
             role = spec.get("role")
             if role in ("narrow", "broad", "outflow"):
                 args.append(f"role={role!r}")
             prof = spec.get("profile") or "gaussian"
             if prof != "gaussian":
-                if prof not in ("lorentzian", "voigt", "gauss-hermite"):
+                if prof not in ("lorentzian", "voigt", "gauss-hermite", "stratified"):
                     raise ValueError("unknown profile")
                 args.append(f"profile={prof!r}")
             for key in ("fwhm", "shift"):
                 lim = limits(key)
                 if lim:
                     args.append(f"{key}={lim!r}")
-        elif kind in ("PowerLaw", "BrokenPowerLaw"):
-            args.append(repr(name or "continuum"))
+            if spec.get("own_kinematics"):
+                args.append("tie_kinematics=False")
+        elif kind in ("PowerLaw", "BrokenPowerLaw", "Blackbody"):
+            args.append(repr(name or ("blackbody" if kind == "Blackbody" else "continuum")))
             if spec.get("pivot"):
                 args.append(f"pivot={float(spec['pivot']):g}")
         elif kind == "Polynomial":
@@ -690,9 +970,28 @@ class Session:
                 if tpl != "emiles":
                     args.append(f"templates={tpl!r}")
             if kind == "FeII":
+                fk = spec.get("feii_kind") or "optical"
+                if fk not in ("optical", "uv", "uv_extended"):
+                    raise ValueError(f"unknown Fe II model {fk!r}")
+                if fk != "optical":
+                    args.append(f"kind={fk!r}")
                 lim = limits("fwhm")
                 if lim:
                     args.append(f"fwhm={lim!r}")
+        elif kind == "Absorption":
+            troughs = []
+            for item in str(spec.get("troughs") or "").replace(";", ",").split(","):
+                if not item.strip():
+                    continue
+                parts = [float(v) for v in item.replace(":", " ").split()]
+                if len(parts) not in (2, 3):
+                    raise ValueError("troughs: give wavelength:FWHM (km/s), e.g. 4861:300, 5890:150")
+                troughs.append(tuple(parts))
+            if not troughs:
+                raise ValueError("troughs: give at least one wavelength:FWHM")
+            args.append(repr(troughs))
+            if name:
+                args.append(f"name={name!r}")
         elif kind == "Extinction":
             law = spec.get("law") or "F99"
             if law not in ("F99", "calzetti"):
@@ -701,7 +1000,41 @@ class Session:
         else:
             raise ValueError(f"unknown component type {kind!r}")
         prefix = "" if self.model is not None else "model = fa.Model()\n"
-        return f"{prefix}model.add(fa.{kind}({', '.join(args)}))\nmodel"
+        code = f"{prefix}model.add(fa.{kind}({', '.join(args)}))"
+        to = spec.get("tie_to")
+        if to:                                   # the same velocity shift and width as another component
+            if self.model is None or to not in [c.name for c in self.model.components]:
+                raise ValueError(f"no component {to!r} to tie to")
+            new = name or {"Lines": "lines", "FeII": "feii"}.get(kind, "")
+            have = {p.split(".", 1)[1] for p in self.model.params.names if p.startswith(to + ".")}
+            ks = [k for k in ("shift", "fwhm") if k in have]
+            if not ks or kind not in ("Lines", "FeII"):
+                raise ValueError(f"{to} has no velocity shift and width to tie to")
+            code += "".join(f"\nmodel.tie({new + '.' + k!r}, {to + '.' + k!r})" for k in ks)
+        return code + "\nmodel"
+
+    def empty_model_code(self):
+        """A model to build by hand: a power-law continuum to start with."""
+        return "model = fa.Model(fa.PowerLaw())   # add components to it\nmodel"
+
+    def profile_code(self, name, profile):
+        """Code that changes the line profile of a Lines component."""
+        if profile not in ("gaussian", "lorentzian", "voigt", "gauss-hermite", "stratified"):
+            raise ValueError("unknown profile")
+        from ..components import Lines
+        if self.model is None or not isinstance(self.model.component(name), Lines):
+            raise ValueError(f"{name!r} is not a line component")
+        return f"model.set_profile({name!r}, {profile!r})\nmodel"
+
+    def untie_code(self, name):
+        """Code that frees the velocity shift and width of component ``name``."""
+        m = self.model
+        if m is None:
+            raise ValueError("create a model first")
+        ks = [k for k in ("shift", "fwhm") if f"{name}.{k}" in m.params.names and m.params[f"{name}.{k}"].tie]
+        if not ks:
+            raise ValueError(f"{name}: shift and width are not tied")
+        return "\n".join(f"model.untie({name + '.' + k!r})" for k in ks) + "\nmodel"
 
     def params_code(self, changes):
         """
@@ -895,6 +1228,13 @@ class Session:
         cached = self.__dict__.get("_multi_cache")
         if cached is not None and cached[0] is me:        # polled often: computed once per result
             return cached[1]
+        if not me.has_light_curve():
+            self._light_curve_job(me)
+            return {"n": len(me.epochs), "rchi2": float(me.chi2 / me.dof), "time": float(me.time), "id": id(me),
+                    "mjd": None, "columns": [], "rows": [], "computing": True,
+                    "epochs": [{"name": e.spectrum.name, "mjd": e.spectrum.mjd, "rchi2": float(e.chi2 / e.dof),
+                                "scale": float(getattr(e, "scale", 1.0)), "reference": k == me.reference,
+                                "limits": list(e.at_limit)} for k, e in enumerate(me.epochs)]}
         lc = me.light_curve()
         mjd = [e.spectrum.mjd for e in me.epochs if e.spectrum.mjd is not None]
         out = {"n": len(me.epochs), "rchi2": float(me.chi2 / me.dof), "time": float(me.time),
@@ -909,6 +1249,27 @@ class Session:
                           for k, e in enumerate(me.epochs)]}
         self._multi_cache = (me, out)
         return out
+
+    def _light_curve_job(self, me):
+        """
+        Compute the light curve of a multi-epoch fit (errors of every line in every epoch: slow
+        for large models) once, in the background, then show its figure; requests stay fast.
+        """
+        from matplotlib.figure import Figure
+        if self.__dict__.get("_lc_job") is me:
+            return
+        self._lc_job = me
+
+        def work():
+            try:
+                me.light_curve()
+                with self._render_lock:
+                    fig = me.plot_light_curves(fig=Figure())
+                if self.multi is me:
+                    self._show(fig, "light_curves")
+            except Exception:
+                pass
+        threading.Thread(target=work, daemon=True).start()
 
     def epoch_figure(self, k, fmt="png", dpi=110):
         """The fit of epoch ``k`` of the multi-epoch result (rendered images are cached)."""
