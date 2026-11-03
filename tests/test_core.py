@@ -257,15 +257,6 @@ def test_unconstrained_amplitudes_are_fixed():
     assert {"extra.fwhm", "extra.shift"} <= set(r.unconstrained)
 
 
-def test_gui_builds():
-    pytest.importorskip("ipywidgets")
-    classic = fa.gui(classic=True)
-    assert classic.preset.value in fa.presets.PRESETS
-    guided = fa.gui()
-    from fantasy_agn.workflow import MODELS
-    assert guided.model_dd.value in MODELS and "import fantasy_agn" not in guided.code.value
-
-
 def test_optical_preset_follows_blue_continuum():
     # A single power law cannot follow the continuum curvature over 3700-6900 A;
     # the default optical model (broken power law + Balmer continuum) must.

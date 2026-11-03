@@ -29,7 +29,7 @@ It is an open-source, easy-to-use code, available for installation through pip. 
 - covariance and Monte Carlo uncertainties, propagated to line fluxes, widths, equivalent widths, luminosities and black-hole masses;
 - ready-made models for the H\ :sub:`β`, H\ :sub:`α`, full optical, MgII and CIV regions;
 - joint multi-epoch fitting with shared narrow lines and flux intercalibration;
-- a point-and-click interface for Jupyter notebooks (``fa.gui()``).
+- a point-and-click application in the browser (``fantasy-app`` or ``fa.app()``).
 
 If you are using this code in your research, please cite the following papers:
 

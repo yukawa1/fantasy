@@ -67,8 +67,3 @@ Building models
 .. autofunction:: fantasy_agn.lines_in
 .. autofunction:: fantasy_agn.line_info
 .. autofunction:: fantasy_agn.read_line_list
-
-GUI
----
-
-.. autofunction:: fantasy_agn.gui

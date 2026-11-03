@@ -69,7 +69,6 @@ As a Python package in your own environment:
 
 ```console
 pip install fantasy_agn-2.0.0-py3-none-any.whl   # then: fantasy test
-pip install "fantasy_agn[gui]"                   # + Jupyter widgets (fa.gui())
 ```
 
 ## Quick start
@@ -260,9 +259,6 @@ model. Every button writes ordinary FANTASY code into the code panel and runs it
 can **edit any cell and run it again** (Shift+Enter) or add your own cells, all in one
 namespace (`spec`, `c`, `model`, `r`). Download the figure (PDF/EPS/PNG), the line
 table, or the whole session as a Python script.
-
-In a Jupyter notebook, `fa.gui()` shows the same steps as widgets
-(`fa.gui(classic=True)`: the tabbed form with all options and multi-epoch fits).
 
 ## Upgrading from 1.x
 

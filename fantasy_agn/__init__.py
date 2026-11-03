@@ -13,7 +13,7 @@ Quick start::
     result.bh_mass()
 
 The application ``fantasy-app`` (or ``fa.app()``) opens a point-and-click
-interface in the browser; in a Jupyter notebook ``fa.gui()`` shows it as widgets.
+interface in the browser.
 """
 __version__ = "2.0.0"
 
@@ -25,7 +25,6 @@ from .extinction import fitzpatrick99
 from .classify import Classification, classify
 from .compare import Comparison, compare
 from .fitting import fit, fit_many, guess
-from .gui import gui
 
 
 def app(port=8780, open_browser=True):
@@ -47,7 +46,7 @@ from .sample import fit_sample, SampleResult
 __all__ = [
     "read", "Spectrum", "Model", "save", "load", "fit_absorbed", "refine", "analyze_residuals", "fit_sample", "SampleResult", "fit", "fit_many", "guess", "fit_epochs", "compare", "Comparison",
     "classify", "Classification",
-    "presets", "gui", "app",
+    "presets", "app",
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
     "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "StellarPopulation",
     "Extinction", "Absorption", "Blackbody", "Calibration",

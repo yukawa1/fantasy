@@ -23,7 +23,6 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-gui = ["ipywidgets>=8", "ipython"]
 dust = ["sfdmap2"]
 dev = ["pytest"]
 

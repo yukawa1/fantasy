@@ -11,7 +11,6 @@ macOS and Windows with Python 3.10 or newer.
 
 Optional extras::
 
-    pip install "fantasy_agn[gui]"    # point-and-click interface for Jupyter (ipywidgets)
     pip install "fantasy_agn[dust]"   # E(B-V) lookup in the SFD98 dust maps (sfdmap2)
 
 For the dust-map lookup, also download the SFD map files and point the environment
