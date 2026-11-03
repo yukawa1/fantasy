@@ -472,8 +472,9 @@ derivatives.
   flux tables need no conversion.
 - `rebin()` is removed; models are evaluated on the native wavelength grid.
 - The Jupyter widget interface (`fa.gui()`, the ipywidgets extra) and the app's classic page (`/classic`) are
-  removed; the app (`fa.app()`, `fantasy-app`) does both. The tools of the classic page remain in Python:
-  reverberation `fa.rm`, comparison of decompositions `fa.compare`, single lines `r.plot_line`.
+  removed; the app (`fa.app()`, `fantasy-app`) does both: reverberation mapping is in Results, Light curves &
+  lags, single lines in Results, Line profiles; the comparison of decompositions is the Fit step's Model
+  uncertainty option and `fa.compare`.
 
 ### Moving a 1.x script
 

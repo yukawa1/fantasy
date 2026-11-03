@@ -60,8 +60,9 @@ galaxy, Fe&#8202;II, broad, narrow and outflowing emission lines, and absorption
 derives black-hole masses and diagnostics, and propagates every uncertainty.</div>
 {_PIPELINE}
 <p>The app follows the five steps above. Each step writes ordinary FANTASY code into the Python session and runs
-it, so whatever is done by clicking can be repeated, changed or scripted. The steps are linked: changing the
-preparation invalidates the fit; changing the model keeps the spectra.</p>
+it, so whatever is done by clicking can be repeated, changed or scripted. The bar at the top shows which steps are done;
+click a step to go back to it. <b>New analysis</b> clears the session; the <b>&#8943;</b> menu opens and saves projects and downloads
+the session as a script or notebook.</p>
 <h2>In five lines of Python</h2>
 <pre>import fantasy_agn as fa
 spec  = fa.read("spec-0615-52347-0108.fits").deredden().to_rest_frame()
@@ -126,8 +127,14 @@ GAMA files, 1D FITS spectra, and text files with columns wavelength, flux and (o
 <dt>DESI TARGETID</dt><dd>fetched from the DESI DR1 via Data Lab (<code>fa.desi.fetch</code>).</dd>
 <dt>SDSS plate-mjd-fiber</dt><dd>fetched from the SDSS DR17 Science Archive Server (<code>fa.sdss.fetch</code>).</dd>
 </dl>
-<p>Epochs of one object are ordered by the date in the file name (YYYYMMDD), the MJD in the header, or the file
-order. OzDES files hold the stack and every exposure: <code>fa.read(path, epoch=4)</code> reads one exposure,
+<dl class="params">
+<dt>File format</dt><dd><i>automatic</i> recognises the file; choose SDSS, DESI coadd, OzDES (all epochs or one public
+spectrum), GAMA, 1D FITS or text when it guesses wrong.</dd>
+<dt>Group epochs by</dt><dd>(multi-epoch) the date in the file name (YYYYMMDD), the MJD in the header, or the file order;
+<i>automatic</i> tries them in that order.</dd>
+<dt>Loaded</dt><dd>the table of what was read (date, name, redshift, position); tick rows and <b>Remove selected</b> to drop them.</dd>
+</dl>
+<p>DESI and SDSS spectra are downloaded with <b>Fetch</b> and kept under <code>~/.fantasy_agn</code>. OzDES files hold the stack and every exposure: <code>fa.read(path, epoch=4)</code> reads one exposure,
 <code>fa.ozdes.read_epochs(path, combine="night")</code> averages each night.</p>
 <div class="warn"><b>OzDES spectra are not flux calibrated</b> (counts, different per night). FANTASY then computes no
 luminosities or masses; widths, shifts, EWs and ratios are fine, and light curves need the intercalibrated
@@ -141,29 +148,37 @@ spec = fa.desi.fetch(39627963565609635)</pre>
 <div class="lead">Put every spectrum into the rest frame, correct the Milky Way extinction, set the flux unit and
 remove what the model should not see.</div>
 <h2>Redshift</h2>
-<p>From the file, or typed. Fits are done in the rest frame: <code>spec.to_rest_frame(z)</code> divides wavelengths by
+<p><i>from file</i> or <i>manual</i>; <b>Move to rest frame</b> applies it. Fits are done in the rest frame: <code>spec.to_rest_frame(z)</code> divides wavelengths by
 1+<i>z</i> and multiplies flux densities by 1+<i>z</i>.</p>
 <h2>Galactic extinction</h2>
 <p><code>spec.deredden()</code> divides by the Fitzpatrick (1999) transmission with R<sub>V</sub> = 3.1:</p>
 <div class="eq">F<sub>corr</sub>(&lambda;) = F(&lambda;) &middot; 10<sup>&nbsp;0.4&nbsp;E(B&minus;V)&nbsp;k(&lambda;)</sup></div>
 <p>E(B&minus;V) comes from the file (DESI), the local SFD98 maps (<code>sfdmap2</code> and <code>SFD_DIR</code>) or the IRSA
 dust service (this sends the coordinates to NASA/IPAC), recalibrated by 0.86 (Schlafly &amp; Finkbeiner 2011) unless
-<code>sf11=False</code>; it can also be typed. A spectrum is never corrected twice.</p>
+<code>sf11=False</code>. In the app: <i>From RA/Dec</i> (the position of the file, or typed RA and Dec in degrees or
+sexagesimal), <i>Enter value</i>, or <i>None</i>. A spectrum is never corrected twice.</p>
+<pre>spec = spec.with_coordinates("12:34:56.7 +12:34:56").deredden()</pre>
 <div class="note">At high Galactic latitude E(B&minus;V) = 0.015&ndash;0.06: without the correction fluxes and L<sub>5100</sub> are
 5&ndash;20% too low and the Balmer decrement 2&ndash;6% too high, while ratios of nearby lines (BPT) change by &lt; 0.003 dex.</div>
 <h2>Flux unit</h2>
 <p>Luminosities and black-hole masses need the flux unit. SDSS and DESI give
 10<sup>&minus;17</sup> erg s<sup>&minus;1</sup> cm<sup>&minus;2</sup> &Aring;<sup>&minus;1</sup>; a text file may say so in its header
-(&ldquo;flux in 1e-16 erg/s/cm2/A&rdquo;). Otherwise set it: <code>spec.with_flux_unit(1e-16)</code>.</p>
+(&ldquo;flux in 1e-16 erg/s/cm2/A&rdquo;). Otherwise set it in <i>One flux unit of the file is</i> (10<sup>&minus;15</sup>&ndash;10<sup>&minus;19</sup>
+or other) or with <code>spec.with_flux_unit(1e-16)</code>.</p>
 <h2>Range and masks</h2>
 <dl class="params">
 <dt>Wavelength range</dt><dd>the fitted range (rest frame); presets set a sensible default.</dd>
-<dt>Telluric bands, sky lines</dt><dd><code>spec.mask_sky()</code>: the telluric absorption bands and the strongest night-sky emission lines (observed frame).</dd>
+<dt>Telluric bands, sky lines</dt><dd><code>spec.mask_sky()</code>: the telluric A, B and H<sub>2</sub>O absorption bands and the strongest night-sky emission lines (observed frame).</dd>
 <dt>Narrow absorption</dt><dd><code>spec.mask_absorption()</code>: finds intervening absorbers (Mg&#8202;II, C&#8202;IV doublets, &hellip;)
 and masks them; essential in the UV.</dd>
 <dt>Ranges on the plot</dt><dd>drag on the spectrum to mask a range (<code>spec.mask((5570, 5585))</code>).</dd>
 <dt>Apply to</dt><dd>with several epochs, change one epoch only.</dd>
 </dl>
+<p>The plot shows the <i>Raw</i> or the <i>Prepared</i> spectrum of the chosen <i>Epoch</i>, with the masked ranges hatched.</p>
+<h2>In Python</h2>
+<pre>spec.crop(4000, 7000)          # restrict the range
+spec.subtract_host()           # remove the host with galaxy + quasar eigenspectra (Yip et al. 2004)
+spec.to_air()                  # vacuum to air wavelengths</pre>
 """),
 
 ("model", "The app, step by step", "3 &middot; Model", """
@@ -196,10 +211,16 @@ again; <b>Download</b> gives the JSON file to share.</div>
 then run the fit.</div>
 <h2>Several epochs</h2>
 <dl class="params">
-<dt>Together (recommended)</dt><dd><code>fa.fit_epochs</code>: one joint fit, narrow lines and host shared, one flux scale per epoch
+<dt>Together (recommended)</dt><dd><code>fa.fit_epochs</code>: one joint fit, narrow lines (and a stellar host) shared, one flux scale per epoch
 fixed by the shared lines (intercalibration). Best for light curves and reverberation mapping.</dd>
 <dt>Each on its own</dt><dd><code>fa.fit_many</code>: independent fits in parallel, with the calibration of each spectrum as it is.</dd>
+<dt>Flux reference epoch</dt><dd>the epoch whose flux scale is 1; by default the one of highest S/N, since its uncertainty enters
+every other epoch's calibration.</dd>
+<dt>Calibration between epochs</dt><dd>one flux scale per epoch; scale and tilt; or scale, tilt and curvature
+(<code>calibration_degree</code> 0, 1, 2): see <a data-doc="multi">Multi-epoch fitting</a>.</dd>
 </dl>
+<p>For a sample, <i>Model for each spectrum</i> is <i>automatic</i> (classify each and use the recommended model) or one model
+for all.</p>
 <h2>Uncertainties</h2>
 <table class="doc"><tr><th>choice</th><th>method</th><th>cost</th></tr>
 <tr><td>Fast</td><td>covariance from the Jacobian at the best fit</td><td>seconds</td></tr>
@@ -212,7 +233,10 @@ fixed by the shared lines (intercalibration). Best for light curves and reverber
 <dt>Scale errors</dt><dd>inflate the errors by &radic;&chi;<sup>2</sup><sub>&nu;</sub> when &chi;<sup>2</sup><sub>&nu;</sub> &gt; 1.</dd>
 <dt>Model uncertainty</dt><dd>fit the alternative decompositions and add their spread as a systematic error (<a data-doc="compare">Model comparison</a>).</dd>
 <dt>Absorption troughs</dt><dd>find troughs in the residuals and refit with them (<a data-doc="absorption">Absorption troughs</a>).</dd>
-<dt>Host per epoch, shared parameters, processes</dt><dd>multi-epoch options and parallelism.</dd>
+<dt>Host amplitude free in each epoch</dt><dd>for spectra taken with different apertures or seeing.</dd>
+<dt>Rescale the errors of each epoch</dt><dd>by &radic;&chi;<sup>2</sup><sub>&nu;</sub> of its own fit, for epochs whose errors are under- or overestimated.</dd>
+<dt>Parameters shared by the epochs</dt><dd>name patterns that replace the default (e.g. add <code>feii.fwhm</code>, <code>feii.shift</code>).</dd>
+<dt>Processes</dt><dd>parallel processes for independent fits and Monte Carlo.</dd>
 </dl>
 <p>When the fit is done, its quality and the parameters that ended at a limit are listed, with links to the results and to
 the component in the Model step.</p>
@@ -223,16 +247,22 @@ the component in the Model step.</p>
 are flagged with a button that opens their component.</div>
 <h2>Views</h2>
 <dl class="params">
-<dt>Fit</dt><dd>data, model, components and residuals (drag to zoom; click the legend to hide a curve); the lines by component,
-with flags for undetected lines and tied widths; continuum and host; all parameters; the table of all epochs; and
-<b>Does the model miss anything?</b>, the residual analysis (<code>fa.analyze_residuals</code>), which marks missing lines,
-wings, absorption, continuum shape and sky residuals and applies the suggested change.</dd>
+<dt>Fit</dt><dd>data, model, components and residuals (drag to zoom, double-click to reset; click the legend to hide a curve).
+Below, four tables: <i>Lines</i> (by component, with flags for undetected lines and tied widths; <i>Hide undetected</i>),
+<i>Continuum and host</i> (continuum, luminosities, host properties and the black-hole mass of every recipe that applies),
+<i>All parameters</i> (value, error, limits, status) and <i>All epochs</i>. Then <b>Does the model miss anything?</b>: the residual
+analysis (<code>fa.analyze_residuals</code>, threshold 3&ndash;6&sigma;) marks missing lines, wings, absorption, continuum shape and
+sky residuals, suggests a change for each, and <b>Refit with the changes</b> applies the ones you keep.</dd>
 <dt>Publication figure</dt><dd>ranges, title, width, font size, legend, line labels; for every kind of component whether it is drawn, its colour,
 fill, line width and style. PDF, PNG, EPS. See <a data-doc="figures">Figures</a>.</dd>
 <dt>Line profiles</dt><dd>tick lines to draw them in a grid, each alone with its components, residuals, FWHM and flux.</dd>
 <dt>Posterior</dt><dd>with Monte Carlo or MCMC errors: the corner plot of chosen parameters.</dd>
-<dt>Main sequence</dt><dd>with Fe&#8202;II and broad H&beta;: R<sub>Fe&#8202;II</sub> against FWHM(H&beta;) (<a data-doc="feii-ms">Fe&#8202;II and the main sequence</a>).</dd>
-<dt>Classification, Light curves &amp; lags</dt><dd>when the spectrum was classified; for several epochs.</dd>
+<dt>Main sequence</dt><dd>with Fe&#8202;II and broad H&beta;: R<sub>Fe&#8202;II</sub> against FWHM(H&beta;) for every epoch; <i>Zoom to the
+epochs</i> (<a data-doc="feii-ms">Fe&#8202;II and the main sequence</a>).</dd>
+<dt>Classification</dt><dd>the three steps (starlight, broad H&alpha;, emission lines) and the BPT and WHAN diagrams, as figures to download.</dd>
+<dt>Light curves &amp; lags</dt><dd>for several epochs: light curves of fluxes and widths (CSV), and reverberation mapping: choose the
+line, the lag methods (ICCF, von Neumann, ZDCF, DRW), an MJD range and detrending, then <b>Measure lag</b>
+(<a data-doc="reverberation">Reverberation mapping</a>).</dd>
 </dl>
 <h2>Downloads</h2>
 <p>The fitted lines (CSV or FITS), the model and its components (data, model, every component, host, AGN, spectrum minus host
@@ -259,7 +289,8 @@ Parameters: the integrated flux of each line <code>&lt;name&gt;.&lt;line&gt;.flu
 <tr><td>stratified</td><td>shift, fwhm, span, gamma</td><td>a virialised BLR summed over radius (<a data-doc="stratified">Stratified BLR</a>)</td></tr></table>
 <p>Options: fixed ratios <code>ratios={"[OIII]4959": ("[OIII]5007", 1/2.98)}</code>, upper limits
 <code>max_ratios={"[NII]6583": ("Ha", 3)}</code>, <code>absorption=True</code> for absorption lines, custom lines as
-<code>("name", vacuum_wavelength)</code>.</p>
+<code>("name", vacuum_wavelength)</code>. The library of lines is in <i>Reference &rarr; Line list</i>; the FANTASY 1 lists are sets
+(<code>fa.line_set("coronal")</code>, <code>fa.LINE_SETS</code>) and a CSV list of your own is read by <code>fa.read_line_list(path)</code>.</p>
 <h2>Continua</h2>
 <table class="doc"><tr><th>component</th><th>model</th><th>parameters</th></tr>
 <tr><td><code>PowerLaw</code></td><td>f = A (&lambda;/&lambda;<sub>p</sub>)<sup>&alpha;</sup></td><td>amp, index</td></tr>
@@ -334,7 +365,8 @@ around Mg&#8202;II the pseudo-continuum is degenerate with the power law.</div>
 <dt><code>feii</code>, <code>wave_range</code></dt><dd>(Mg&#8202;II) the Fe&#8202;II model and the window.</dd>
 </dl>
 <pre>model = fa.presets.optical(broad_components=2, outflow=True, host=True)
-models = fa.presets.variants("hbeta", host=(False, True))   # alternatives for fa.compare</pre>
+models = fa.presets.variants("hbeta", host=(False, True))   # alternatives for fa.compare
+fa.presets.available(spec)                                  # the presets whose window the spectrum covers</pre>
 """),
 
 ("classes", "Modelling", "Models for each class", """
@@ -366,7 +398,9 @@ r.refinement          # what was tried, &Delta;BIC, kept or not</pre>
 model.fix("continuum.index", -1.7);  model.free("continuum.index")
 model.tie("broad2.shift", "broad.shift")
 model.tie("narrow.[NII]6548.flux", "narrow.[NII]6583.flux", factor=1/3.05)
-model.set("broad*.shift", min=-2000)</pre>
+model.set("broad*.shift", min=-2000)
+model.untie("broad2.shift")
+model.set_profile("broad", "lorentzian")      # change the line profile of a component</pre>
 <p>A tie is affine:</p>
 <div class="eq">p = a &middot; p<sub>target</sub> + b</div>
 <p>Amplitudes can be tied only to amplitudes (b = 0), widths and shifts only to widths and shifts; cycles are refused.
@@ -443,6 +477,13 @@ Overlapping components (several broad components, outflow wings) are also fitted
 the two solutions is kept, so adding a component cannot make the fit worse.</li>
 <li><b>Unconstrained parameters.</b> Amplitudes of lines without fitted pixels are fixed at zero and reported in <code>r.unconstrained</code>.</li>
 </ol>
+<h2>Machine-learned starting values</h2>
+<p>Finding a good start takes most of the time of a fit. For a model with a trained initializer (a small neural network trained on
+spectra simulated with the model itself), <code>guess="ml"</code> predicts the nonlinear parameters in about a millisecond; the
+amplitudes, the fit and the uncertainties are unchanged, so a poor prediction costs time, never accuracy.</p>
+<pre>r = fa.fit(spec, model, guess="ml")    # falls back to the data-driven guess without an initializer
+fa.ml.available()                      # the trained initializers</pre>
+<h2>In Python</h2>
 <pre>r = fa.fit(spec, model, wave_range=(4150, 5550))
 r.chi2, r.dof, r.rchi2, r.bic, r.n_free
 fa.guess(spec, model)        # only the initial guess</pre>
@@ -489,7 +530,9 @@ Example (SDSS quasar, 12 decompositions): H&beta; FWHM 4522 &plusmn; 56 (stat) &
 ("measurements", "Measurements", "Line measurements", """
 <div class="lead">Line quantities are measured on the fitted model profile of the line, summed over its components (for example two
 broad components), with errors propagated from the fit.</div>
-<pre>r.lines                      # every line of every component: flux, FWHM, shift, EW, errors
+<pre>r.key_results()              # the main numbers with errors (what the app's summary shows)
+r.lines                      # every line of every component: flux, FWHM, shift, EW, errors
+r.fitted_lines()             # the lines that can be shown alone, most interesting first
 r.measure("Hb")              # summed over all components containing H&beta;
 r.measure("Hb", ["broad", "broad2"])</pre>
 <p>For a profile P(v) on a velocity grid around the rest wavelength &lambda;<sub>0</sub>:</p>
@@ -506,7 +549,9 @@ the sum, not from the components.</p>
 <pre>r.continuum(5100)            # AGN continuum flux density
 r.luminosity(5100)           # &lambda;L&lambda; (erg/s), needs the flux unit and the redshift
 r.host_properties()          # &sigma;&#9733;, v&#9733;, age, metallicity, host fraction at 5100 &Aring;
-r.balmer_decrement()         # broad H&alpha;/H&beta;</pre>
+r.balmer_decrement()         # broad H&alpha;/H&beta;
+r.model_flux(components=True)   # the model and each component on the data grid
+r.to_dataframe()             # data, model, components, residuals in one table</pre>
 """),
 
 ("bh-mass", "Measurements", "Black-hole masses", """
@@ -609,7 +654,8 @@ the FWHM and flux of the line and its residuals. In the app: Results &rarr; <b>L
 ("multi", "Time domain and samples", "Multi-epoch fitting", """
 <div class="lead">Several spectra of one object are fitted jointly: what does not vary is shared, and the shared narrow lines calibrate the
 epochs against each other.</div>
-<p>Parameters matching the <i>shared</i> patterns (by default <code>narrow.*</code> and the host) are the same in every epoch; the continuum,
+<p>Parameters matching the <i>shared</i> patterns (by default every narrow-line parameter and, with a stellar host, the host:
+one set of template weights, &sigma;<sub>&#9733;</sub> and v<sub>&#9733;</sub>) are the same in every epoch; the continuum,
 Fe&#8202;II and broad lines vary. With intercalibration each epoch k has a flux scale s<sub>k</sub> (the reference epoch, the one of highest
 S/N, has s = 1):</p>
 <div class="eq">M<sub>k</sub>(&lambda;) = s<sub>k</sub> [ N(&lambda;) + V<sub>k</sub>(&lambda;) ]</div>
@@ -617,7 +663,8 @@ S/N, has s = 1):</p>
 anchored by narrow lines at both ends of the range.</p>
 <pre>me = fa.fit_epochs(spectra, fa.presets.hbeta(broad_components=2), n_jobs=-1)
 me.light_curve(); me.plot_light_curves(); me.plot_baldwin()
-me.plot(epoch=5)              # me.epochs[5] is the full result of epoch 5</pre>
+me.plot(epoch=5)              # me.epochs[5] is the full result of epoch 5
+me.scales                     # the flux scale of every epoch, with errors</pre>
 <p>Every epoch is first fitted on its own (in parallel), which gives the starting values; then all epochs are fitted together with a
 block-sparse Jacobian.</p>
 <div class="warn">Intercalibration on the narrow lines helps only when they are strong: with weak [O&#8202;III] it adds a few percent of noise per
@@ -629,15 +676,15 @@ runs serially.</div>
 
 ("reverberation", "Time domain and samples", "Reverberation mapping", """
 <div class="lead">After a multi-epoch fit: the lag of a broad line behind the continuum, its width in the rms spectrum, and the
-reverberation mass.</div>
+reverberation mass. In the app: Results &rarr; <b>Light curves &amp; lags</b> &rarr; <b>Measure lag</b>.</div>
 <pre>rm = me.reverberation("Hb")                                # continuum from the fitted 5100 &Aring;
 rm = me.reverberation("Hb", continuum=(mjd, flux, err))     # better: photometry
 rm.table(); rm.lag_table(); rm.plot()
 me.rms_spectrum("Hb")</pre>
 <dl class="params">
 <dt>Lag</dt><dd>interpolated cross-correlation (ICCF), centroid of r &ge; 0.8 r<sub>max</sub>; errors by flux randomisation and random subset
-selection (Peterson et al. 1998, 2004). Also reported: the von Neumann estimator (Chelouche et al. 2017) and a damped-random-walk model
-that uses the correlated errors of each epoch's fit. The ICCF is adopted; FANTASY warns when the methods disagree or a lag distribution
+selection (Peterson et al. 1998, 2004). Also available: the von Neumann estimator (Chelouche et al. 2017), the z-transformed
+discrete correlation function (ZDCF; Alexander 1997) and a damped-random-walk model that uses the correlated errors of each epoch's fit. The ICCF is adopted; FANTASY warns when the methods disagree or a lag distribution
 has aliases.</dd>
 <dt>rms spectrum</dt><dd>the broad line alone in every epoch, noise-corrected rms (Park et al. 2012), widths with bootstrap errors.</dd>
 <dt>Mass</dt><dd>M = f c&tau; &sigma;<sub>line</sub>(rms)<sup>2</sup>/G with f = 4.47 (Woo et al. 2015); the 0.3 dex scatter of f is not in the error.</dd>
