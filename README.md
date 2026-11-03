@@ -263,7 +263,7 @@ table, or the whole session as a Python script.
 ## Upgrading from 1.x
 
 Version 2 no longer uses Sherpa. See [CHANGELOG.md](CHANGELOG.md) for how to move
-1.x scripts over. The 1.x tutorials are kept in `docs/legacy_v1/`.
+1.x scripts over. The 1.x tutorials are in the 1.x releases (`pip install "fantasy_agn<2"`).
 
 ## Citation
 

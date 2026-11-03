@@ -39,7 +39,7 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'legacy_v1']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # Notebooks are stored with their outputs; do not execute them on Read the Docs.
 nbsphinx_execute = 'never'
@@ -51,7 +51,7 @@ nbsphinx_execute = 'never'
 # a list of builtin themes.
 #
 html_theme = "sphinx_rtd_theme"
-html_logo = "fantasy.png"
+html_logo = "logo.png"
 html_theme_options = {
     'logo_only': True,
 }

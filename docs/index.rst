@@ -6,7 +6,7 @@
 FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis
 ==============================================================
 
-.. image:: fantasy.png
+.. image:: logo.png
    :width: 500px
 
 *Nemanja Rakić, Dragana Ilić and Luka Č. Popović*
