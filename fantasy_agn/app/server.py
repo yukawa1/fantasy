@@ -4,10 +4,6 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
 
     GET  /api/state                  session state (cells, steps, results)
     POST /api/exec                   JSON {code, index}: run a code cell (index: rerun that cell)
-    POST /api/read                   JSON {path | targetid, z} or the file itself
-                                     (body = file, ?filename=...&z=...)
-    POST /api/classify
-    POST /api/fit                    JSON {errors} (fits `model`; without one: {model, broad_components, outflow})
     POST /api/model                  JSON {action: preset|add|remove|params|save|load|upload, ...}: code for the model editor
                                       (save {name, folder, overwrite}, load {name | path}, upload {name, text};
                                       the library is ~/.fantasy_agn/models, models saved elsewhere are remembered)
@@ -15,30 +11,16 @@ listens on 127.0.0.1, serves the page in ``static/`` and a JSON API:
     GET  /api/docs                   documentation pages (guides and API reference)
     GET  /api/lines                  the line list
     GET  /api/linesets               the FANTASY 1 line lists (coronal, [Fe II], ...)
-    GET  /api/plotdata               arrays for the interactive plot
-    GET  /api/data                   tables for the Data tab
     POST /api/upload                 body = a file (?filename=&batch=): keep it, return its path
-    POST /api/multiepoch             JSON: joint fit of several epochs (code cell)
     GET  /api/lightcurve.csv
-    GET  /api/epoch.<png|pdf>?k=N     the fit of epoch N of the multi-epoch result
-    GET  /api/epochs.pdf             all epoch fits, one page each
-    GET  /api/line.<png|pdf>?line=Hb one line of the current fit with its components
-    POST /api/templates              JSON {name}: download a stellar template set (as a code cell)
-    POST /api/sample                 JSON: classify and fit many spectra (fa.fit_sample, code cell)
-    POST /api/reverberation          JSON {line}: lag, rms spectrum and mass of the multi-epoch fit
     GET  /api/sample.csv, /api/sample_fig.png?k=N&kind=fit|line
+    GET  /api/session.py             the session as a Python script
     POST /api/reset
-    GET  /api/figure.<png|pdf|eps>   the current figure (?dl=1 for publication quality)
-    GET  /api/lines.csv, /api/session.py
-    GET  /api/classification.<png|pdf>    the classification figure (kept after the fit)
-    GET  /api/components.csv          wavelength, data, model, every component, host, AGN, intrinsic
-    GET  /api/corner.<png|pdf>?params=a,b   corner plot of the posterior samples
-    GET  /api/figure_custom.<png|pdf|eps>?xmin=&xmax=&ymin=&ymax=&title=&residuals=&components=&group=&label_lines=&width=&fontsize=&legend=
     GET  /api/project.fantasy        the whole session (cells, spectra, models, fits) in one file
     POST /api/project                body = a .fantasy project file: open it
     GET  /api/session.ipynb          the session as a Jupyter notebook
 
-The step-by-step workflow (page ``/``; the earlier interface is at ``/classic``):
+The step-by-step workflow (page ``/``):
 
     POST /api/wf/read                JSON {mode, paths | pattern | targetid | sdss, group}
     POST /api/wf/prepare             JSON {z, z_source, extinction, ebv, ra, dec, wmin, wmax, masks, ...}
@@ -146,8 +128,6 @@ class Handler(BaseHTTPRequestHandler):
         s = self.session
         if url.path in ("/", "/index.html"):
             return self._index()
-        if url.path in ("/classic", "/classic/"):
-            return self._index("classic.html")
         if url.path.startswith("/static/"):
             return self._static(url.path[len("/static/"):])
         if not url.path.startswith("/api/"):
@@ -163,10 +143,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(s.model_json(), "application/json", filename="model.json")
             except ValueError as exc:
                 return self._error(str(exc), 404)
-        if url.path == "/api/plotdata":
-            return self._send(s.plot_data() or {})
-        if url.path == "/api/data":
-            return self._send(s.data_tables())
         if url.path == "/api/docs":
             if Handler._docs is None:
                 from .docs import all_pages
@@ -180,79 +156,6 @@ class Handler(BaseHTTPRequestHandler):
             t = line_table()
             return self._send([{"name": n, "wave": float(r.vacuum), "ion": r.ion, "type": r.type,
                                 "series": r.series} for n, r in t.iterrows()])
-        if url.path.startswith("/api/figure."):
-            fmt = url.path.rsplit(".", 1)[1]
-            if fmt not in ("png", "pdf", "eps"):
-                return self._error("unknown format", 404)
-            dl = "dl" in q
-            data = s.figure_bytes(fmt, dpi=300 if dl else (220 if "hd" in q else 110))
-            if data is None:
-                return self._error("no figure yet", 404)
-            ctype = {"png": "image/png", "pdf": "application/pdf",
-                     "eps": "application/postscript"}[fmt]
-            return self._send(data, ctype, filename=f"{s.figure_stem}.{fmt}" if dl else None)
-        if url.path.startswith("/api/classification."):
-            fmt = url.path.rsplit(".", 1)[1]
-            if fmt not in ("png", "pdf"):
-                return self._error("unknown format", 404)
-            data = s.class_figure_bytes(fmt, dpi=300 if "dl" in q else 110)
-            if data is None:
-                return self._error("no classification yet", 404)
-            return self._send(data, "image/png" if fmt == "png" else "application/pdf",
-                              filename=f"classification.{fmt}" if "dl" in q else None)
-        if url.path == "/api/components.csv":
-            data = s.components_csv()
-            if data is None:
-                return self._error("no fit yet", 404)
-            return self._send(data.encode(), "text/csv", filename="components.csv")
-        if url.path.startswith("/api/corner."):
-            fmt = url.path.rsplit(".", 1)[1]
-            if fmt not in ("png", "pdf"):
-                return self._error("unknown format", 404)
-            try:
-                data = s.corner_figure([p for p in q.get("params", [""])[0].split(",") if p] or None, fmt,
-                                       dpi=300 if "dl" in q else 110)
-            except ValueError as e:
-                return self._error(str(e), 400)
-            return self._send(data, "image/png" if fmt == "png" else "application/pdf",
-                              filename=f"corner.{fmt}" if "dl" in q else None)
-        if url.path.startswith("/api/figure_custom."):
-            fmt = url.path.rsplit(".", 1)[1]
-            if fmt not in ("png", "pdf", "eps"):
-                return self._error("unknown format", 404)
-            try:
-                data = s.custom_figure({k: v[0] for k, v in q.items()}, fmt, dpi=300 if "dl" in q else 110)
-            except ValueError as e:
-                return self._error(str(e), 400)
-            ctype = {"png": "image/png", "pdf": "application/pdf", "eps": "application/postscript"}[fmt]
-            return self._send(data, ctype, filename=f"{s.figure_stem or 'fit'}.{fmt}" if "dl" in q else None)
-        if url.path.startswith("/api/epoch."):
-            fmt = url.path.rsplit(".", 1)[1]
-            if fmt not in ("png", "pdf"):
-                return self._error("unknown format", 404)
-            try:
-                data = s.epoch_figure(q.get("k", ["0"])[0], fmt,
-                                      dpi=300 if "dl" in q else (220 if "hd" in q else 110))
-            except ValueError as exc:
-                return self._error(str(exc), 404)
-            if data is None:
-                return self._error("no multi-epoch fit yet", 404)
-            return self._send(data, "image/png" if fmt == "png" else "application/pdf",
-                              filename=f"epoch_{q.get('k', ['0'])[0]}.{fmt}" if "dl" in q else None)
-        if url.path.startswith("/api/line."):
-            fmt = url.path.rsplit(".", 1)[1]
-            if fmt not in ("png", "pdf"):
-                return self._error("unknown format", 404)
-            line = q.get("line", [None])[0]
-            try:
-                data = s.line_figure(line, fmt, dpi=300 if "dl" in q else (220 if "hd" in q else 110))
-            except ValueError as exc:
-                return self._error(str(exc), 404)
-            if data is None:
-                return self._error("no fit yet", 404)
-            safe = "".join(ch for ch in str(line) if ch.isalnum()) or "line"
-            return self._send(data, "image/png" if fmt == "png" else "application/pdf",
-                              filename=f"{s.figure_stem}_{safe}.{fmt}" if "dl" in q else None)
         if url.path == "/api/sample.csv":
             csv = s.sample_csv()
             if csv is None:
@@ -266,16 +169,6 @@ class Handler(BaseHTTPRequestHandler):
             if data is None:
                 return self._error("no sample fitted yet", 404)
             return self._send(data, "image/png")
-        if url.path == "/api/epochs.pdf":
-            data = s.epochs_pdf()
-            if data is None:
-                return self._error("no multi-epoch fit yet", 404)
-            return self._send(data, "application/pdf", filename="epoch_fits.pdf")
-        if url.path == "/api/lines.csv":
-            csv = s.lines_csv()
-            if csv is None:
-                return self._error("no fit yet", 404)
-            return self._send(csv, "text/csv", filename=f"{s.spec.name}_lines.csv")
         if url.path == "/api/lightcurve.csv":
             csv = s.light_curve_csv()
             if csv is None:
@@ -305,39 +198,6 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/exec":
                 opts = json.loads(self._body() or b"{}")
                 s.run_cell(opts.get("code", ""), opts.get("index"))
-            elif url.path == "/api/read":
-                if self.headers.get("Content-Type", "").startswith("application/json"):
-                    opts = json.loads(self._body() or b"{}")
-                    code = s.read_code(path=opts.get("path"), targetid=opts.get("targetid"),
-                                       z=opts.get("z"), deredden=opts.get("deredden", True),
-                                       ebv=opts.get("ebv"), rest_frame=opts.get("rest_frame", True),
-                                       mask_absorption=bool(opts.get("mask_absorption")),
-                                       ra=opts.get("ra"), dec=opts.get("dec"))
-                else:
-                    code = s.read_code(data=self._body(), filename=q.get("filename"), z=q.get("z"),
-                                       deredden=q.get("deredden", "1") == "1", ebv=q.get("ebv"),
-                                       rest_frame=q.get("rest_frame", "1") == "1",
-                                       mask_absorption=q.get("mask_absorption", "0") == "1",
-                                       ra=q.get("ra"), dec=q.get("dec"))
-                s.run_cell(code)
-            elif url.path == "/api/classify":
-                s.run_cell(s.classify_code())
-            elif url.path == "/api/fit":
-                opts = json.loads(self._body() or b"{}")
-                errors = opts.get("errors", "covariance")
-                if errors not in ("covariance", "mc"):
-                    raise ValueError("errors must be covariance or mc")
-                if opts.get("uncertainty"):
-                    s.run_cell(s.uncertainty_code(model=opts.get("model", "optical"),
-                                                  broad_components=opts.get("broad_components", 2),
-                                                  outflow=opts.get("outflow", True), **_options(opts)))
-                elif s.model is not None:
-                    s.run_cell(s.fit_model_code(errors, absorbers=bool(opts.get("absorbers"))))
-                else:
-                    s.run_cell(s.fit_code(model=opts.get("model", "optical"),
-                                          broad_components=opts.get("broad_components", 2),
-                                          outflow=opts.get("outflow", True), errors=errors,
-                                          absorbers=bool(opts.get("absorbers")), **_options(opts)))
             elif url.path == "/api/model":
                 opts = json.loads(self._body() or b"{}")
                 action = opts.get("action")
@@ -381,30 +241,8 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/upload":
                 path = s.save_upload(self._body(), q.get("filename"), q.get("batch", "batch"))
                 return self._send({"path": path})
-            elif url.path == "/api/multiepoch":
-                opts = json.loads(self._body() or b"{}")
-                extra = _options(opts)
-                extra.pop("host", None) if opts.get("model") == "current" else None
-                s.run_cell(s.multiepoch_code(
-                    paths=opts.get("paths"), pattern=opts.get("pattern"), model=opts.get("model", "current"),
-                    broad_components=opts.get("broad_components", 2), outflow=opts.get("outflow", True),
-                    shared=opts.get("shared", ""), intercalibrate=opts.get("intercalibrate", True),
-                    n_jobs=opts.get("n_jobs", -1), deredden=opts.get("deredden", True), ebv=opts.get("ebv"),
-                    rest_frame=opts.get("rest_frame", True), z=opts.get("z"), **extra))
             elif url.path.startswith("/api/wf/"):
                 self._wf_post(url.path[len("/api/wf/"):], json.loads(self._body() or b"{}"))
-            elif url.path == "/api/reverberation":
-                opts = json.loads(self._body() or b"{}")
-                s.run_cell(s.reverberation_code(opts.get("line", "Hb"), opts.get("n_mc", 1000)))
-            elif url.path == "/api/sample":
-                opts = json.loads(self._body() or b"{}")
-                s.run_cell(s.sample_code(paths=opts.get("paths"), pattern=opts.get("pattern"),
-                                         model=opts.get("model", "auto"), deredden=opts.get("deredden", True),
-                                         ebv=opts.get("ebv"), mask_absorption=bool(opts.get("mask_absorption")),
-                                         n_jobs=opts.get("n_jobs", -1), batch=opts.get("batch", "sample")))
-            elif url.path == "/api/templates":
-                opts = json.loads(self._body() or b"{}")
-                s.run_cell(s.download_templates_code(opts.get("name", "")))
             elif url.path == "/api/project":
                 s.load_project(self._body())
             elif url.path == "/api/reset":

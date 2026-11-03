@@ -1,5 +1,5 @@
 /* FANTASY: step-by-step interface. Every action writes Python code that runs in the
-   session (shown in the session panel, hidden by default), as in the classic page. */
+   session (shown in the session panel, hidden by default). */
 "use strict";
 const $ = (id) => document.getElementById(id);
 const TOKEN = document.querySelector('meta[name="fantasy-token"]').content;

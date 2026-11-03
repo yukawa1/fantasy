@@ -974,7 +974,6 @@ def test_app_session_cells():
     assert any(r["label"].startswith("broad Hb FWHM") for r in st["results"])
     script = s.script()
     assert "fa.read(" in script and "fa.presets.hbeta(" in script and "1 / 0" in script
-    assert s.figure_bytes("pdf")[:4] == b"%PDF"
 
 
 def test_app_server_requires_token():
@@ -1057,26 +1056,6 @@ def test_app_docs():
     models = next(p for p in pages if p["id"] == "api-models")["html"]
     assert "fa.presets.optical(" in models and "broad_components" in models
     assert "&lt;" not in models.split("<pre>")[0][:0]          # rendered without raising
-
-
-def test_app_plot_data_and_tables():
-    from fantasy_agn.app.session import Session, _plain_label
-    s = Session()
-    assert s.plot_data() is None and s.data_tables() == []
-    s.run_cell(s.read_code(path=os.path.join(EXAMPLES, "spec-1059-52618-0453.fits"), deredden=False))
-    _wait(s)
-    d = s.plot_data()
-    assert len(d["x"]) == len(d["flux"]) and d["resid"] is None and d["series"] == []
-    s.run_cell(s.fit_code("hbeta", broad_components=1, outflow=False))
-    _wait(s)
-    d = s.plot_data()
-    names = [x["name"] for x in d["series"]]
-    assert names[0] == "model" and "broad lines" in names and "narrow lines" in names
-    assert len(d["resid"]) == len(d["x"]) and 4000 < d["x"][0] < d["x"][-1] < 5600
-    assert [t["title"] for t in s.data_tables()] == ["Spectrum", "Fitted lines"]
-    assert _plain_label("$F_\\lambda$ ($10^{-17}\\,\\mathrm{erg\\,s^{-1}}$)") == "Fλ (10⁻¹⁷ erg s⁻¹)"
-
-
 def test_model_set_profile_and_untie():
     m = fa.presets.hbeta()
     m.tie("feii.shift", "broad.shift")
@@ -1324,21 +1303,6 @@ def test_fit_many_parallel_equals_serial():
     with pytest.warns(UserWarning):
         out = fa.fit_many([spectra[0], bad], model, n_jobs=1, verbose=False)
     assert isinstance(out[1], Exception) and out[0].chi2 > 0
-
-
-def test_app_multiepoch_code():
-    from fantasy_agn.app.session import Session
-    s = Session()
-    code = s.multiepoch_code(pattern="/data/rm/*.fits", model="hbeta", broad_components=2, outflow=False,
-                             shared="narrow.*, feii.fwhm", n_jobs=4, ebv=0.01)
-    assert "glob.glob('/data/rm/*.fits')" in code and ".deredden(ebv=0.01).to_rest_frame()" in code
-    assert "fa.fit_epochs(spectra, model, shared=('narrow.*', 'feii.fwhm'), intercalibrate=True, n_jobs=4)" in code
-    with pytest.raises(ValueError, match="no model yet"):
-        s.multiepoch_code(paths=["a.fits", "b.fits"], model="current")
-    with pytest.raises(ValueError, match="rest-frame"):
-        s.multiepoch_code(paths=["a.fits"], model="hbeta", rest_frame=False)
-
-
 def test_host_thread_safe_on_different_grids():
     """The app plots (all pixels) while a cell computes on the fitted pixels."""
     import threading
@@ -1359,31 +1323,6 @@ def test_host_thread_safe_on_different_grids():
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert not bad
-
-
-def test_app_epoch_figures():
-    from fantasy_agn.app.session import Session
-    rng = np.random.default_rng(5)
-    spectra = []
-    for k in range(3):
-        m = _toy_truth()
-        wave = np.arange(4650, 5150, 1.0)
-        flux = m.evaluate(wave, {"medium": "vacuum"}) + rng.normal(0, 2.0, wave.size)
-        spectra.append(fa.Spectrum(wave, flux, np.full(wave.size, 2.0), rest_frame=True, mjd=50000 + k))
-    s = Session()
-    s.ns["me"] = fa.fit_epochs(spectra, _toy_model(), n_jobs=1, verbose=False)
-    st = s.multi_state()
-    assert st["computing"] and len(st["epochs"]) == 3          # the light curve is computed in the background
-    s.multi.light_curve()
-    st = s.multi_state()
-    assert st["n"] == 3 and st["rows"] and s.multi_state() is st     # cached
-    png = s.epoch_figure(1)
-    assert png[:4] == b"\x89PNG" and s.epoch_figure(1) is png
-    assert s.epochs_pdf()[:4] == b"%PDF"
-    with pytest.raises(ValueError):
-        s.epoch_figure(3)
-
-
 def test_cli_info_examples(tmp_path, capsys):
     from fantasy_agn.cli import main
     assert main(["info"]) == 0
@@ -1652,9 +1591,6 @@ def test_fit_sample(tmp_path):
     r = s.load(0)
     assert r.rchi2 == pytest.approx(t.rchi2.iloc[0])
     assert os.path.exists(s.gallery())
-    from fantasy_agn.app.session import Session
-    code = Session().sample_code(pattern="/data/*.fits", model="seyfert2", mask_absorption=True)
-    assert "fa.fit_sample(files" in code and "model='seyfert2'" in code and "mask_absorption=True" in code
 
 
 def test_iccf_recovers_lag():
@@ -2115,9 +2051,10 @@ def test_app_workflow_steps(tmp_path):
     assert "fa.fit_sample(files, out=" in code and "model='hbeta'" in code and "n_jobs=2" in code
 
 
-def test_app_classic_page_and_workflow_endpoints():
+def test_app_page_and_workflow_endpoints():
     import json
     import threading
+    import urllib.error
     import urllib.request
     from fantasy_agn.app.server import Handler, make_server
     server = make_server(port=0)
@@ -2125,9 +2062,13 @@ def test_app_classic_page_and_workflow_endpoints():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         base = f"http://127.0.0.1:{port}"
-        assert "wf.js" in urllib.request.urlopen(base + "/").read().decode()
-        classic = urllib.request.urlopen(base + "/classic").read().decode()
-        assert "app.js" in classic and Handler.token in classic
+        page = urllib.request.urlopen(base + "/").read().decode()
+        assert "wf.js" in page and Handler.token in page
+        try:                                           # the classic page is gone
+            urllib.request.urlopen(base + "/classic")
+            raise AssertionError("/classic still served")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 404
         hdr = {"X-Fantasy-Token": Handler.token}
         for path in ("/api/wf/result?k=0", "/api/wf/preview?k=0", "/api/wf/guess"):
             assert json.loads(urllib.request.urlopen(urllib.request.Request(base + path, headers=hdr)).read()) == {}

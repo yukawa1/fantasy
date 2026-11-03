@@ -76,9 +76,9 @@ runs in one namespace:</p>
 <tr><td><code>r</code>, <code>fits</code>, <code>me</code></td><td>the fit of one spectrum; epochs fitted on their own; the joint fit</td></tr>
 <tr><td><code>sample</code>, <code>classes</code></td><td>a fitted sample; classifications</td></tr></table>
 <p>Changing these objects in code updates the steps, so code and buttons are equivalent.
-<b>Copy</b> copies the session as a script, <b>.ipynb</b> downloads it as a notebook. The
-earlier interface (single-line view, reverberation, model comparison) is at
-<code>/classic</code> (menu &hellip; at the top right).</p>
+<b>Copy</b> copies the session as a script, <b>.ipynb</b> downloads it as a notebook.
+Reverberation mapping and the comparison of decompositions are in Python (<code>fa.rm</code>,
+<code>fa.compare</code>); single lines are in Results, Line profiles.</p>
 <h3>Starting the app</h3>
 <pre>launch/FANTASY.command        # macOS (double-click)
 launch/fantasy-app.sh         # Linux / macOS
