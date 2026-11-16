@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1 · Read · FANTASY documentation</title><link rel="icon" href="../assets/mark.png">
+<link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="docs.css">
+<script defer src="search-index.js"></script><script defer src="docs.js"></script></head>
+<body><a class="skip" href="#content">Skip to article</a>
+<header class="mast"><nav class="wrap" aria-label="Main navigation"><a class="brand" href="../index.html"><img src="../assets/mark.png" alt="">FANTASY</a>
+<div class="doc-mast-links"><a href="../index.html#explore">Spectrum explorer</a><a href="index.html">Documentation</a></div></nav></header>
+<div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
+<label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
+<nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html" aria-current="page">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html">4 · Fit</a><a href="results-step.html">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html">Components</a><a href="feii.html">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html">Classification</a></section><section><h3>Figures</h3><a href="figures.html">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a></section></nav></div></details></aside>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.0</a> / The app, step by step</p>
+<h1>1 · Read</h1><div class="lead">Choose what you analyse and where the spectra come from. FANTASY recognises the format, the
+redshift, the wavelength medium, the instrumental resolution and the flux unit when the file has them.</div>
+<h2>What you analyse</h2>
+<div class="table-scroll"><table class="doc"><tr><th>mode</th><th>what happens next</th><th>in Python</th></tr>
+<tr><td>single spectrum</td><td>decompose one spectrum and measure its lines</td><td><code>fa.fit</code></td></tr>
+<tr><td>sample</td><td>classify and fit many spectra in parallel; one catalogue</td><td><code>fa.fit_sample</code></td></tr>
+<tr><td>multi-epoch</td><td>one object at several dates: joint fit, light curves, lags</td><td><code>fa.fit_epochs</code></td></tr>
+<tr><td>classify only</td><td>type 1, host-dominated, Seyfert 2, LINER, star-forming or passive</td><td><code>fa.classify</code></td></tr></table></div>
+<h2>Sources</h2>
+<dl class="params">
+<dt>Files</dt><dd>drop them on the page (any number). SDSS <code>spec-*.fits</code>, DESI coadd and SPARCL files, OzDES and
+GAMA files, 1D FITS spectra, and text files with columns wavelength, flux and (optionally) error.</dd>
+<dt>Path / glob</dt><dd>a path or pattern on this computer, e.g. <code>~/data/AT2024zkr/*.txt</code>.</dd>
+<dt>DESI TARGETID</dt><dd>fetched from the DESI DR1 via Data Lab (<code>fa.desi.fetch</code>).</dd>
+<dt>SDSS plate-mjd-fiber</dt><dd>fetched from the SDSS DR17 Science Archive Server (<code>fa.sdss.fetch</code>).</dd>
+</dl>
+<dl class="params">
+<dt>File format</dt><dd><i>automatic</i> recognises the file; choose SDSS, DESI coadd, OzDES (all epochs or one public
+spectrum), GAMA, 1D FITS or text when it guesses wrong.</dd>
+<dt>Group epochs by</dt><dd>(multi-epoch) the date in the file name (YYYYMMDD), the MJD in the header, or the file order;
+<i>automatic</i> tries them in that order.</dd>
+<dt>Loaded</dt><dd>the table of what was read (date, name, redshift, position); tick rows and <b>Remove selected</b> to drop them.</dd>
+</dl>
+<p>DESI and SDSS spectra are downloaded with <b>Fetch</b> and kept under <code>~/.fantasy_agn</code>. OzDES files hold the stack and every exposure: <code>fa.read(path, epoch=4)</code> reads one exposure,
+<code>fa.ozdes.read_epochs(path, combine="night")</code> averages each night.</p>
+<div class="warn"><b>OzDES spectra are not flux calibrated</b> (counts, different per night). FANTASY then computes no
+luminosities or masses; widths, shifts, EWs and ratios are fine, and light curves need the intercalibrated
+multi-epoch fit.</div>
+<pre>spec = fa.read("spec-0615-52347-0108.fits")
+spec = fa.read("my_spectrum.txt", z=0.123, ra="12:34:56.7", dec="+12:34:56")
+spec = fa.desi.fetch(39627963565609635)</pre>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 8e22dfc109bb</span></footer></main></div></body></html>

@@ -1,0 +1,40 @@
+.doc-mast-links { display:flex; gap:24px; font-size:14px }
+.doc-layout { max-width:1350px; margin:auto; display:grid; grid-template-columns:280px minmax(0,1fr); gap:clamp(30px,5vw,85px); padding:0 clamp(20px,5vw,80px) }
+.doc-layout aside { align-self:start; position:sticky; top:0; max-height:100vh; overflow:auto; border-right:1px solid var(--rule); scrollbar-width:thin }
+#contents summary { display:none }
+.menu { padding:33px 23px 30px 2px }
+.menu label,.kicker,.doc-foot span { font:11px/1.6 var(--mono); letter-spacing:.04em; color:#426050 }
+.menu label { display:block; margin-bottom:7px }
+#search { width:100%; font:inherit; font-size:14px; padding:9px 12px; border:1px solid #9db0a5; border-radius:4px; color:var(--ink); background:white }
+.menu nav section { margin:22px 0 0 }
+.menu nav h3 { margin:0 0 6px; font:600 13px/1.5 system-ui }
+.menu nav a { display:block; font-size:13px; margin:1px 0; padding:5px 9px; border-left:2px solid transparent; overflow-wrap:anywhere }
+.menu nav a:hover,.menu nav a:focus-visible,.menu nav a[aria-current] { background:#e2eae2; color:#163e32; border-left-color:#38775e }
+#matches small { display:block; color:#57685e } #matches p { font-size:14px }
+.article { min-width:0; max-width:850px; padding:clamp(35px,5vw,75px) 0 28px; line-height:1.65; overflow-wrap:anywhere }
+.article h1 { font:400 clamp(42px,4.6vw,72px)/1.02 var(--serif); letter-spacing:-.05em; margin:12px 0 25px }
+.article h2 { font:400 clamp(26px,2.4vw,36px)/1.2 var(--serif); letter-spacing:-.035em; margin:36px 0 12px }
+.article h3 { font-size:18px; line-height:1.45 }
+.article .lead { max-width:none; font-size:19px; line-height:1.55; color:#385043; margin:0 0 20px }
+.article a { color:#285942; text-decoration:underline; text-underline-offset:3px }
+.article .links { display:flex; flex-wrap:wrap; gap:12px 20px; margin-block:23px; padding-block:15px; border-block:1px solid var(--rule) }
+.article pre { white-space:pre; overflow-x:auto; background:#14231f; color:#e1f1e8; border-radius:4px; padding:17px 19px; font:13px/1.7 var(--mono); max-width:100% }
+.article code,.article kbd { font-family:var(--mono); font-size:.91em }
+.article .api { margin-block:25px; border-top:1px solid var(--rule); scroll-margin:16px }
+.article .api h3 { overflow-wrap:anywhere; font-size:16px; color:#22543c }
+.article dt { font-weight:650; margin-top:12px }.article dd { margin:2px 0 10px }
+.table-scroll { overflow:auto; margin-block:14px }
+.article table { border-collapse:collapse; width:100%; font-size:14px }
+.article th,.article td { text-align:left; vertical-align:top; padding:8px 11px; border-bottom:1px solid var(--rule) }
+.article th { background:#e6ece3 }
+.article .note,.article .tip,.article .warn,.article .eq { background:#e7eee4; border-left:3px solid #648b74; padding:12px 17px; margin-block:18px }
+.article .warn { background:#f3ebda; border-color:#97753a }
+.frac { display:inline-flex; flex-direction:column; vertical-align:middle; text-align:center }.frac>span:first-child { border-bottom:1px solid currentColor }
+.diagram { width:100%; height:auto }.dg-box { fill:#e7eee6;stroke:#9baea1 }.dg-hi { fill:#c8e5d4 }.dg-t { font-size:13px;fill:#183326 }.dg-s { font-size:10px;fill:#4e6555 }.dg-a { stroke:#74897b;fill:none }
+.doc-foot { margin:42px 0 0; background:none; border-top:1px solid var(--rule); padding-top:15px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px }
+@media (max-width:800px) {
+.doc-layout { display:block }.doc-layout aside { position:static; max-height:none; border:0; border-bottom:1px solid var(--rule) }
+#contents summary { display:list-item; cursor:pointer; padding:15px 0; font-weight:600 }.menu { padding:3px 4px 18px; max-height:65vh; overflow:auto }
+.doc-mast-links { gap:12px; font-size:12px }.article { padding-top:30px }.article pre { font-size:12px }
+}
+@media(max-width:420px){.doc-mast-links a:first-child { display:none }}

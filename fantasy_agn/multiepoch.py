@@ -17,6 +17,7 @@ import pandas as pd
 from scipy import sparse
 from scipy.linalg import cho_factor, cho_solve
 
+from .components import C_KMS, FWHM_PER_SIGMA, instrumental_fwhm
 from .fitting import (Problem, _at_limit, _fix_unconstrained, _interior, _prepare,
                       _thread_map, fit_many)
 from .fitting import fit as fit_single
@@ -54,7 +55,8 @@ def _legendre_basis(x, wave_range, degree):
 
 class _JointProblem:
     def __init__(self, model, spectra, masks, shared, intercalibrate, calibration_degree=0, wave_range=None,
-                 epoch_scaled=(), calibration_limit=0.3, calibration_groups=None):
+                 epoch_scaled=(), calibration_limit=0.3, calibration_groups=None, offset_limit=0.0,
+                 broadening_limit=0.0):
         self.model = model
         self.n = len(spectra)
         self.data = [(s.wave[m], s.flux[m], s.err[m], s.context) for s, m in zip(spectra, masks)]
@@ -116,6 +118,60 @@ class _JointProblem:
                 joint.add(Parameter(f"{comp}.amp@{k}", 1.0, 0.05, 20.0, fixed=(k == 0),
                                     description=f"amplitude of {comp} in this epoch (relative to the reference)"))
             self.scaled.append((comp, np.array(pos)))
+        # a wavelength offset per epoch, as a velocity (km/s) added to every shift of the model in that
+        # epoch (line shifts, the stellar velocity; an absorption trough moves by wave * v / c). The
+        # wavelength calibration of each spectrum and the redshift it was moved to the rest frame with
+        # differ slightly between epochs; the shared narrow lines measure the difference, as they measure
+        # the flux scale. The reference epoch defines the frame (offset 0).
+        self.offset_limit = float(offset_limit or 0.0)
+        self.shift_pos, self.shift_weight = np.zeros(0, int), np.zeros(0)
+        if self.offset_limit > 0:
+            pos, weight = [], []
+            for i, p in enumerate(base):
+                last = p.name.rsplit(".", 1)[-1]
+                if last in ("shift", "velocity"):
+                    pos.append(i)
+                    weight.append(1.0)
+                elif last == "wave" and p.unit == "A":
+                    pos.append(i)
+                    weight.append(p.value / C_KMS)
+            if not any(_is_shared(base_p.name, shared) and not base_p.fixed for base_p in (list(base)[i] for i in pos)):
+                raise ValueError("wavelength offsets per epoch need a shared velocity to be measured against: share the "
+                                 "shift of the narrow lines (shared='narrow.*')")
+            self.shift_pos, self.shift_weight = np.array(pos, int), np.array(weight, float)
+            for k in range(self.n):
+                joint.add(Parameter(f"offset@{k}", 0.0, -self.offset_limit, self.offset_limit, fixed=(k == 0),
+                                    unit="km/s", description="wavelength offset of this epoch (velocity)"))
+        # an extra broadening per epoch, as a FWHM (km/s) added in quadrature to every line width (and to
+        # the stellar dispersion): the instrumental resolution differs between epochs (slit width,
+        # seeing, a different spectrograph), and the shared narrow lines measure the difference. It is
+        # the parameter b2 = signed FWHM^2 in units of (100 km/s)^2, so that the derivative does not
+        # vanish at zero and an epoch can also be sharper than the reference (down to 80% of its own
+        # resolution in quadrature). Exact for Gaussian lines: a line of FWHM w seen at resolution R
+        # has (w^2 + R^2), so w_eff^2 = w^2 + b2 is the same as a resolution sqrt(R^2 + b2).
+        self.broadening_limit = float(broadening_limit or 0.0)
+        self.width_pos, self.width_weight = np.zeros(0, int), np.zeros(0)
+        self.res_min = [float(np.min(instrumental_fwhm(d[0], d[3]))) for d in self.data]
+        if self.broadening_limit > 0:
+            hosts = {c.name for c in model.components if c.kind == "host"}
+            pos, weight = [], []
+            for i, p in enumerate(base):
+                comp, last = p.name.split(".")[0], p.name.rsplit(".", 1)[-1]
+                if last == "fwhm" and p.unit == "km/s":
+                    pos.append(i)
+                    weight.append(1.0)
+                elif last == "sigma" and comp in hosts and p.unit == "km/s":
+                    pos.append(i)
+                    weight.append(1.0 / FWHM_PER_SIGMA ** 2)
+            if not any(_is_shared(base_p.name, shared) and not base_p.fixed for base_p in (list(base)[i] for i in pos)):
+                raise ValueError("a broadening per epoch needs a shared line width to be measured against: share the "
+                                 "width of the narrow lines (shared='narrow.*')")
+            self.width_pos, self.width_weight = np.array(pos, int), np.array(weight, float)
+            hi = self.broadening_limit ** 2 / 1e4
+            for k in range(self.n):
+                lo = -min(self.broadening_limit ** 2, 0.8 * self.res_min[k] ** 2) / 1e4
+                joint.add(Parameter(f"broadening@{k}", 0.0, lo, hi, fixed=(k == 0), unit="(100 km/s)^2",
+                                    description="extra broadening of this epoch: signed FWHM^2 added to every width"))
         self._basis = [_legendre_basis(d[0], self.cal_range, self.cal_degree) if self.cal_degree else None
                        for d in self.data]
         # epochs from one instrument share its colour (Legendre) calibration: tie to the first
@@ -134,6 +190,8 @@ class _JointProblem:
         self.cal_index = [[jn.index(f"cal{j}@{k}") for j in range(1, self.cal_degree + 1)]
                           for k in range(self.n)]
         self.amp_index = [[jn.index(f"{comp}.amp@{k}") for comp, _ in self.scaled] for k in range(self.n)]
+        self.offset_index = [[jn.index(f"offset@{k}")] if self.offset_limit > 0 else [] for k in range(self.n)]
+        self.broad_index = [[jn.index(f"broadening@{k}")] if self.broadening_limit > 0 else [] for k in range(self.n)]
         T, c, self.free = joint.affine()
         self.T, self.c = sparse.csr_matrix(T), c
         self.lb = np.array([p.min for p in self.free])
@@ -150,7 +208,7 @@ class _JointProblem:
         self._epoch_map = []
         for k in range(self.n):
             cols = (list(self.index[k]) + ([self.scale_index[k]] if self.scale_names else []) + self.cal_index[k]
-                    + self.amp_index[k])
+                    + self.amp_index[k] + self.offset_index[k] + self.broad_index[k])
             Tk = Tcsr[cols]
             fc = np.unique(Tk.indices)
             self._epoch_map.append((fc, Tk[:, fc].toarray()))
@@ -166,6 +224,14 @@ class _JointProblem:
         self.__dict__.setdefault("_basis", [None] * self.n)
         self.__dict__.setdefault("scaled", [])
         self.__dict__.setdefault("amp_index", [[] for _ in range(self.n)])
+        self.__dict__.setdefault("offset_limit", 0.0)
+        self.__dict__.setdefault("offset_index", [[] for _ in range(self.n)])
+        self.__dict__.setdefault("shift_pos", np.zeros(0, int))
+        self.__dict__.setdefault("shift_weight", np.zeros(0))
+        self.__dict__.setdefault("broadening_limit", 0.0)
+        self.__dict__.setdefault("broad_index", [[] for _ in range(self.n)])
+        self.__dict__.setdefault("width_pos", np.zeros(0, int))
+        self.__dict__.setdefault("width_weight", np.zeros(0))
 
     def factor(self, k, full, x=None):
         """Calibration factor of epoch k: a number, or s(lambda) at x (default: its fitted pixels)."""
@@ -175,12 +241,46 @@ class _JointProblem:
         B = self._basis[k] if x is None else _legendre_basis(x, self.cal_range, self.cal_degree)
         return sc * (1.0 + B @ full[self.cal_index[k]])
 
-    def epoch_full(self, k, full):
-        """The full parameters of epoch k as in its own model (scaled components multiplied)."""
+    def epoch_full(self, k, full, broadened=True):
+        """
+        The full parameters of epoch k as in its own model (scaled components multiplied, shifts
+        moved by the offset). ``broadened``: the widths include the epoch's extra broadening (as the
+        joint fit evaluates them); else they are the intrinsic widths, to be seen at the resolution
+        of :meth:`epoch_resolution`.
+        """
         fk = np.array(full[self.index[k]], float)
         for (comp, pos), ai in zip(self.scaled, self.amp_index[k]):
             fk[pos] = fk[pos] * full[ai]
+        if self.offset_index[k]:
+            fk[self.shift_pos] += self.shift_weight * full[self.offset_index[k][0]]
+        if broadened and self.broad_index[k]:
+            fk[self.width_pos] = self._widths(fk[self.width_pos], full[self.broad_index[k][0]])
         return fk
+
+    def _widths(self, w, b2):
+        return np.sqrt(np.maximum(w ** 2 + 1e4 * b2 * self.width_weight, 1.0))
+
+    def epoch_broadening(self, k, full):
+        """Extra broadening of epoch k as a signed FWHM in km/s (negative: sharper than the reference)."""
+        if not self.broad_index[k]:
+            return 0.0
+        b2 = 1e4 * full[self.broad_index[k][0]]
+        return float(np.sign(b2) * np.sqrt(abs(b2)))
+
+    def epoch_resolution(self, spectrum, k, full):
+        """The spectrum of epoch k with its resolution broadened as fitted (unchanged without broadening)."""
+        if not self.broad_index[k]:
+            return spectrum
+        b2 = 1e4 * full[self.broad_index[k][0]]
+        res = float(np.sqrt(max((spectrum.resolution or 0.0) ** 2 + b2, 0.0)))
+        curve = getattr(spectrum, "resolution_curve", None)
+        if curve is not None:
+            curve = (curve[0], np.sqrt(np.maximum(np.asarray(curve[1], float) ** 2 + b2, 0.0)))
+        out = spectrum.copy(resolution=res, resolution_curve=curve)
+        out.meta["broadening"] = self.epoch_broadening(k, full)
+        out.meta["resolution_file"] = spectrum.resolution            # before the broadening
+        out.meta["resolution_curve_file"] = getattr(spectrum, "resolution_curve", None)
+        return out
 
     def _epoch(self, k, full):
         """Model of epoch k; Jb is with respect to the joint (shared) parameters of the epoch,
@@ -196,6 +296,18 @@ class _JointProblem:
                 extra.append(Jb[:, pos] @ (fk[pos] / a if a != 0 else full[self.index[k]][pos]))
                 Jb[:, pos] = Jb[:, pos] * a
             Jb = np.hstack([Jb, np.stack(extra, axis=1)])
+        nb = len(self.index[k])
+        if self.offset_index[k]:
+            # every shift moves by the offset: its derivative is the sum of theirs (exact)
+            Jb = np.hstack([Jb, (Jb[:, :nb][:, self.shift_pos] @ self.shift_weight)[:, None]])
+        if self.broad_index[k]:
+            # w_eff = sqrt(w^2 + 1e4 b2 c): d w_eff / d w = w / w_eff, d w_eff / d b2 = 1e4 c / (2 w_eff)
+            pos = self.width_pos
+            intrinsic = self.epoch_full(k, full, broadened=False)[pos]
+            eff = fk[pos]
+            col = Jb[:, pos] @ (1e4 * self.width_weight / (2 * eff))
+            Jb[:, pos] = Jb[:, pos] * (intrinsic / eff)
+            Jb = np.hstack([Jb, col[:, None]])
         return x, y, err, f, Jb, self.factor(k, full)
 
     def _calib_columns(self, k, full, f, s, err):
@@ -261,7 +373,9 @@ class _JointProblem:
             resid.append((s * f - y) / err)
             rows = np.arange(self.rows[k], self.rows[k + 1])
             vals = (np.asarray(s)[..., None] if np.ndim(s) else s) * Jb / err[:, None]
-            cols = np.broadcast_to(np.concatenate([self.index[k], self.amp_index[k]]).astype(int), vals.shape)
+            cols = np.broadcast_to(np.concatenate([self.index[k], self.amp_index[k], self.offset_index[k],
+                                                   self.broad_index[k]]).astype(int),
+                                   vals.shape)
             blocks_r.append(np.repeat(rows, vals.shape[1]))
             blocks_c.append(cols.ravel())
             blocks_v.append(vals.ravel())
@@ -281,7 +395,7 @@ class _JointProblem:
 def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None,
                errors="covariance", scale_errors=True, reference="snr", calibration_degree=0,
                epoch_scaled=(), rescale_errors=False, calibration_limit=0.3, calibration_groups=None,
-               n_jobs=-1, verbose=True):
+               wavelength_offsets=False, epoch_broadening=False, n_jobs=-1, verbose=True):
     """
     Fit several epochs of one object jointly.
 
@@ -320,6 +434,21 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
         overall flux scale stays free per epoch). Default: every epoch its own.
     :param calibration_limit: bound on the Legendre coefficients of ``calibration_degree``
         (spectra from different instruments may differ in colour by more than 30%).
+    :param wavelength_offsets: fit a wavelength offset per epoch, as a velocity (km/s; reference epoch
+        = 0) added to every shift of the model in that epoch (True: within +-150 km/s, or the limit in
+        km/s). The epochs are never on exactly the same wavelength scale: the calibration of each
+        spectrum differs by a few km/s (tens for slit spectra), and pipeline redshifts that differ from
+        file to file (SDSS: ~20 km/s rms) move the spectra against each other when each is taken to the
+        rest frame with its own. The shared narrow lines measure the offset of each epoch, as they
+        measure its flux scale, so it needs a shared velocity (the default ``narrow.*``).
+        ``result.offsets`` lists them, and ``result.redshift()`` gives the redshift of the narrow lines.
+    :param epoch_broadening: fit an extra broadening per epoch, a FWHM (km/s) added in quadrature to
+        every line width and to the stellar dispersion (reference epoch = 0; True: up to 300 km/s, or
+        the limit in km/s; an epoch may also be sharper than the reference). The resolution differs
+        between epochs (slit width, seeing, another spectrograph) and is often not known well; the
+        shared narrow lines measure it. Without it a difference of resolution changes the shared
+        narrow lines' fit in every epoch and so its flux scale. The widths in the epochs' results are
+        intrinsic: each epoch's spectrum carries its broadened resolution. ``result.broadening`` lists them.
     :param wave_range: fitted window (default: the model's).
     :param errors: 'covariance' or None.
     :param scale_errors: inflate errors by sqrt(reduced chi2) if > 1.
@@ -378,9 +507,16 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
     if calibration_groups:
         internal = {orig: k for k, orig in enumerate(order)}
         groups = [[internal[g] for g in grp if g in internal] for grp in calibration_groups]
+    offset_limit = 150.0 if wavelength_offsets is True else float(wavelength_offsets or 0.0)
+    if offset_limit < 0:
+        raise ValueError("wavelength_offsets: True, or the limit of the offsets in km/s")
+    broadening_limit = 300.0 if epoch_broadening is True else float(epoch_broadening or 0.0)
+    if broadening_limit < 0:
+        raise ValueError("epoch_broadening: True, or the limit of the broadening in km/s")
     prob = _JointProblem(model, spectra, masks, shared, intercalibrate, calibration_degree, wave_range,
                          epoch_scaled=epoch_scaled, calibration_limit=calibration_limit,
-                         calibration_groups=groups)
+                         calibration_groups=groups, offset_limit=offset_limit,
+                         broadening_limit=broadening_limit)
 
     full0 = np.zeros(len(prob.c))
     per_epoch = np.array([r.full for r in singles])
@@ -396,8 +532,22 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
             g = prob.scale_guess[k]
             full0[si] = s0 if np.isfinite(s0) and g / 3 < s0 < g * 3 else g
     scales = np.array([full0[si] for si in prob.scale_index]) if intercalibrate else np.ones(len(spectra))
+    # starting offsets: how far the shared velocity of each epoch's own fit is from the reference's
+    dv0 = np.zeros(len(spectra))
+    if offset_limit > 0:
+        plist = list(model.params)
+        anchor = next((i for i in prob.shift_pos if _is_shared(plist[i].name, shared) and not plist[i].fixed
+                       and plist[i].name.startswith("narrow.")),
+                      next(i for i in prob.shift_pos if _is_shared(plist[i].name, shared) and not plist[i].fixed))
+        w = prob.shift_weight[list(prob.shift_pos).index(anchor)]
+        dv0 = np.clip((per_epoch[:, anchor] - per_epoch[0, anchor]) / w, -0.9 * offset_limit, 0.9 * offset_limit)
+        for k in range(len(spectra)):
+            full0[prob.offset_index[k][0]] = dv0[k]
+    shift_w = dict(zip(prob.shift_pos.tolist(), prob.shift_weight.tolist()))
     for i, p in enumerate(model.params):
         vals = per_epoch[:, i] / (scales if p.linear else 1.0)
+        if i in shift_w:                               # in the frame of the reference epoch
+            vals = vals - shift_w[i] * dv0
         for k in range(len(spectra)):
             full0[prob.index[k][i]] = vals[k]
         if _is_shared(p.name, shared):
@@ -424,6 +574,7 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
     limit = _at_limit(theta, prob.lb, prob.ub)
 
     cov_full = None
+    offset_var, broad_var = {}, {}
     if errors == "covariance":
         blocks = _Blocks.from_epochs(len(theta), prob.group, ~limit, res.jac)
         per_epoch, shared_cov = blocks.covariance()
@@ -437,19 +588,28 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
             rows = list(idx) + ([prob.scale_index[k]] if intercalibrate else []) + prob.cal_index[k]
             Tk = T[rows][:, cols].toarray()
             ck = Tk @ (cov * scale) @ Tk.T
-            if prob.scaled:
-                # covariance of the scaled weights a w: d(a w_i)/dw_i = a, d(a w_i)/da = w_i
-                amp_rows = prob.amp_index[k]
-                Ta = T[amp_rows][:, cols].toarray()
+            if prob.scaled or prob.offset_index[k] or prob.broad_index[k]:
+                # the epoch's own parameters are functions of the joint ones: a scaled weight is a w
+                # (d(a w_i)/dw_i = a, d(a w_i)/da = w_i), a shift is shift + weight * offset (the
+                # widths of the epoch's result are the intrinsic ones: the broadening is its resolution)
+                extra_rows = prob.amp_index[k] + prob.offset_index[k] + prob.broad_index[k]
+                Ta = T[extra_rows][:, cols].toarray()
                 Tall = np.vstack([Tk, Ta])
                 call = Tall @ (cov * scale) @ Tall.T
-                M = np.zeros((len(rows), len(rows) + len(amp_rows)))
+                M = np.zeros((len(rows), len(rows) + len(extra_rows)))
                 M[:, :len(rows)] = np.eye(len(rows))
-                for j, ((comp, pos), ai) in enumerate(zip(prob.scaled, amp_rows)):
+                for j, ((comp, pos), ai) in enumerate(zip(prob.scaled, prob.amp_index[k])):
                     a = full[ai]
                     for i in pos:
                         M[i, i] = a
                         M[i, len(rows) + j] = full[idx[i]]
+                if prob.offset_index[k]:
+                    j = len(rows) + len(prob.amp_index[k])
+                    M[prob.shift_pos, j] = prob.shift_weight
+                    offset_var[k] = float(call[j, j])
+                if prob.broad_index[k]:
+                    j = len(rows) + len(prob.amp_index[k]) + len(prob.offset_index[k])
+                    broad_var[k] = float(call[j, j])
                 ck = M @ call @ M.T
             epoch_cov[k] = (rows, ck)
         cov_full = _EpochCovariance(epoch_cov, blocks.shared, shared_cov * scale, prob)
@@ -459,9 +619,9 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
         idx = prob.index[k]
         sk = prob.factor(k, full, s.wave) if intercalibrate else 1.0
         m = model.copy()
-        full_k = prob.epoch_full(k, full)
+        full_k = prob.epoch_full(k, full, broadened=False)
         m.params.set_full_values(full_k)
-        spec = s.copy(flux=s.flux / sk, err=s.err / sk)
+        spec = prob.epoch_resolution(s.copy(flux=s.flux / sk, err=s.err / sk), k, full)
         r = res.fun[prob.rows[k]:prob.rows[k + 1]]
         free_k = [p.name for p in m.params if p.free]
         epochs.append(FitResult(
@@ -477,6 +637,18 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
             error_scale=np.sqrt(scale), time=0.0, error_method=errors))
         epochs[-1].calibration = np.array([full[i] for i in prob.cal_index[k]])
         epochs[-1].amplitudes = {comp: float(full[ai]) for (comp, _), ai in zip(prob.scaled, prob.amp_index[k])}
+        if prob.offset_index[k]:
+            oi = prob.offset_index[k][0]
+            epochs[-1].offset = float(full[oi])
+            epochs[-1].offset_err = (0.0 if k == 0 else float(np.sqrt(max(offset_var[k], 0))) if k in offset_var
+                                     else np.nan)
+        if prob.broad_index[k]:
+            b = prob.epoch_broadening(k, full)
+            var = 1e8 * broad_var.get(k, np.nan)          # of the signed FWHM^2, (km/s)^4
+            sd = np.sqrt(max(var, 0.0)) if np.isfinite(var) else np.nan
+            epochs[-1].broadening = b
+            # error of the signed FWHM: d|b| = d(b^2) / 2|b|, kept finite near zero
+            epochs[-1].broadening_err = 0.0 if k == 0 else float(sd / (2 * max(abs(b), np.sqrt(sd)))) if np.isfinite(sd) and sd > 0 else np.nan
         if intercalibrate:
             si = prob.scale_index[k]
             epochs[-1].scale = float(full[si])
@@ -491,6 +663,13 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
                               np.sqrt(scale), time.time() - t0)
     result.reference = order[0]
     result._order = order
+    # how it was fitted, to repeat it (simulation_check)
+    result.options = {"shared": tuple(shared), "intercalibrate": bool(intercalibrate), "wave_range": wave_range,
+                      "errors": errors, "scale_errors": bool(scale_errors), "reference": order[0],
+                      "calibration_degree": int(calibration_degree or 0), "epoch_scaled": tuple(epoch_scaled),
+                      "rescale_errors": bool(rescale_errors), "calibration_limit": calibration_limit,
+                      "calibration_groups": calibration_groups, "wavelength_offsets": offset_limit or False,
+                      "epoch_broadening": broadening_limit or False}
     if intercalibrate:
         errs = [e.scale_err for k, e in enumerate(in_order) if k != result.reference and np.isfinite(e.scale_err)]
         result.calibration_error = float(np.median(errs)) if errs else np.nan
@@ -742,6 +921,11 @@ def _line_continuum_corr(result, line, components, at):
     return float(np.clip(cov[0, 1] / (d[0] * d[1]), -1, 1)) if np.all(d > 0) else 0.0
 
 
+# Rest-frame continuum windows free of strong lines, as in Shen et al. (2011, ApJS 194, 45): the blue
+# H-beta window lies on the Fe II 4570 blend, so the fitted Fe II is subtracted before averaging
+CONTINUUM_WINDOWS = {"Hb": ((4435.0, 4700.0), (5100.0, 5535.0)), "Ha": ((6000.0, 6250.0), (6800.0, 7000.0))}
+
+
 class MultiEpochResult:
     """
     Result of :func:`fit_epochs`:
@@ -780,6 +964,45 @@ class MultiEpochResult:
                 for k, r in enumerate(self.epochs)]
         return pd.DataFrame(rows, columns=["epoch", "mjd", "name", "scale", "error", "reference"])
 
+    @property
+    def offsets(self):
+        """Wavelength offset of each epoch (km/s, with ``wavelength_offsets``) relative to the reference epoch;
+        None if they were not fitted."""
+        if not any(hasattr(r, "offset") for r in self.epochs):
+            return None
+        rows = [(k, r.spectrum.mjd, r.spectrum.name, getattr(r, "offset", np.nan), getattr(r, "offset_err", np.nan),
+                 k == self.reference) for k, r in enumerate(self.epochs)]
+        return pd.DataFrame(rows, columns=["epoch", "mjd", "name", "offset", "error", "reference"])
+
+    @property
+    def broadening(self):
+        """Extra broadening of each epoch (FWHM in km/s added in quadrature, negative: sharper; with
+        ``epoch_broadening``) relative to the reference epoch, and the resolution it gives; None if not fitted."""
+        if not any(hasattr(r, "broadening") for r in self.epochs):
+            return None
+        rows = [(k, r.spectrum.mjd, r.spectrum.name, getattr(r, "broadening", np.nan), getattr(r, "broadening_err", np.nan),
+                 float(r.spectrum.resolution or 0.0), k == self.reference) for k, r in enumerate(self.epochs)]
+        return pd.DataFrame(rows, columns=["epoch", "mjd", "name", "broadening", "error", "resolution", "reference"])
+
+    def redshift(self, parameter="narrow.shift"):
+        """
+        Redshift of the object from the joint fit: the redshift the reference epoch was moved to the
+        rest frame with, corrected by the shared velocity ``parameter`` (default: the shift of the
+        narrow lines, which all epochs measure together). Returns (z, error); the error is that of the
+        fit only, without the wavelength calibration of the reference spectrum (a few km/s for SDSS,
+        1e-5 in z). Use it to prepare the spectra again with one redshift, or as the systemic redshift.
+        """
+        ref = self.epochs[getattr(self, "reference", 0)]
+        z0 = ref.spectrum.z
+        if z0 is None:
+            raise ValueError("the reference spectrum has no redshift")
+        names = self._prob.joint.names
+        if parameter not in names:
+            raise ValueError(f"{parameter!r} is not shared by the epochs: give a shared velocity "
+                             f"(one of {[n for n in names if '@' not in n and n.endswith(('shift', 'velocity'))]})")
+        v = float(self.full[names.index(parameter)])
+        return (1 + z0) * (1 + v / C_KMS) - 1, (1 + z0) * self._err(parameter) / C_KMS
+
     def _epoch_select(self, mjd_range):
         if mjd_range is None:
             return list(range(len(self.epochs)))
@@ -788,6 +1011,48 @@ class MultiEpochResult:
         if len(sel) < 5:
             raise ValueError(f"only {len(sel)} epochs in MJD {lo}-{hi}")
         return sel
+
+    def window_continuum(self, windows=None, subtract_lines=True, min_coverage=0.8):
+        """
+        Continuum light curves measured in rest-frame windows: per epoch, the mean
+        flux density of the intercalibrated spectrum in each window, minus the
+        fitted emission lines and Fe II (``subtract_lines``), with the error of the
+        mean from the pixel errors. Unlike :meth:`light_curve`, which evaluates the
+        fitted AGN continuum at one wavelength, this is measured on the data, as in
+        reverberation-mapping campaigns; it includes the host starlight (constant:
+        it dilutes the variability, not the lag).
+
+        :param windows: list of (lo, hi) in Å; default: the windows of
+            :data:`CONTINUUM_WINDOWS` (Shen et al. 2011) inside the fitted range
+        :param min_coverage: share of a window's pixels an epoch must have, else NaN
+        :returns: DataFrame with ``mjd`` and ``win{lo}_{hi}``, ``win{lo}_{hi}_err``
+        """
+        lo_fit = min(float(e.spectrum.wave[e.mask].min()) for e in self.epochs)
+        hi_fit = max(float(e.spectrum.wave[e.mask].max()) for e in self.epochs)
+        if windows is None:
+            windows = [w for ws in CONTINUUM_WINDOWS.values() for w in ws if w[0] >= lo_fit - 1 and w[1] <= hi_fit + 1]
+        rows = []
+        for e in self.epochs:
+            s = e.spectrum
+            wave = s.wave if s.rest_frame or not s.z else s.wave / (1 + s.z)
+            sub = 0.0
+            if subtract_lines:
+                parts = e.model_flux(s.wave, components=True)
+                kinds = {c.name: c.kind for c in e.model.components}
+                sub = sum((v for k, v in parts.items() if kinds.get(k) in ("line", "template")), np.zeros_like(wave))
+            row = {"mjd": s.mjd if s.mjd is not None else np.nan}
+            for lo, hi in windows:
+                inw = (wave >= lo) & (wave <= hi)
+                ok = inw & e.mask & np.isfinite(s.flux) & np.isfinite(s.err) & (s.err > 0)
+                key = f"win{lo:g}_{hi:g}"
+                if inw.sum() == 0 or ok.sum() < max(3, min_coverage * inw.sum()):
+                    row[key], row[key + "_err"] = np.nan, np.nan
+                    continue
+                f = (s.flux - sub)[ok]
+                row[key] = float(np.mean(f))
+                row[key + "_err"] = float(np.sqrt(np.sum(s.err[ok] ** 2)) / ok.sum())
+            rows.append(row)
+        return pd.DataFrame(rows)
 
     def rms_spectrum(self, line="Hb", mjd_range=None, **kw):
         """Mean and rms spectrum of a broad line (see :func:`fantasy_agn.rm.rms_spectrum`)."""
@@ -945,36 +1210,7 @@ class MultiEpochResult:
         return (None, None) in self.__dict__.get("_lc_cache", {})
 
     def _light_curve(self, lines, continuum_at):
-        first = self.epochs[0]
-        broad = [c for c in first._line_components() if c.role == "broad"]
-        if lines is None:
-            lines = sorted({ln for c in broad for ln in c.line_names},
-                           key=lambda ln: [c.line_names for c in broad if ln in c.line_names][0].index(ln))
-        if continuum_at is None:
-            pivots = [getattr(c, "pivot", None) for c in first.model.components
-                      if c.kind == "continuum"]
-            continuum_at = next((p for p in pivots if p), None)
-        rows = []
-        for k, r in enumerate(self.epochs):
-            row = {"epoch": k, "mjd": r.spectrum.mjd, "name": r.spectrum.name}
-            for ln in lines:
-                comps = [c.name for c in broad if ln in c.line_names]
-                m = r.measure(ln, comps)
-                row[f"{ln}_flux"], row[f"{ln}_flux_err"] = m["flux"], m["flux_err"]
-                row[f"{ln}_fwhm"], row[f"{ln}_fwhm_err"] = m["fwhm"], m["fwhm_err"]
-                row[f"{ln}_ew"], row[f"{ln}_ew_err"] = m["ew"], m["ew_err"]
-            if continuum_at:
-                row[f"cont{continuum_at:g}"], row[f"cont{continuum_at:g}_err"] = r.continuum(continuum_at)
-                for ln in lines:
-                    # correlation of the line flux with the continuum in this epoch's fit
-                    # (decomposition and flux calibration): used by the lag methods
-                    row[f"{ln}_cont_corr"] = _line_continuum_corr(r, ln, [c.name for c in broad
-                                                                          if ln in c.line_names], continuum_at)
-                if r.spectrum.z and r.spectrum.flux_unit:
-                    row[f"logL{continuum_at:g}"], row[f"logL{continuum_at:g}_err"] = \
-                        r.luminosity(continuum_at)
-            rows.append(row)
-        return pd.DataFrame(rows)
+        return light_curve_table(self.epochs, lines, continuum_at)
 
     def plot_baldwin(self, line="Hb", continuum_at=None, exclude=(), save=None, **kw):
         """
@@ -1020,7 +1256,99 @@ class MultiEpochResult:
             lines.append("  WARNING: optimizer did not converge")
         if self.error_scale > 1:
             lines.append(f"  errors scaled by sqrt(reduced chi2) = {self.error_scale:.2f}")
+        off = self.offsets
+        if off is not None:
+            v = off.offset[~off.reference].to_numpy(float)
+            lines.append(f"  wavelength offsets per epoch: rms {np.sqrt(np.mean(v ** 2)):.1f} km/s, from {round(v.min()) + 0.0:+.0f} to "
+                         f"{round(v.max()) + 0.0:+.0f} km/s (median error {np.nanmedian(off.error[~off.reference]):.1f} km/s)")
+            limit = getattr(self._prob, "offset_limit", 0.0)
+            at = int(np.sum(np.abs(v) > 0.98 * limit)) if limit else 0
+            if at:
+                lines.append(f"  WARNING: {at} offsets are at the limit of {limit:g} km/s: the wavelength scale of those "
+                             "epochs is far off (or their narrow lines are not detected)")
+        br = self.broadening
+        if br is not None:
+            v = br.broadening[~br.reference].to_numpy(float)
+            lines.append(f"  extra broadening per epoch (FWHM in quadrature): from {round(v.min()) + 0.0:+.0f} to "
+                         f"{round(v.max()) + 0.0:+.0f} km/s, median |b| {np.median(np.abs(v)):.0f} km/s "
+                         f"(median error {np.nanmedian(br.error[~br.reference]):.0f} km/s)")
+        try:
+            z, ze = self.redshift()
+            lines.append(f"  redshift of the narrow lines: {z:.6f} +- {ze:.6f}")
+        except Exception:                                         # no redshift, or no shared narrow shift
+            pass
         return "\n".join(lines)
 
     def __repr__(self):
         return self.summary()
+
+
+def light_curve_table(epochs, lines=None, continuum_at=None):
+    """
+    Per epoch (a list of FitResults with the same model), the total broad flux, FWHM and EW of each broad line
+    (summed over broad components), the continuum flux density at the continuum pivot and, with a redshift and a
+    flux unit, log lambda L there; used by MultiEpochResult.light_curve and for epochs fitted one by one.
+    """
+    first = epochs[0]
+    broad = [c for c in first._line_components() if c.role == "broad"]
+    if lines is None:
+        lines = sorted({ln for c in broad for ln in c.line_names},
+                       key=lambda ln: [c.line_names for c in broad if ln in c.line_names][0].index(ln))
+    if continuum_at is None:
+        pivots = [getattr(c, "pivot", None) for c in first.model.components
+                  if c.kind == "continuum"]
+        continuum_at = next((p for p in pivots if p), None)
+    rows = []
+    for k, r in enumerate(epochs):
+        row = {"epoch": k, "mjd": r.spectrum.mjd, "name": r.spectrum.name}
+        for ln in lines:
+            comps = [c.name for c in broad if ln in c.line_names]
+            m = r.measure(ln, comps)
+            row[f"{ln}_flux"], row[f"{ln}_flux_err"] = m["flux"], m["flux_err"]
+            row[f"{ln}_fwhm"], row[f"{ln}_fwhm_err"] = m["fwhm"], m["fwhm_err"]
+            row[f"{ln}_ew"], row[f"{ln}_ew_err"] = m["ew"], m["ew_err"]
+        if continuum_at:
+            row[f"cont{continuum_at:g}"], row[f"cont{continuum_at:g}_err"] = r.continuum(continuum_at)
+            for ln in lines:
+                # correlation of the line flux with the continuum in this epoch's fit
+                # (decomposition and flux calibration): used by the lag methods
+                row[f"{ln}_cont_corr"] = _line_continuum_corr(r, ln, [c.name for c in broad
+                                                                      if ln in c.line_names], continuum_at)
+            if r.spectrum.z and r.spectrum.flux_unit:
+                row[f"logL{continuum_at:g}"], row[f"logL{continuum_at:g}_err"] = \
+                    r.luminosity(continuum_at)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+class EpochSet(MultiEpochResult):
+    """
+    Epochs fitted one by one (``fa.fit_many``) seen together, with the tools of a joint fit that need only the
+    epochs: ``light_curve``, ``rms_spectrum``, ``reverberation`` (lags, rms widths, mass) and ``plot_baldwin``::
+
+        fits = fa.fit_many(spectra, model)
+        me = fa.EpochSet(fits)
+        rm = me.reverberation("Hb")
+
+    Unlike ``fa.fit_epochs`` nothing is shared and the epochs are not intercalibrated on the narrow lines: the
+    flux calibration of each spectrum is taken as it is. Epochs whose fit failed are left out.
+    """
+
+    def __init__(self, fits):
+        from .result import FitResult
+        self.epochs = [f for f in fits if isinstance(f, FitResult)]
+        if len(self.epochs) < 2:
+            raise ValueError("an EpochSet needs at least two fitted epochs")
+        self._prob, self.full, self.cov = None, None, None
+        self.chi2 = float(sum(e.chi2 for e in self.epochs))
+        self.dof = int(sum(e.dof for e in self.epochs))
+        self.rchi2 = self.chi2 / self.dof
+        self.success = all(e.success for e in self.epochs)
+        self.nfev = int(sum(e.nfev for e in self.epochs))
+        self.shared_patterns, self.error_scale = (), 1.0
+        self.time = float(sum(e.time for e in self.epochs))
+        self.reference = 0
+
+    def summary(self, short=False):
+        return (f"{len(self.epochs)} epochs fitted one by one (not intercalibrated): "
+                f"reduced chi2 {min(e.rchi2 for e in self.epochs):.3f}-{max(e.rchi2 for e in self.epochs):.3f}")

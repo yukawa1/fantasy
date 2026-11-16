@@ -146,6 +146,12 @@ def galactic_ebv(ra=None, dec=None, source="auto", sf11=True, file_value=None):
                 return SF11 * sfd, where + " x 0.86 (Schlafly & Finkbeiner 2011)"
             return sfd, where
         except Exception as exc:                 # try the next source
-            problems.append(f"{s}: {exc}")
+            import urllib.error
+            if s == "irsa" and isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError)):
+                # not a problem of the spectrum: the service is down, or there is no internet
+                problems.append(f"irsa: the IRSA dust service cannot be reached ({getattr(exc, 'reason', exc)}); "
+                                "it may be down for a while, or this computer is offline")
+            else:
+                problems.append(f"{s}: {exc}")
     raise RuntimeError("no Galactic E(B-V) found (" + "; ".join(problems) + "); pass ebv=... "
                        "explicitly, e.g. from https://irsa.ipac.caltech.edu/applications/DUST/")

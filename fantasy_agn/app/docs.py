@@ -20,24 +20,44 @@ def _api_objects():
         ("Reading data", [("fa.read", fa.read), ("Spectrum", Spectrum),
                           ("Spectrum.to_rest_frame", Spectrum.to_rest_frame),
                           ("Spectrum.deredden", Spectrum.deredden), ("Spectrum.crop", Spectrum.crop),
-                          ("Spectrum.mask", Spectrum.mask), ("fa.desi.fetch", fa.desi.fetch),
+                          ("Spectrum.mask", Spectrum.mask), ("Spectrum.with_resolution", Spectrum.with_resolution), ("fa.find_redshift", fa.find_redshift), ("fa.desi.fetch", fa.desi.fetch),
                           ("fa.desi.find", fa.desi.find)]),
-        ("Classification", [("fa.classify", fa.classify), ("Classification", Classification),
-                            ("Classification.plot_steps", Classification.plot_steps)]),
-        ("Models", [("fa.Model", fa.Model)]
+        ("Classification", [("fa.classify", fa.classify), ("fa.classify_fit", fa.classify_fit), ("Classification", Classification),
+                            ("Classification.plot_steps", Classification.plot_steps),
+                            ("fa.lookup_catalogs", fa.lookup_catalogs)]),
+        ("Models", [("fa.Model", fa.Model), ("Model.starting_from", fa.Model.starting_from), ("Model.split_lines", fa.Model.split_lines)]
          + [(f"fa.presets.{n}", getattr(presets, n)) for n in
-            ("hbeta", "halpha", "optical", "mgii", "civ", "type2", "galaxy", "variants")]
+            ("hbeta", "halpha", "optical", "mgii", "civ", "type2", "galaxy", "seyfert2",
+             "composite", "liner", "starforming", "passive", "tde", "bff", "auto", "variants")]
          + [(f"fa.{n}", getattr(fa, n)) for n in
             ("Lines", "PowerLaw", "BrokenPowerLaw", "Polynomial", "FeII", "BalmerContinuum",
              "HighOrderBalmer", "StellarPopulation", "HostGalaxy", "Extinction")]),
         ("Fitting", [("fa.fit", fa.fit), ("fa.guess", fa.guess), ("fa.compare", fa.compare),
-                     ("fa.fit_epochs", fa.fit_epochs)]),
+                     ("fa.fit_many", fa.fit_many), ("fa.fit_sample", fa.fit_sample), ("fa.fit_absorbed", fa.fit_absorbed),
+                     ("fa.refine", fa.refine), ("fa.prune_feii", fa.prune_feii), ("fa.fit_epochs", fa.fit_epochs)]),
         ("Results", [(f"FitResult.{n}", getattr(FitResult, n)) for n in
-                     ("key_results", "lines", "measure", "bh_mass", "bh_masses", "feii", "balmer_decrement",
+                     ("key_results", "lines", "line_limit", "upper_limit", "measure", "bh_mass", "bh_masses", "feii", "balmer_decrement", "undersampled",
                       "host_properties", "luminosity", "continuum", "plot", "savefig", "save",
                       "summary")]),
     ]
+    groups.extend([
+        ("Fit checks", [(f"fa.{name}", getattr(fa, name)) for name in (
+            "analyze_residuals", "suggest_lines", "simulation_check", "calibration_check", "robustness", "compare_fits", "model_confidence",
+            "candidate_ties", "predictive_check", "link_test", "profile_likelihood", "calibrate")]),
+        ("Epochs and reverberation", [
+            ("fa.epoch_table", fa.epoch_table), ("fa.epoch_correlations", fa.epoch_correlations),
+            ("fa.EpochSet", fa.EpochSet), ("fa.rm.component_reverberation", fa.rm.component_reverberation),
+            ("fa.rm.lag_significance", fa.rm.lag_significance),
+        ] + [(f"MultiEpochResult.{name}", getattr(fa.MultiEpochResult, name)) for name in (
+            "shared", "scales", "offsets", "broadening", "redshift", "light_curve", "window_continuum", "reverberation", "rms_spectrum")]),
+        ("New versions", [("fantasy_agn.update.check", _update().check), ("fantasy_agn.update.install", _update().install)]),
+    ])
     return groups
+
+
+def _update():
+    from .. import update
+    return update
 
 
 def _doc_html(text):

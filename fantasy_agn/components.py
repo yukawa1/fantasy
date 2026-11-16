@@ -20,7 +20,7 @@ from astropy.io import fits
 
 from .lines import DATA, line_wavelength, load_template
 from .parameters import Parameter
-from .profiles import PROFILES, evaluate_profile
+from .profiles import PROFILES, evaluate_profile, gaussian_windowed
 from .wavelengths import vac_to_air
 
 __all__ = ("Component", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
@@ -41,6 +41,18 @@ def instrumental_fwhm(wave, ctx):
     if curve is not None:
         return np.interp(wave, curve[0], curve[1])
     return np.full(np.shape(wave), ctx.get("resolution", 0.0), dtype=float)
+
+
+def pixel_width(x, ctx):
+    """
+    Width (A) of the spectrum's pixel at each wavelength ``x``, for line profiles averaged over the
+    pixels, or None when the context has no pixel grid (models evaluated outside a spectrum, the
+    intrinsic line measurements, FANTASY_PIXEL=0).
+    """
+    grid = ctx.get("pixel")
+    if grid is None:
+        return None
+    return np.interp(x, grid[0], grid[1])
 
 
 def _in_medium(wave_vac, ctx):
@@ -173,11 +185,24 @@ class _GaussianSet(Component):
         lam0 = _in_medium(self._wave, ctx)
         per_line = [k[self._kin_index] for k in kin]
         sig_inst = instrumental_fwhm(lam0, ctx) / FWHM_PER_SIGMA
-        return evaluate_profile(self.profile, x, lam0, per_line, sig_inst)
+        return evaluate_profile(self.profile, x, lam0, per_line, sig_inst, pixel_width(x, ctx))
+
+    def _windowed(self, x, kin, ctx, derivatives=True):
+        """Sparse Gaussian profiles (see profiles.gaussian_windowed), or None: use the dense ones."""
+        if self.profile != "gaussian":
+            return None
+        lam0 = _in_medium(self._wave, ctx)
+        sig_inst = instrumental_fwhm(lam0, ctx) / FWHM_PER_SIGMA
+        return gaussian_windowed(x, lam0, kin[0][self._kin_index], kin[1][self._kin_index], sig_inst, derivatives,
+                                 pix=pixel_width(x, ctx))
 
     def evaluate(self, x, p, ctx):
         amp, kin = self._split(p)
-        P, derivs = self._profiles(x, kin, ctx)
+        sparse = self._windowed(x, kin, ctx)
+        if sparse is not None:
+            P, derivs = sparse[0], sparse[1:]
+        else:
+            P, derivs = self._profiles(x, kin, ctx)
         W = self._weights(p)
         line_amp = W @ amp
         f = P @ line_amp
@@ -185,22 +210,31 @@ class _GaussianSet(Component):
         K[np.arange(len(self._wave)), self._kin_index] = line_amp
         cols = [P @ W] + [d @ K for d in derivs]
         if len(getattr(self, "_ratio_rows", ())):   # d f / d ratio = profile of the line * reference flux
-            cols.append(P[:, self._ratio_rows] * amp[self._ratio_cols])
+            Pr = P[:, self._ratio_rows]
+            cols.append((Pr.toarray() if sparse is not None else Pr) * amp[self._ratio_cols])
         return f, np.hstack(cols)
 
-    def value(self, x, p, ctx):
-        amp, kin = self._split(p)
+    def _unit_profiles(self, x, p, ctx):
+        """Unit-flux profiles of the lines, values only (sparse where that is cheaper)."""
+        _, kin = self._split(p)
+        sparse = self._windowed(x, kin, ctx, derivatives=False)
+        if sparse is not None:
+            return sparse[0]
         lam0 = _in_medium(self._wave, ctx)
         per_line = [k[self._kin_index] for k in kin]
         sig_inst = instrumental_fwhm(lam0, ctx) / FWHM_PER_SIGMA
-        if self.profile == "gaussian":
+        pix = pixel_width(x, ctx)
+        if pix is not None:
+            return evaluate_profile(self.profile, x, lam0, per_line, sig_inst, pix)[0]
+        if self.profile == "gaussian":            # values only: no derivative arrays
             centre = lam0 * (1 + per_line[0] / C_KMS)
             sig_lam = centre * np.sqrt((per_line[1] / FWHM_PER_SIGMA) ** 2 + sig_inst ** 2) / C_KMS
             u = (x[:, None] - centre) / sig_lam
-            P = np.exp(-0.5 * u * u) / (SQRT_2PI * sig_lam)
-        else:
-            P, _ = evaluate_profile(self.profile, x, lam0, per_line, sig_inst)
-        return P @ (self._weights(p) @ amp)
+            return np.exp(-0.5 * u * u) / (SQRT_2PI * sig_lam)
+        return evaluate_profile(self.profile, x, lam0, per_line, sig_inst)[0]
+
+    def value(self, x, p, ctx):
+        return self._unit_profiles(x, p, ctx) @ (self._weights(p) @ p[:self._n_amp])
 
     def line_fluxes(self, p):
         """Integrated flux of every line (amplitude parameters mixed by W)."""
@@ -214,21 +248,24 @@ class _GaussianSet(Component):
         return P[:, k] * (self._weights(p)[k] @ amp)
 
     def evaluate_basis(self, x, p, ctx):
-        amp, kin = self._split(p)
-        lam0 = _in_medium(self._wave, ctx)
-        per_line = [k[self._kin_index] for k in kin]
-        sig_inst = instrumental_fwhm(lam0, ctx) / FWHM_PER_SIGMA
-        if self.profile == "gaussian":            # values only: no derivative arrays
-            centre = lam0 * (1 + per_line[0] / C_KMS)
-            sig_lam = centre * np.sqrt((per_line[1] / FWHM_PER_SIGMA) ** 2 + sig_inst ** 2) / C_KMS
-            u = (x[:, None] - centre) / sig_lam
-            P = np.exp(-0.5 * u * u) / (SQRT_2PI * sig_lam)
-        else:
-            P, _ = evaluate_profile(self.profile, x, lam0, per_line, sig_inst)
-        A = P @ self._weights(p)
+        A = self._unit_profiles(x, p, ctx) @ self._weights(p)
         J = np.zeros((x.size, len(p)))
         J[:, :self._n_amp] = A
-        return A @ amp, J
+        return A @ p[:self._n_amp], J
+
+    def basis_entries(self, x, p, ctx):
+        """
+        The non-zero elements of the unit-flux line profiles, (values, pixel index, line index), or
+        None without windowed profiles. With ``_weights(p)`` they give the amplitude columns; the
+        grid searches of the fit build their normal matrix from these directly.
+        """
+        if self.profile != "gaussian":
+            return None
+        _, kin = self._split(p)
+        lam0 = _in_medium(self._wave, ctx)
+        sig_inst = instrumental_fwhm(lam0, ctx) / FWHM_PER_SIGMA
+        return gaussian_windowed(x, lam0, kin[0][self._kin_index], kin[1][self._kin_index], sig_inst,
+                                 derivatives=False, entries=True, pix=pixel_width(x, ctx))
 
     def basis(self, x, p, ctx):
         """Profile of each amplitude parameter at unit amplitude."""

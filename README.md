@@ -1,4 +1,4 @@
-![Fantasy](docs/Fantasy.jpg)
+![Fantasy](https://raw.githubusercontent.com/yukawa1/fantasy/main/docs/Fantasy.jpg)
 
 # FANTASY: Fully Automated pythoN tool for AGN Spectra analYsis
 
@@ -26,9 +26,25 @@ Version 2 is a rewrite with these features:
 - **Point-and-click GUI** in Jupyter for beginners.
 - **Easy to install.** It needs only numpy, scipy, astropy, pandas and matplotlib.
 
+The [interactive project homepage](website/index.html) includes the NGC 2885 reconstruction. Open `website/index.html` in a browser from a local checkout. The [v2 documentation](website/docs/index.html) is generated from this checkout’s app guides, line table and API docstrings. Rebuild it after code changes with `.venv/bin/python tools/build_website_docs.py`.
+
 ## Installation
 
-**Testers and new users**: unzip `FANTASY-2.0.0.zip` (built with `sh install/make_bundle.sh`)
+From PyPI, with Python 3.10 or newer; the app comes with the package:
+
+```console
+pip install fantasy_agn      # then: fantasy test
+fantasy app                  # the FANTASY app in the browser
+```
+
+or, in an environment of its own made by [uv](https://docs.astral.sh/uv/):
+`uv tool install --python 3.12 fantasy_agn`.
+
+**Updates**: the app shows **New: FANTASY x.y.z** in its header when a new version is published, with
+an Install button; in a terminal, `fantasy update` (or `pip install -U fantasy_agn`). The check asks
+PyPI once a day and sends nothing but the package name; `FANTASY_NO_UPDATE_CHECK=1` turns it off.
+
+**Without Python** (testers): unzip `FANTASY-2.0.0.zip` (built with `sh install/make_bundle.sh`)
 and run the installer:
 
 | system | install |
@@ -47,6 +63,7 @@ fantasy test [--full]    # check the installation (--full: templates and online 
 fantasy info             # versions, processor cores, templates
 fantasy examples DIR     # example spectra and a first script
 fantasy python           # Python with FANTASY installed
+fantasy update           # install a newer version (--check: only check)
 ```
 
 Without the bundle, uv can install it from a wheel or from git:
@@ -64,12 +81,6 @@ versions (`uv.lock`):
 | macOS | double-click `launch/FANTASY.command` (or run `launch/fantasy-app.sh`) |
 | Linux | `launch/fantasy-app.sh` |
 | Windows | double-click `launch\fantasy-app.bat` |
-
-As a Python package in your own environment:
-
-```console
-pip install fantasy_agn-2.0.0-py3-none-any.whl   # then: fantasy test
-```
 
 ## Quick start
 
@@ -262,7 +273,7 @@ table, or the whole session as a Python script.
 
 ## Upgrading from 1.x
 
-Version 2 no longer uses Sherpa. See [CHANGELOG.md](CHANGELOG.md) for how to move
+Version 2 no longer uses Sherpa. See [CHANGELOG.md](https://github.com/yukawa1/fantasy/blob/main/CHANGELOG.md) for how to move
 1.x scripts over. The 1.x tutorials are in the 1.x releases (`pip install "fantasy_agn<2"`).
 
 ## Citation
@@ -271,5 +282,12 @@ If you use FANTASY in your research, please cite
 [Ilić et al. (2020)](https://ui.adsabs.harvard.edu/abs/2020A%26A...638A..13I/abstract),
 [Rakić (2022)](https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract) and
 [Ilić, Rakić & Popović (2023)](https://ui.adsabs.harvard.edu/abs/2023ApJS..267...19I/abstract).
+On GitHub, **Cite this repository** gives these references in BibTeX and APA (from `CITATION.cff`).
+
+## License
+
+FANTASY is open source under the [BSD 3-Clause License](https://github.com/yukawa1/fantasy/blob/main/LICENSE). The data that come with it
+(Fe II templates, eigenspectra, line lists, example spectra) are from published work and public
+archives, listed in the license file; please cite their sources too.
 
 Documentation: <https://fantasy-agn.readthedocs.io>

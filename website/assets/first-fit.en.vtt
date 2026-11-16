@@ -1,0 +1,43 @@
+WEBVTT
+
+00:00:00.420 --> 00:00:04.869
+Start FANTASY with the command, fantasy app. Choose Single spectrum.
+
+00:00:05.219 --> 00:00:13.481
+Under Files, choose the bundled SDSS spectrum ending in zero four five three. Check the filename and redshift in the loaded spectrum table.
+
+00:00:14.670 --> 00:00:21.513
+Open Prepare. Use the redshift and instrumental resolution from the FITS file, and keep Move to rest frame selected.
+
+00:00:21.863 --> 00:00:30.247
+For this offline example, choose None under Galactic extinction. The flux you measure will include the effect of foreground dust. Then choose the model.
+
+00:00:31.420 --> 00:00:35.068
+Select the Hβ preset and keep two broad components.
+
+00:00:35.418 --> 00:00:42.939
+In the component list, find the continuum, Fe II emission, and line groups. The initial guess shows how they will be fitted together.
+
+00:00:44.128 --> 00:00:48.190
+Choose Set up fit and keep the covariance error estimate for this first pass.
+
+00:00:48.540 --> 00:00:52.242
+Click Run fit. When the fit finishes, choose See the results.
+
+00:00:53.420 --> 00:01:03.719
+The summary gives the width of the combined broad Hβ profile. Here it is 4,552 km/s, with a fit uncertainty of 69 km/s.
+
+00:01:04.069 --> 00:01:09.421
+The next tile gives the integrated broad-line flux. Read it with the units shown beneath the value.
+
+00:01:10.628 --> 00:01:16.898
+The yellow warning says a parameter ended at its limit. Inspect that warning even when the reduced chi squared looks good.
+
+00:01:17.248 --> 00:01:25.566
+Open Checks, expand Does the model miss anything, and choose Analyse residuals. Use the flagged wavelengths as starting points for inspection.
+
+00:01:26.753 --> 00:01:31.333
+Open Download and choose Fitted lines to save the line measurements as a CSV table.
+
+00:01:31.683 --> 00:01:39.995
+To repeat the analysis, open the three-dot menu at the top and choose Download script. The Python file contains the steps you ran in this session.

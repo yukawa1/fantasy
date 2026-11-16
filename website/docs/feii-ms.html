@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fe II and the main sequence · FANTASY documentation</title><link rel="icon" href="../assets/mark.png">
+<link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="docs.css">
+<script defer src="search-index.js"></script><script defer src="docs.js"></script></head>
+<body><a class="skip" href="#content">Skip to article</a>
+<header class="mast"><nav class="wrap" aria-label="Main navigation"><a class="brand" href="../index.html"><img src="../assets/mark.png" alt="">FANTASY</a>
+<div class="doc-mast-links"><a href="../index.html#explore">Spectrum explorer</a><a href="index.html">Documentation</a></div></nav></header>
+<div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
+<label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
+<nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html">4 · Fit</a><a href="results-step.html">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html">Components</a><a href="feii.html">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html" aria-current="page">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html">Classification</a></section><section><h3>Figures</h3><a href="figures.html">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a></section></nav></div></details></aside>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.0</a> / Measurements</p>
+<h1>Fe II and the main sequence</h1><div class="lead">The strength of Fe&#8202;II relative to broad H&beta; and the width of H&beta; place a quasar on the quasar main sequence
+(Sulentic et al. 2000; Marziani et al. 2018).</div>
+<div class="eq">R<sub>Fe&#8202;II</sub> = <span class="frac"><span>F(Fe&#8202;II, 4434&ndash;4684 &Aring;)</span><span>F(H&beta;<sub>broad</sub>)</span></span></div>
+<p>The band is that of Boroson &amp; Green (1992); for the UV template the band is 2200&ndash;3090 &Aring; (Tsuzuki et al. 2006) and the
+reference line broad Mg&#8202;II. Population A has FWHM(H&beta;) &lt; 4000 km/s; the spectral types A1&ndash;A4 are bins of 0.5 in
+R<sub>Fe&#8202;II</sub>, and B1, B1+, B1++ bins of 4000 km/s in FWHM.</p>
+<pre>r.feii()            # flux, EW and R_FeII with errors
+r.main_sequence()   # R_FeII, FWHM(H&beta;), population, spectral type</pre>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 8e22dfc109bb</span></footer></main></div></body></html>

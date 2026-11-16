@@ -1,0 +1,56 @@
+cff-version: 1.2.0
+message: "If you use FANTASY in your research, please cite the papers below (the first is the FANTASY paper)."
+title: "FANTASY: Fully Automated pythoN tool for AGN Spectra analYsis"
+type: software
+authors:
+  - family-names: Rakić
+    given-names: Nemanja
+  - family-names: Ilić
+    given-names: Dragana
+  - family-names: Popović
+    given-names: Luka Č.
+license: BSD-3-Clause
+repository-code: "https://github.com/yukawa1/fantasy"
+url: "https://fantasy-agn.readthedocs.io"
+keywords:
+  - active galactic nuclei
+  - spectroscopy
+  - spectral fitting
+  - astronomy
+preferred-citation:
+  type: article
+  title: "Fantastic Fits with fantasy of Active Galactic Nuclei Spectra: Exploring the Fe II Emission near the Hα Line"
+  authors:
+    - family-names: Ilić
+      given-names: Dragana
+    - family-names: Rakić
+      given-names: Nemanja
+    - family-names: Popović
+      given-names: Luka Č.
+  journal: "The Astrophysical Journal Supplement Series"
+  volume: 267
+  start: 19
+  year: 2023
+  doi: "10.3847/1538-4365/acd783"
+references:
+  - type: article
+    title: "Kinematics of the Hα and Hβ broad-line region in an SDSS sample of type-1 AGNs"
+    authors:
+      - family-names: Rakić
+        given-names: Nemanja
+    journal: "Monthly Notices of the Royal Astronomical Society"
+    volume: 516
+    start: 1624
+    year: 2022
+    doi: "10.1093/mnras/stac2259"
+  - type: article
+    title: "A flare in the optical spotted in the changing-look Seyfert NGC 3516"
+    authors:
+      - family-names: Ilić
+        given-names: Dragana
+      - name: "et al."
+    journal: "Astronomy & Astrophysics"
+    volume: 638
+    start: A13
+    year: 2020
+    doi: "10.1051/0004-6361/202037532"

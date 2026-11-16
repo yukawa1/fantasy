@@ -51,7 +51,7 @@ def _process(job):
         spec = spec.to_rest_frame()
         if opts.get("mask_absorption"):
             spec = spec.mask_absorption()
-        row.update(name=spec.name, z=spec.z)
+        row.update(name=spec.name, z=spec.z, ra=spec.ra, dec=spec.dec)
         preset, kw = opts.get("model") or (None, {})
         c = None
         if preset is None:
@@ -79,6 +79,17 @@ def _process(job):
             if kept:
                 row["preset"] = preset + "(" + ", ".join(f"{k}={v!r}" for k, v in r.preset_options.items()) + ")"
                 row["refined"] = "; ".join(kept)
+        # weak Fe II: fit again without the multiplets the data do not detect (fa.prune_feii); the
+        # position before pruning is kept, to see what it changed
+        prune = opts.get("prune_feii")
+        if prune and r._feii_components():
+            try:
+                ms = r.main_sequence()
+                row["R_FeII all groups"], row["broad Hb FWHM all groups"] = ms["r_feii"], ms["fwhm"]
+                r = fa.prune_feii(r, nsigma=2.0 if prune is True else float(prune))
+                row["feii_groups"], row["feii_dropped"] = len(r.feii_pruning), len(r.feii_pruned)
+            except Exception as exc:                 # noqa: BLE001  (the fit itself stands)
+                row["feii_note"] = f"not pruned: {type(exc).__name__}: {exc}"
         row.update(rchi2=r.rchi2, n_free=r.n_free, n_at_limit=len(r.at_limit),
                    at_limit=", ".join(r.at_limit))
         for q in r.key_results().itertuples():
@@ -169,7 +180,7 @@ class SampleResult:
 
 
 def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mask_absorption=False,
-               mask_sky="auto", refine=True, diagnostics=True, n_jobs=-1, verbose=True):
+               mask_sky="auto", refine=True, diagnostics=True, prune_feii=False, n_jobs=-1, verbose=True):
     """
     Classify and fit many spectra in parallel; returns a :class:`SampleResult`.
 
@@ -184,6 +195,12 @@ def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mas
         narrow-line galaxy presets, whose high-S/N fits they would dominate).
     :param refine: for narrow-line galaxies with reduced chi2 > 1.2, add the preset
         extensions the BIC prefers (:func:`fantasy_agn.refine`).
+    :param prune_feii: fit again without the Fe II multiplets the data do not detect
+        (:func:`fantasy_agn.prune_feii`; True: below 2 sigma, or the number of sigma). Weak Fe II comes
+        out too high otherwise, which moves the weak-Fe II end of a main sequence diagram to the right;
+        with moderate Fe II pruning removes real weak multiplets too, so it is a choice. The catalog gets
+        ``feii_groups``, ``feii_dropped`` and the values before pruning (``R_FeII all groups``,
+        ``broad Hb FWHM all groups``).
     :param n_jobs: processes (-1: all cores but one).
     """
     from ._threads import SINGLE_THREADED, environment
@@ -195,7 +212,7 @@ def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mas
     if out:
         os.makedirs(out, exist_ok=True)
     opts = dict(out=out, model=model, deredden=deredden, ebv=ebv, z=z, mask_absorption=mask_absorption,
-                mask_sky=mask_sky, refine=refine, diagnostics=diagnostics)
+                mask_sky=mask_sky, refine=refine, diagnostics=diagnostics, prune_feii=prune_feii)
     jobs = [(f, opts) for f in files]
     n = len(jobs)
     workers = _n_workers(n_jobs, n)

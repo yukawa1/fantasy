@@ -197,6 +197,97 @@ class Model:
         self.params._resolve()
         return self
 
+    def split_lines(self, name, lines, new_name):
+        """
+        Move ``lines`` of the Lines component ``name`` into a new component ``new_name`` (same profile
+        and role) with its own velocity shift and width, which start at the values and limits of
+        ``name`` and are free (also when those of ``name`` are tied or fixed). Their fluxes, flux
+        ratios, limits and ties go with them, and ties to them follow.
+        For a line whose velocity or width differs from the others of its group, e.g. [O III] that is
+        blueshifted against the other narrow lines::
+
+            model.split_lines("narrow", ["[OIII]4959", "[OIII]5007"], "narrow_oiii")
+        """
+        from .components import Lines
+        old = self.component(name)
+        args = getattr(old, "_args", None)
+        if not isinstance(old, Lines) or args is None:
+            raise ValueError(f"{name!r} is not a Lines component made by this FANTASY version")
+        if any(c.name == new_name for c in self.components):
+            raise ValueError(f"a component named {new_name!r} already exists")
+        want = set(lines)
+        unknown = sorted(want - set(old.line_names))
+        if unknown:
+            raise ValueError(f"{name!r} has no line {', '.join(unknown)}")
+        move = [n for n in old.line_names if n in want]
+        keep = [n for n in old.line_names if n not in want]
+        if not move or not keep:
+            raise ValueError("move some of the lines, not none or all (rename the component instead)")
+        nm = lambda item: item if isinstance(item, str) else str(item[0])
+
+        def part(d, names):
+            out = {}
+            for a, v in (d or {}).items():
+                if (a in want) != (v[0] in want):
+                    raise ValueError(f"{a} and {v[0]} have a flux ratio: move both or neither")
+                if a in names:
+                    out[a] = v
+            return out or None
+
+        def make(cname, names):
+            a = {**args, "lines": [it for it in args["lines"] if nm(it) in names]}
+            for key in ("ratios", "line_ratios", "max_ratios"):
+                a[key] = part(args.get(key), names)
+            c = Lines(cname, profile=old.profile, **a)
+            c.role = old.role
+            return c
+
+        kept, moved = make(name, keep), make(new_name, move)
+        line_of = lambda pname: next((n for n in move if pname.startswith(f"{name}.{n}.")), None)
+        target = lambda pname: new_name + pname[len(name):] if line_of(pname) else pname
+        before = {p.name: p for p in self.params}
+        own = {f"{new_name}.shift", f"{new_name}.fwhm"}     # the point of separating: free, even if name's are tied
+        for c, src in ((kept, lambda n: n), (moved, lambda n: name + n[len(new_name):])):
+            for p in c.params:
+                q = before.get(src(p.name))
+                if q is not None and q.linear == p.linear:
+                    p.value, p.min, p.max = q.value, q.min, q.max
+                    p.fixed, p.tie = (False, None) if p.name in own else (q.fixed, q.tie)
+        i = self.components.index(old)
+        self.components[i:i + 1] = [kept, moved]
+        self.params = ParameterSet([p for c in self.components for p in c.params])
+        for p in self.params:
+            if p.tie:
+                to = target(p.tie[0])
+                p.tie = (to,) + tuple(p.tie[1:]) if to in self.params and to != p.name else None
+        self.params._resolve()
+        return self
+
+    def starting_from(self, result):
+        """
+        A copy of the model whose free parameters start at the values of a fit (``result``, a
+        FitResult, or a fitted Model), wherever the two have a parameter of the same name; the
+        limits, fixed values and ties stay those of this model. A fit of the copy tries these values
+        as a start besides the data-driven guess and keeps the better solution, so it never ends
+        worse than ``result``. Use it to carry a model worked out on one epoch to the others::
+
+            r = fa.fit(spectra[3], model)                       # agree on the model for one epoch
+            me = fa.fit_epochs(spectra, model.starting_from(r)) # then fit them all from there
+        """
+        source = getattr(result, "model", result)
+        if not isinstance(source, Model):
+            raise TypeError("starting_from needs a FitResult or a Model")
+        new = self.copy()
+        used = 0
+        for p in new.params:
+            if p.free and p.name in source.params:
+                p.value = float(min(max(source.params[p.name].value, p.min), p.max))
+                used += 1
+        if not used:
+            raise ValueError("the fit has no parameter in common with this model")
+        new._fitted = True                     # fit() also starts from these values
+        return new
+
     def copy(self):
         return copy.deepcopy(self)
 

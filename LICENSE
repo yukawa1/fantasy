@@ -1,0 +1,42 @@
+BSD 3-Clause License
+
+Copyright (c) 2022-2026, Nemanja Rakić, Dragana Ilić, Luka Č. Popović and the FANTASY contributors
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-------------------------------------------------------------------------------
+Data distributed with FANTASY (fantasy_agn/data) come from published work and
+public archives; please cite their sources when you use them:
+
+- Fe II templates: Kovačević, Popović & Dimitrijević (2010, ApJS 189, 15),
+  Shapovalova et al. (2012, ApJS 202, 10) and Kovačević-Dojčinović & Popović
+  (2015, ApJS 221, 35).
+- Galaxy and quasar eigenspectra: Yip et al. (2004, AJ 128, 585 and 2603).
+- Line wavelengths: NIST Atomic Spectra Database, Vanden Berk et al. (2001),
+  Riffel et al. (2006) and Rodríguez-Ardila et al. (2011).
+- Example spectra: the Sloan Digital Sky Survey (https://www.sdss.org).
+The stellar templates downloaded on first use are those distributed with pPXF
+(Cappellari); see the README for how to cite them.

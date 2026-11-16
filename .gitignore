@@ -14,3 +14,10 @@ examples/desi/
 examples/classes/
 examples/video/data.npz
 examples/video/info.json
+
+# Local assistant and editor files (not part of FANTASY)
+CLAUDE.md
+AGENTS.md
+.openai/
+.cursor/
+.codex/

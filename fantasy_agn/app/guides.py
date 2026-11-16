@@ -63,6 +63,13 @@ derives black-hole masses and diagnostics, and propagates every uncertainty.</di
 it, so whatever is done by clicking can be repeated, changed or scripted. The bar at the top shows which steps are done;
 click a step to go back to it. <b>New analysis</b> clears the session; the <b>&#8943;</b> menu opens and saves projects and downloads
 the session as a script or notebook.</p>
+<p><b>The session is saved after every step</b> (to <code>~/.fantasy_agn/sessions</code>, or <code>$FANTASY_AUTOSAVE</code>; set it to
+<code>0</code> to switch this off). When the app starts again, or after <b>New analysis</b>, the Read step offers <b>Restore last
+session</b>, and <b>Open the one before</b> for the session before that: a server restart or a closed terminal no longer loses the
+work. The saved file is a project like those of the &#8943; menu (a pickle: open only your own).</p>
+<p><b>&#9632; Stop</b> appears in the top bar while a step runs: it ends the worker processes of a parallel run (fits of many epochs,
+simulations) and interrupts the step at its next progress report or Python step (a single long call into compiled code finishes
+first). The cell is marked <i>Stopped</i> and what it was computing is not kept; everything before it is.</p>
 <h2>In five lines of Python</h2>
 <pre>import fantasy_agn as fa
 spec  = fa.read("spec-0615-52347-0108.fits").deredden().to_rest_frame()
@@ -93,14 +100,26 @@ interchangeable:</p>
 ("install", "Getting started", "Installing and starting", r"""
 <div class="lead">The launchers run the app with Python 3.12 and the tested package versions in an environment of
 their own, made by <a href="https://docs.astral.sh/uv/">uv</a> on first start.</div>
+<h2>From the tester bundle</h2>
+<p>Extract the FANTASY ZIP first. On macOS double-click <code>Install FANTASY.command</code>. On Linux run
+<code>sh install.sh</code> from the extracted folder. On Windows double-click <code>install.bat</code>.
+After the installer finishes, start the browser app with <code>fantasy app</code>.</p>
+<h2>From a source checkout</h2>
+<p>In the directory containing <code>uv.lock</code>, run:</p>
+<pre>uv sync --locked --python 3.12
+uv run fantasy test
+uv run fantasy app</pre>
+<p>Alternatively, use the launcher for your system:</p>
 <pre>launch/FANTASY.command        # macOS: double-click
 launch/fantasy-app.sh         # Linux / macOS
 launch\fantasy-app.bat        # Windows
 fantasy-app                   # FANTASY installed with pip: the same app
 python -c "import fantasy_agn as fa; fa.app()"</pre>
 <p>As a package in your own environment (Python &ge; 3.10):</p>
-<pre>pip install fantasy_agn             # then: fantasy test
-pip install "fantasy_agn[dust]"     # + local SFD98 dust maps (sfdmap2)</pre>
+<pre>python -m pip install .             # run in the FANTASY source directory
+fantasy test
+# Optional support for local SFD98 dust maps:
+python -m pip install ".[dust]"</pre>
 <div class="note"><b>Where things are kept.</b> Downloaded spectra and stellar templates, saved models
 (<code>~/.fantasy_agn/models</code>) and uploads live under <code>~/.fantasy_agn</code>. Stellar template sets
 (13&ndash;94 MB) are downloaded once, the first time a model uses them; <code>FANTASY_NO_DOWNLOAD=1</code>
@@ -148,7 +167,10 @@ spec = fa.desi.fetch(39627963565609635)</pre>
 <div class="lead">Put every spectrum into the rest frame, correct the Milky Way extinction, set the flux unit and
 remove what the model should not see.</div>
 <h2>Redshift</h2>
-<p><i>from file</i> or <i>manual</i>; <b>Move to rest frame</b> applies it. Fits are done in the rest frame: <code>spec.to_rest_frame(z)</code> divides wavelengths by
+<p><i>from file</i>, <i>manual</i>, or, with several spectra, <i>one for all (median)</i>: every spectrum is moved with the median of the
+redshifts of the files (<code>z = float(np.median([s.z for s in raw if s.z]))</code>), the default for epochs of one object. Pipeline
+redshifts differ from file to file (SDSS: about 20 km/s rms), and moving each epoch with its own shifts the same line between epochs;
+the note under the choice says by how much the files differ. <b>Move to rest frame</b> applies it. Fits are done in the rest frame: <code>spec.to_rest_frame(z)</code> divides wavelengths by
 1+<i>z</i> and multiplies flux densities by 1+<i>z</i>.</p>
 <h2>Galactic extinction</h2>
 <p><code>spec.deredden()</code> divides by the Fitzpatrick (1999) transmission with R<sub>V</sub> = 3.1:</p>
@@ -165,6 +187,30 @@ sexagesimal), <i>Enter value</i>, or <i>None</i>. A spectrum is never corrected 
 10<sup>&minus;17</sup> erg s<sup>&minus;1</sup> cm<sup>&minus;2</sup> &Aring;<sup>&minus;1</sup>; a text file may say so in its header
 (&ldquo;flux in 1e-16 erg/s/cm2/A&rdquo;). Otherwise set it in <i>One flux unit of the file is</i> (10<sup>&minus;15</sup>&ndash;10<sup>&minus;19</sup>
 or other) or with <code>spec.with_flux_unit(1e-16)</code>.</p>
+<h2>Finding the redshift</h2>
+<p><b>Find the redshift</b> (<code>fa.find_redshift(spec)</code>) is for a spectrum without a redshift, and a check of one that has
+it. The spectrum as read is fitted with galaxy and quasar templates (Yip et al. 2004) and a smooth polynomial at every redshift;
+the minimum of &chi;&sup2; is the redshift, as in the SDSS and DESI pipelines. A quasar redshift is then refined on the narrow
+H&beta; and [O&#8202;III] lines when they are detected. It takes a few seconds.</p>
+<p>The panel shows the best redshift with its error, <b>secure</b> or <b>not secure</b>, and the candidates: the best minima of
+both template sets, each with how much worse it fits (&chi;&sup2; per pixel) and how many of the emission peaks of the spectrum sit on
+a known line there. <b>Click a candidate</b> to use it. The figure shows &chi;&sup2; against redshift and the spectrum with the
+template and the lines of the best redshift marked. A wrong redshift is nearly always one line taken for another, so look at the
+candidates when the answer is not secure.</p>
+<p>On 540 SDSS spectra of nine classes (z = 0.01&ndash;2.5, median S/N 14) the best redshift was right for 97%; of those called
+secure (96%), 99.8% were right. Galaxies and AGN below z &asymp; 1.5 were right in 98&ndash;100% of the cases; quasars above
+z &asymp; 1.7 in 83&ndash;90%, with the right value among the candidates for 95%. It cannot identify a single line in a narrow
+range, nor featureless spectra; the galaxy templates reach z &asymp; 1 in an optical spectrum; stars are not included.</p>
+<h2>Instrumental resolution</h2>
+<p>The instrument broadens every line; FANTASY removes that width in quadrature, so fitted widths are intrinsic. SDSS and
+DESI files carry the resolution along the spectrum. Text and plain FITS files do not: the widths then include the
+instrument, and a narrow line can become narrower than a pixel. In <i>The lines are broadened by the instrument by</i> choose
+<b>FWHM in km/s</b> (of an unresolved sky or arc line) or <b>resolving power R</b> (R = 2000 is 150 km/s); the note shows the
+pixel size to compare with. In code: <code>spec.with_resolution(150)</code> or <code>spec.with_resolution(R=2000)</code>.</p>
+<p>After a fit, <b>A line narrower than the data can sample</b> on the Results page lists widths below 1.2 pixels
+(<code>r.undersampled()</code>). Line profiles are averaged over each pixel, as the spectrograph records them, so the flux of
+such a line is kept wherever its peak falls; but a width below about a pixel barely changes the data, so it is poorly measured,
+and the line can fit single noisy pixels. Set the resolution, or raise the lower limit of the width.</p>
 <h2>Range and masks</h2>
 <dl class="params">
 <dt>Wavelength range</dt><dd>the fitted range (rest frame); presets set a sensible default.</dd>
@@ -187,6 +233,40 @@ an empty model or a saved model, then add, remove and tune components.</div>
 <h2>Classification card</h2>
 <p><b>Classify spectrum</b> runs <code>fa.classify</code> (starlight, broad H&alpha;, BPT diagrams; see
 <a data-doc="classify">Classification</a>) and recommends a model; <b>Use recommended model</b> applies it.</p>
+<h2>Compare models on this spectrum</h2>
+<p><b>Compare models</b> fits variants of the recommended preset in the background (about a minute): one broad component more
+and fewer, and each on/off option of the preset switched on its own (host galaxy, outflow wing, coronal lines, O&#8202;I 6046,
+Fe&#8202;II, Balmer continuum, ...), then the preset with every change that helped. Options that change the fitted range (the red
+side) are left out, because the models are ranked by <b>BIC = &chi;&sup2; + k ln n</b>, which needs the same pixels: every free
+parameter costs ln n, and <b>&Delta;BIC &lt; &minus;10</b> is strong evidence for a change (Kass &amp; Raftery 1995).</p>
+<dl class="params">
+<dt>recommended</dt><dd>the lowest BIC among the models that put no new parameter at a limit (a limit the preset already hits is
+not held against them). A change must beat the preset by &Delta;BIC &lt; &minus;10; otherwise the preset stays recommended.</dd>
+<dt>lowest BIC</dt><dd>shown when it is not the recommended one, with the number of its parameters at a limit: those values are set
+by the limits, not by the data.</dd>
+<dt>The model choice matters here</dt><dd>across the five best models, the main measurements (broad FWHM, M<sub>BH</sub>,
+R<sub>Fe&#8202;II</sub>, Balmer decrement) move by more than their fit errors: quote the spread, or use <i>Model uncertainty</i> in the
+Fit step.</dd>
+</dl>
+<p>Click a card or a row of <i>All candidates</i> to see its fit, its components, the comparison with the preset and its code.
+<b>Use this model</b> runs that code as a cell of the session; <b>Customize&hellip;</b> opens it in the model builder.</p>
+<h2>The model builder</h2>
+<p><b>+ Your own model</b> (or <b>Open in the model builder</b> under the components) opens a full-screen workspace, starting from the
+recommended model, the current model, any candidate or an empty one. The model is taken apart into its components, each with
+every argument of its constructor:</p>
+<ul>
+<li>switch a component off (it keeps its settings), duplicate it (a third broad component is one click), remove or rename it, or
+<b>+ Add component</b>: any component type, or a named line set as a new line component;</li>
+<li>for a line component: its role, profile, lines (by name, ion or wavelength, or your own line as <code>name@5310</code>), fixed or
+bounded flux ratios, FWHM and shift as start value and limits, and the same shift and width as another component;</li>
+<li><b>Parameters</b>: the start value, limits, fixed flag and tie (with a factor) of every parameter, to any other parameter of
+the same kind;</li>
+<li>click the spectrum to see the catalogued lines there and add one to a component; the plot is the initial guess, split by
+component, and follows every edit; undo and redo with &#8984;Z and &#8679;&#8984;Z; the fit range at the top.</li>
+</ul>
+<p>The code under <b>Code</b> is exactly the model: <b>Use this model</b> runs it as a session cell, and <b>Fit and rank it</b> fits it on
+the spectrum in the background and adds it to the comparison as <i>your model</i>. <b>&larr; Back</b> (or Esc) keeps your edits:
+<b>Continue your model</b> brings them back.</p>
 <h2>Start from</h2>
 <dl class="params">
 <dt>A preset</dt><dd>broad components (1&ndash;3), host galaxy, outflow wing, stratified BLR, coronal lines, O&#8202;I 6046, the red side
@@ -200,6 +280,11 @@ narrow or outflow; profile Gaussian, Lorentzian, Voigt, Gauss&ndash;Hermite or s
 kinematics shared, per line, or tied to another component), continua, Fe&#8202;II and high-order Balmer templates, the host
 galaxy, absorption troughs and dust. Click a component to change its profile, tie its shift and width to another one, or
 edit each parameter: initial value, limits, fixed, tied (<a data-doc="params">Parameters</a>).</p>
+<p><b>Is a tie safe?</b> After a fit of one spectrum, the <i>Shift and width</i> choice of a component says for every possible tie
+whether it would change the result, judged on that fit where both are free, without a new fit (<code>fa.model_confidence</code>): the
+probability that the FWHM and flux of the main broad line stay within 5%. <i>safe</i> (above 95%), <i>changes it a little</i>,
+<i>changes the result</i>, or <i>rejected by the data</i> (the two clearly differ: fit again with the tie and compare in Checks).
+It is conditional on the free model being right (<a data-doc="compare">Model comparison</a>).</p>
 <p>The plot shows the <b>initial guess</b> on the reference spectrum with the selected component highlighted: if the guess
 is far off, the limits are probably wrong.</p>
 <div class="tip"><b>Save model&hellip;</b> above the component list keeps the model (with every limit and tie) to use it
@@ -211,16 +296,52 @@ again; <b>Download</b> gives the JSON file to share.</div>
 then run the fit.</div>
 <h2>Several epochs</h2>
 <dl class="params">
+<dt>First, try the model on one epoch</dt><dd><b>Fit this epoch</b> fits one epoch alone (by default the one of highest S/N; any
+epoch can be chosen) with the current model: <code>r = fa.fit(spectra[k], model)</code>. The Results step then shows that fit with all
+its checks (residuals, robustness, compare, weak Fe&#8202;II, simulations), and a line that leads back: <b>Change the model</b>, or
+<b>Fit all epochs</b>. Repeat until the model is right for the object; a look at the faintest epoch shows whether it is too rich for
+the weak ones.</dd>
+<dt>Start every epoch from the trial fit</dt><dd>shown once an epoch was tried: the epochs are fitted with
+<code>model.starting_from(r)</code>, so each also starts from the values of the trial fit and keeps the better of that and its own
+data-driven guess. The limits, fixed values and ties are those of the model. If the model was changed after the trial, the
+parameters it still shares with the trial are used.</dd>
+<dt>The same in all epochs, or one per epoch?</dt><dd>set in the <b>Model step</b> of a multi-epoch analysis, in the table under the
+component: for every component, its <b>fluxes</b> and its <b>shape</b> (shift, width, profile parameters, slope) are <i>the same</i> in
+all epochs or fitted <i>per epoch</i>. The shared fluxes are what the flux scale of each epoch is measured on, so they must not vary:
+the narrow lines and a stellar host by default. A shared shape says the line looks the same in every epoch and only its flux changes:
+the default for the broad lines and Fe&#8202;II, since free shapes per epoch trade flux with the continuum and can wash out the
+reverberation signal. Everything else (the continuum, the outflow wing) is per epoch by default. These are assumptions about the
+object; <i>changed</i> marks what differs from the default, <b>Defaults</b> restores it, and the Fit step repeats the choice in one
+line. In code: <code>fa.fit_epochs(spectra, model, shared=("narrow.*", "broad.fwhm", ...))</code>. For a stellar host the flux choice is
+<i>the same</i> or <i>amplitude per epoch</i>: one host spectrum with its own amplitude in every epoch, for spectra taken through
+different apertures or in different seeing (<code>epoch_scaled=("host",)</code>).</dd>
 <dt>Together (recommended)</dt><dd><code>fa.fit_epochs</code>: one joint fit, narrow lines (and a stellar host) shared, one flux scale per epoch
 fixed by the shared lines (intercalibration). Best for light curves and reverberation mapping.</dd>
 <dt>Each on its own</dt><dd><code>fa.fit_many</code>: independent fits in parallel, with the calibration of each spectrum as it is.</dd>
+<dt>Wavelength scale of the epochs</dt><dd><b>fit a small offset per epoch</b> (recommended;
+<code>fa.fit_epochs(..., wavelength_offsets=True)</code>): every epoch gets a velocity of up to &plusmn;150 km/s, added to all the shifts
+of the model in that epoch, with the reference epoch at 0. The shared narrow lines measure it, as they measure the flux scale. The
+epochs are never on exactly the same wavelength scale: the calibration differs by a few km/s (tens for slit spectra), and when the
+files carry slightly different redshifts (SDSS: about 20 km/s rms) each spectrum is moved to the rest frame with its own; the note
+under the choice says by how much they differ. In simulations, unmodelled offsets of 30 km/s raised the error of the flux scales
+from 4% to 17%; with the offsets fitted it stayed at 3%, and they were recovered to 3 km/s. The table of all epochs lists the
+offsets, and the Results tile <b>Redshift, narrow lines</b> gives the redshift of the object from the narrow lines of all epochs
+together (<code>me.redshift()</code>), with the rms of the offsets. <b>as prepared</b> fits none.</dd>
+<dt>Resolution of the epochs</dt><dd><b>fit an extra broadening per epoch</b> (<code>fa.fit_epochs(..., epoch_broadening=True)</code>):
+every epoch gets an extra line width, a FWHM added in quadrature to every line width and to the stellar dispersion (up to 300 km/s; an
+epoch may also be sharper than the reference, down to 80% of its own resolution), measured on the shared narrow lines. The resolution
+differs between epochs (slit width, seeing, another spectrograph) and is often not known well; when it differs and is not modelled,
+the shared narrow lines fit some epochs badly and pull their flux scales. In simulations with up to 250 km/s of extra broadening the
+flux scales were off by up to 7%; with the broadening fitted, below 1%, and the broadening was recovered to about 10 km/s. Each
+epoch's widths are then intrinsic (its spectrum carries the broadened resolution); the table of all epochs lists the broadening and
+the Results tile gives its range. <b>as prepared</b> fits each epoch at the resolution of its spectrum.</dd>
 <dt>Flux reference epoch</dt><dd>the epoch whose flux scale is 1; by default the one of highest S/N, since its uncertainty enters
 every other epoch's calibration.</dd>
 <dt>Calibration between epochs</dt><dd>one flux scale per epoch; scale and tilt; or scale, tilt and curvature
 (<code>calibration_degree</code> 0, 1, 2): see <a data-doc="multi">Multi-epoch fitting</a>.</dd>
 </dl>
-<p>For a sample, <i>Model for each spectrum</i> is <i>automatic</i> (classify each and use the recommended model) or one model
-for all.</p>
+<p>For a sample, <i>Model for each spectrum</i> is <i>automatic</i> (classify each and use the recommended model; a spectrum that ends
+too blue for H&beta; gets Mg&#8202;II or C&#8202;IV) or one model for all.</p>
 <h2>Uncertainties</h2>
 <table class="doc"><tr><th>choice</th><th>method</th><th>cost</th></tr>
 <tr><td>Fast</td><td>covariance from the Jacobian at the best fit</td><td>seconds</td></tr>
@@ -233,40 +354,165 @@ for all.</p>
 <dt>Scale errors</dt><dd>inflate the errors by &radic;&chi;<sup>2</sup><sub>&nu;</sub> when &chi;<sup>2</sup><sub>&nu;</sub> &gt; 1.</dd>
 <dt>Model uncertainty</dt><dd>fit the alternative decompositions and add their spread as a systematic error (<a data-doc="compare">Model comparison</a>).</dd>
 <dt>Absorption troughs</dt><dd>find troughs in the residuals and refit with them (<a data-doc="absorption">Absorption troughs</a>).</dd>
-<dt>Host amplitude free in each epoch</dt><dd>for spectra taken with different apertures or seeing.</dd>
 <dt>Rescale the errors of each epoch</dt><dd>by &radic;&chi;<sup>2</sup><sub>&nu;</sub> of its own fit, for epochs whose errors are under- or overestimated.</dd>
-<dt>Parameters shared by the epochs</dt><dd>name patterns that replace the default (e.g. add <code>feii.fwhm</code>, <code>feii.shift</code>).</dd>
+<dt>Shared parameters by name pattern</dt><dd>for experts: patterns such as <code>narrow.*, feii.fwhm</code> that replace the table of the
+Model step (below) when the field is not empty.</dd>
 <dt>Processes</dt><dd>parallel processes for independent fits and Monte Carlo.</dd>
 </dl>
-<p>When the fit is done, its quality and the parameters that ended at a limit are listed, with links to the results and to
-the component in the Model step.</p>
+<p>The run button is in the bar at the bottom of the page, between <b>&larr; Model</b> and <b>See the results &rarr;</b>, so it is always
+in view; it is the highlighted button until a fit of the current settings exists, then <b>See the results</b> is. When the fit is done,
+its quality and the parameters that ended at a limit are listed, with a link to the component in the Model step.</p>
 """),
 
 ("results-step", "The app, step by step", "5 &middot; Results", """
 <div class="lead">The summary at the top gives the fit quality and the main numbers with errors; parameters at a limit
-are flagged with a button that opens their component.</div>
+are flagged with a button that opens their component. A joint fit adds <b>Flux scale between epochs</b>: the median error of the
+flux scale of an epoch (<code>me.calibration_error</code>), marked when it is above 2%, since this noise enters every light curve.</div>
 <h2>Views</h2>
 <dl class="params">
 <dt>Fit</dt><dd>data, model, components and residuals (drag to zoom, double-click to reset; click the legend to hide a curve).
 Below, four tables: <i>Lines</i> (by component, with flags for undetected lines and tied widths; <i>Hide undetected</i>),
 <i>Continuum and host</i> (continuum, luminosities, host properties and the black-hole mass of every recipe that applies),
-<i>All parameters</i> (value, error, limits, status) and <i>All epochs</i>. Then <b>Does the model miss anything?</b>: the residual
+<i>All parameters</i> (value, error, limits, status) and <i>All epochs</i>.</dd>
+<dt>Degeneracies</dt><dd>which parameters trade against each other (<code>r.cov</code>, or <code>r.samples</code> after MCMC).
+The free parameters sit around a wheel, grouped by component; a ribbon joins two whose correlation |&rho;| is at least the threshold,
+red when they move together, blue when one goes up as the other goes down, wider for a stronger one. A dot's size is the relative error,
+and a red ring marks a parameter at a limit. By default only pairs <i>between</i> components are shown (the ones that decide the
+decomposition); <i>all pairs</i> adds those within a component (width against flux of one line). Hover a parameter for its partners,
+a ribbon for the pair: the side panel gives the 68% and 95% regions of the two together and why they are linked. A thin diagonal
+ellipse (|&rho;|&nbsp;&ge;&nbsp;0.9) means the data fix only a combination of the two: report their sum, tie one, or treat each error
+as optimistic.</dd>
+<dt>Atlas</dt><dd>(a sample, or several epochs) every fit as a small card: the data in grey, the model in the colour of its class
+(for epochs, of its date, early to late), the broad lines and the host shaded, the residuals in &sigma; underneath. <i>Order by</i> puts
+the cards in order of a number (for a sample &chi;&sup2;<sub>&nu;</sub>, residual structure, redshift, broad FWHM, R<sub>Fe&#8202;II</sub>,
+M<sub>BH</sub>, Eddington ratio, luminosity, [O&#8202;III]/H&beta;; for epochs the date, continuum luminosity, broad-line flux, FWHM, fit
+quality), and the strip above places every fit on that axis. <i>Worth a look</i> keeps the fits flagged for &chi;&sup2;<sub>&nu;</sub>&nbsp;&gt;&nbsp;2,
+a run of 40 pixels more than 10&sigma; off the model (noise alone gives about 4&sigma;), a broad width at a limit, R<sub>Fe&#8202;II</sub>&nbsp;&gt;&nbsp;3,
+a black-hole mass outside 10<sup>5.5</sup>&ndash;10<sup>10.5</sup>, or three or more parameters at limits; hover a flag for the reason.
+<i>Common wavelength axis</i> lines the lines up down the grid, <i>same flux scale</i> (on for epochs) shows the variability. The class
+chips filter a sample (alt-click: one class only). A card opens its fit in <i>Fit</i>. The Eddington ratio uses bolometric corrections
+of 9.26 at 5100&nbsp;&Aring; and 5.15 at 3000&nbsp;&Aring;.</dd>
+<dt>Anatomy</dt><dd>the fit taken apart (<code>r.model_flux(components=True)</code>): the components stacked from the continuum up
+(host, Balmer continuum, Fe&#8202;II, broad, narrow, outflow), with the data over them. The <i>flux budget</i> above gives the share of
+each in the flux of the range shown; hovering the spectrum gives the composition at that wavelength (a ring and a table, with data, model
+and residual). <i>Peel layers</i> takes components off the top and shows the data minus them: what is left for the rest to explain
+(peel the lines to see whether the continuum and Fe&#8202;II follow the data). Below, the residual (data&nbsp;&minus;&nbsp;model)/&sigma;
+with the &plusmn;1&sigma; band, &plusmn;3&sigma; lines and a running mean over 15 pixels: noise averages out, a component the model
+misses stays as a bump; the count of pixels beyond 3&sigma; is compared with what noise alone gives. Drag to zoom, double-click for the
+full range, the windows (H&beta;, H&alpha;, ...) above; the strip at the bottom shows the whole spectrum. Click a legend chip to hide
+a component, hover it (or click a budget segment) to isolate it.</dd>
+<dt>Checks</dt><dd>five checks, numbered in the order to use them. Each is one line with its run button and a status
+(<i>not run</i>, <i>nothing found</i>, <i>3 features</i>, <i>2 biased</i>, ...); click its title to open or close it. A check that needs
+attention, or that is running, is open; the others are closed until you open them. The number on the <b>Checks</b> tab counts the
+checks that need attention. 1. <b>Does the model miss anything?</b>: the residual
 analysis (<code>fa.analyze_residuals</code>, threshold 3&ndash;6&sigma;) marks missing lines, wings, absorption, continuum shape and
-sky residuals, suggests a change for each, and <b>Refit with the changes</b> applies the ones you keep.</dd>
-<dt>Publication figure</dt><dd>ranges, title, width, font size, legend, line labels; for every kind of component whether it is drawn, its colour,
-fill, line width and style. PDF, PNG, EPS. See <a data-doc="figures">Figures</a>.</dd>
-<dt>Line profiles</dt><dd>tick lines to draw them in a grid, each alone with its components, residuals, FWHM and flux.</dd>
+sky residuals, suggests a change for each, and <b>Refit with the changes</b> applies the ones you keep. For one spectrum it
+also shows <b>Lines to add or separate</b> at once, without running anything (<code>fa.suggest_lines(r)</code>, a few milliseconds): every library line the
+model lacks is tested as a Gaussian with the fitted width and shift of a line component the model already has (forbidden and coronal lines
+with the narrow and outflow components, permitted lines also with the broad ones), its best flux and the &chi;&sup2; it removes computed directly
+on the residuals (no refit), scaled by the scatter of the residuals. A line is listed when it lowers the BIC by more than 10 (one parameter:
+its flux) at S/N &ge; 3; lines are taken one at a time, each subtracted before the next is judged, so a blend is not counted twice. Lines on
+a line the model already has, on night-sky lines or covered by the Fe II and high-order Balmer templates are not tested. <b>Add &amp; refit</b>
+adds the line and fits again in one cell, with the options of the last fit, and you stay on Results: the code is one
+<code>fa.Lines</code> per kinematic source, its shift and FWHM tied to that component, then <code>r = fa.fit(spec, model)</code>.
+The same list tests the lines the model has: all lines of a component share one velocity, and a line (with its doublet) whose
+velocity differs, typically [O III] blueshifted by a few tens of km/s against the other narrow lines, leaves an excess on one side
+and a deficit on the other. The residuals projected on the velocity derivative of the line measure its offset; when its own
+shift and width lower the BIC by more than 10 (two parameters), the row says by how much, and <b>Separate &amp; refit</b> moves
+it to a component of its own (<code>model.split_lines</code>; fluxes, ratios, limits and ties go with it). The residual analysis
+gives the same suggestion for a feature on such a line. <b>Apply all &amp; refit</b> does every change of the list at once; after
+the trial fit of a multi-epoch analysis, only that epoch is fitted again. The list then comes from the new fit.
+2. <b>How robust is this fit?</b> (<code>fa.robustness(r)</code>, one spectrum): <b>Check robustness</b> fixes each free width, shift and
+ratio at values across its limits and refits everything else, from the best fit and from a fresh guess (a few hundred fits, 1&ndash;3 minutes).
+It shows your results (broad-line FWHM, &sigma;, flux and shift, R<sub>FeII</sub>, total [O III]) over all acceptable fits (&Delta;&chi;&sup2; &le; 1 and &le; 4)
+next to their error bars, and the parameters to look at: <i>weakly bounded</i>, <i>slides to its limit</i>, <i>second minimum</i>, with a small
+&Delta;&chi;&sup2; scan for each. If the scans find a better fit, <b>Fit again from the better solution</b> starts the model there.
+3. <b>Compare with another fit</b> (<code>fa.compare_fits(a, b)</code>): <b>Pin this fit</b> keeps it under a name; change the model (continuum,
+line profile, ties), fit again and <b>Compare with current</b>. It shows whether the data can tell the two fits apart (RMS difference of the
+total models in units of the error, &chi;&sup2; on the same pixels), the results of both with the change in errors, a figure with both fits,
+where the flux went between the components and both broad profiles with their half-maximum crossings (PDF), and a warning when a broad
+profile has a shoulder at half maximum, so that its FWHM is fragile and &sigma; is the safer width.
+4. <b>Is weak Fe&#8202;II inflating the fit?</b> (<code>fa.prune_feii(r)</code>, one spectrum or epochs fitted one by one, with Fe&#8202;II and errors): the table lists every
+Fe&#8202;II group with its strength, error and whether it is detected (2&sigma;). <b>Drop undetected groups</b> fixes the groups below the
+threshold (2&sigma; or 3&sigma;) at zero and fits again; the new fit becomes the result, and a table shows what changed (Fe&#8202;II flux,
+R<sub>Fe&#8202;II</sub>, the broad line, the continuum, BIC). <b>Prune again from the full fit</b> applies another threshold to the original fit;
+<b>Back to the fit with every group</b> restores it. For epochs fitted one by one the card lists every epoch with its number of groups and how many are
+below 2&sigma;; pruning runs on all epochs (<code>fits = fa.prune_feii(fits)</code>) and the light curves, lags and Main sequence tab then
+use the pruned fits. A group dropped in one epoch and kept in the next adds scatter to the Fe&#8202;II light curve. A joint fit has no
+pruning step. For a sample, tick <b>Drop undetected Fe&#8202;II groups and fit again</b> in the Fit step
+(<code>fa.fit_sample(files, prune_feii=True)</code>): the list gets a <i>Fe II dropped</i> column, and <b>before pruning Fe&#8202;II</b> on
+the main sequence diagram shows where the spectra were with every group. Why and when: <a data-doc="feii">Fe&#8202;II templates</a>, <i>Weak Fe&#8202;II</i>.
+5. <b>Would this fit recover the truth?</b> (<code>fa.simulation_check(r)</code>, one spectrum): <b>Run simulations</b> takes the fitted
+model as the truth, draws 30, 60 or 120 spectra from it with the noise of the spectrum and fits each again from scratch as the spectrum
+was fitted (about a minute for 60). For every result the table gives the value in the fit, the mean of the simulations, the bias in units
+of the scatter, the scatter (the real statistical error), the error bar the fits report and how often the truth lies within it (68% for
+correct errors). <i>Biased</i>: the mean differs from the truth by more than 0.3 of the scatter and by more than chance allows. If the fit
+was pruned of Fe&#8202;II groups (check 4), every simulation is pruned too, so running it before and after shows whether pruning helped
+for this object. It tests the procedure for this model; what the model leaves out is for checks 1 and 3.
+5 (joint fit). <b>Is the calibration between the epochs right?</b> <b>Check the calibration</b> (<code>fa.calibration_check(me)</code>)
+fits every epoch again on its own, its spectrum divided by the flux scale of the joint fit, with everything free. If the scales are
+right and the narrow lines really the same in every epoch, the fluxes of the shared lines agree within their errors: the table gives
+per line the &chi;<sup>2</sup>/dof of the epochs around their mean, its p-value, the scatter against the error and the <i>excess</i>, the
+scatter to add in quadrature for &chi;<sup>2</sup>/dof = 1: calibration noise that is not in the error bars. Epochs more than 3&sigma; off
+are listed. With one strong narrow line the scales are set by it, so that line agrees almost by construction; the check has power
+through the other lines and the widths (in simulations it found unmodelled resolution differences with &chi;<sup>2</sup>/dof = 26, and
+passed once the broadening was fitted). <b>Run simulations</b> (<code>fa.simulation_check(me, n=20)</code>) draws sets of epochs from
+the joint fit with their noise, fits each set jointly again exactly as the data were, and compares the flux scales, the broad-line
+flux of every epoch (the light curve), the offsets and broadening, and the shared widths with the truth: the bias and the scatter of
+(fit &minus; truth) in units of the error bar (0 and 1 for right error bars) and how often the truth is within one error bar. Each set is
+a whole joint fit, so it takes minutes.</dd>
+<dt>Correlations</dt><dd>several epochs (joint or one by one). Opening the tab measures every epoch once (<code>fa.epoch_table</code>: broad flux, FWHM, &sigma;,
+shift and EW of every broad line, the continuum and log L, R<sub>Fe&#8202;II</sub>, [O&#8202;III]; all cores, about 20 s for 76 epochs). After that everything is immediate.
+<b>The map</b> shows the Spearman &rho; of every pair of quantities, with the number where p &lt; 0.05 and &ldquo;=&rdquo; where a pair is the same number twice; with many pairs some reach p &lt; 0.05 by chance.
+<b>Click a square</b> (or choose the two quantities at the top) to see that relation with its fit: slope and intrinsic scatter by maximum likelihood with errors in both quantities, the 68% range of the line
+from a bootstrap of the epochs, fluxes, widths and EWs in log10 so that the slope is a power law. <b>Hover</b> over a point for its date and values, <b>click</b> it to leave that epoch out (Restore brings them back).
+<b>Continuum earlier by</b> (observed-frame days, the rest-frame lag &times; (1 + z)) sets each line epoch against the continuum interpolated that much earlier between the epochs
+(<code>fa.correlations.shift_continuum</code>), and the map and the fit follow as you drag; without it the quantities are taken at the same epoch, which biases the intrinsic Baldwin effect when the lag is comparable to the variability.
+Look for the intrinsic Baldwin effect (EW against luminosity), the breathing of the BLR (width against luminosity) and a constant [O&#8202;III] (the flux calibration).
+PDF, PNG and SVG of the relation or of the grid of all pairs, and their Python code, use the current lag and left-out epochs.</dd>
+<dt>Publication figure</dt><dd>ranges, title, journal and width (MNRAS, A&amp;A, ApJ columns), zoom panels under the spectrum (quick H&beta;, H&alpha;,
+Mg&#8202;II buttons; the whole fit, or with the continuum, Fe&#8202;II and host subtracted), legend position (above, inside where it is free, beside), font size, line labels; for every kind of component whether it is
+drawn, its colour, fill, line width and style. PDF, PNG, EPS, SVG, and the Python code of the figure to copy. See <a data-doc="figures">Figures</a>.</dd>
+<dt>Line profiles</dt><dd>tick lines (broad lines are listed first) and choose <b>Each in a panel</b> (each line alone with its components,
+FWHM, &sigma; and flux, the half-maximum points and residuals) or <b>Overlaid</b> (the profiles on one velocity axis, scaled to their peaks,
+to compare widths and shapes; with several epochs, <b>Compare: Every epoch</b> overlays the first chosen line of every epoch, in time order); a velocity range;
+PDF, PNG, EPS, SVG and the Python code.</dd>
 <dt>Posterior</dt><dd>with Monte Carlo or MCMC errors: the corner plot of chosen parameters.</dd>
 <dt>Main sequence</dt><dd>with Fe&#8202;II and broad H&beta;: R<sub>Fe&#8202;II</sub> against FWHM(H&beta;) for every epoch; <i>Zoom to the
 epochs</i> (<a data-doc="feii-ms">Fe&#8202;II and the main sequence</a>).</dd>
-<dt>Classification</dt><dd>the three steps (starlight, broad H&alpha;, emission lines) and the BPT and WHAN diagrams, as figures to download.</dd>
-<dt>Light curves &amp; lags</dt><dd>for several epochs: light curves of fluxes and widths (CSV), and reverberation mapping: choose the
-line, the lag methods (ICCF, von Neumann, ZDCF, DRW), an MJD range and detrending, then <b>Measure lag</b>
-(<a data-doc="reverberation">Reverberation mapping</a>).</dd>
+<dt>Classification</dt><dd>the <b>final class, from the values of the fit</b> (<code>fa.classify_fit(r)</code>, after every fit, for every epoch): the broad lines of the fit and its narrow-line ratios and EW(H&alpha;) on the BPT and WHAN diagrams, with the measurements. When the spectrum was classified in the Model step, that preliminary class is shown beside it (the table of epochs marks a disagreement with &ne;), with its three steps (starlight, broad H&alpha;, emission lines). Figures to download.</dd>
+<dt>Light curves &amp; lags</dt><dd>(joint fit, or epochs fitted one by one through <code>fa.EpochSet(fits)</code>, which are not intercalibrated) for several epochs.
+Choose a <b>driver</b> and a <b>responder</b> (a continuum window, the fitted AGN continuum, the Fe&#8202;II flux, or the flux, FWHM or EW of a broad line; the
+chips give common pairs such as 5100&nbsp;&Aring; &rarr; H&beta;, or H&beta; flux &rarr; FWHM for breathing; &#8644; swaps them). Both are shown as
+the % change from the mean of the epochs shown, with their fractional variability F<sub>var</sub>; the season buttons zoom to one
+observing season, hovering gives an epoch and clicking opens it. The <b>&tau;</b> slider (or a drag along the curve below it, or
+<b>sweep</b>) shifts the responder back by &tau; over the driver. The lag of the pair is measured with every method
+(<code>fa.rm.ccf_lag</code>, <code>vn_lag</code>, <code>zdcf_lag</code>, <code>gp_lag</code>; a few seconds per pair), and <b>adopted lag</b>
+picks the method whose own curve is drawn: the ICCF r(&tau;), live for the epochs shown; the ZDCF points (pyZDCF) with their
+errors; the von Neumann statistic, whose minimum is the lag (its axis runs downwards); or the DRW posterior. The handle and
+the readout follow that curve, the rows under it show each method's lag distribution, and clicking a method adopts it.
+Continuum windows (<code>me.window_continuum()</code>) are measured on the data in line-free rest-frame windows (H&beta;:
+4435&ndash;4700 and 5100&ndash;5535&nbsp;&Aring;; H&alpha;: 6000&ndash;6250 and 6800&ndash;7000&nbsp;&Aring;; Shen et al. 2011) inside the fitted
+range: the mean of the intercalibrated flux minus the fitted lines and Fe&#8202;II (the blue H&beta; window lies on the Fe&#8202;II
+4570 blend). They include the host light, which dilutes the variability but not the lag; the fitted continuum is
+evaluated at one wavelength from the model. These lags use the two light curves alone. For the published lag, rms spectrum and mass, reverberation mapping: choose the
+line (the responder's, when it is a broad-line flux), the adopted method (<code>primary</code>, from the switch above), the lag methods (ICCF, von Neumann, ZDCF, DRW), an MJD range and detrending, then <b>Measure lag</b>
+(<a data-doc="reverberation">Reverberation mapping</a>). The table of lags gives the <b>significance</b> of each: the share of its
+distribution (all Monte Carlo or posterior samples, aliases included) on its side of zero, as a one-sided Gaussian equivalent
+(<code>fa.rm.lag_significance</code>). A lag of 6.0 (&minus;4.1, +4.9) days is about 1.3&sigma;: not a detection. The warnings say when the
+adopted lag is below 2&sigma;, when the light curves are weakly correlated (r<sub>max</sub> &lt; 0.5), when methods disagree by more than
+2&sigma; and when much of a distribution sits in seasonal aliases.</dd>
 </dl>
 <h2>Downloads</h2>
 <p>The fitted lines (CSV or FITS), the model and its components (data, model, every component, host, AGN, spectrum minus host
 and, with extinction, the transmission and intrinsic components), the fit figures (PDF), the script, the notebook and the project.</p>
+<p><b>Report</b> is one HTML file of the current fit, to keep with the results or send to a colleague (it prints to PDF from the
+browser): the figure, the fit statistics and warnings, the key results, the lines (with upper limits), every check that was run on
+this fit with its outcome (residuals, robustness, comparison, Fe&#8202;II pruning, simulations; for a joint fit the calibration check,
+its simulations and the lag), the settings of each step and the Python code that repeats the analysis.</p>
+<p>In the lines table an undetected or weak line (below 2&sigma;) shows an <b>upper limit</b>: <code>r.line_limit(line)</code>, the fitted
+flux (if positive) plus 3&sigma;<sub>F</sub>, where &sigma;<sub>F</sub> is the flux error of a line with the fitted width and shift from
+the noise under it alone; with MCMC errors, the 95% limit of the posterior. Hover over it to see which.</p>
 """),
 
 # ======================================================================== Modelling
@@ -280,7 +526,10 @@ Parameters: the integrated flux of each line <code>&lt;name&gt;.&lt;line&gt;.flu
 <div class="eq">&lambda;<sub>c</sub> = &lambda;<sub>0</sub>(1 + <span class="frac"><span>v</span><span>c</span></span>),
 &nbsp;&nbsp; &sigma;<sub>&lambda;</sub> = &lambda;<sub>c</sub>&nbsp;<span class="frac"><span>&radic;(FWHM<sup>2</sup>/8 ln 2 + &sigma;<sub>inst</sub><sup>2</sup>)</span><span>c</span></span></div>
 <p>so fitted widths are intrinsic: the instrumental resolution &sigma;<sub>inst</sub> of the spectrum is added in quadrature
-(exactly for Gaussian, Lorentzian and Voigt profiles). Every profile integrates to one, so the flux parameter is the line flux.</p>
+(exactly for Gaussian, Lorentzian and Voigt profiles). Every profile integrates to one, so the flux parameter is the line flux.
+Each pixel gets the mean of the profile over its width, not its value at the pixel centre (exactly for Gaussians, by
+Simpson's rule for the other profiles): point values make lines a few pixels wide look wider, by 7% at FWHM 120 km/s and
+3% at 200 km/s on SDSS (69 km/s pixels) with a 150 km/s resolution. <code>FANTASY_PIXEL=0</code> returns to point values.</p>
 <table class="doc"><tr><th>profile</th><th>parameters</th><th>shape</th></tr>
 <tr><td>gaussian</td><td>shift, fwhm</td><td>&prop; exp[&minus;(&lambda;&minus;&lambda;<sub>c</sub>)<sup>2</sup>/2&sigma;<sub>&lambda;</sub><sup>2</sup>]</td></tr>
 <tr><td>lorentzian</td><td>shift, fwhm</td><td>&prop; [1 + (2(&lambda;&minus;&lambda;<sub>c</sub>)/&Gamma;)<sup>2</sup>]<sup>&minus;1</sup>, wings &prop; &Delta;&lambda;<sup>&minus;2</sup></td></tr>
@@ -339,6 +588,18 @@ fa.presets.mgii(feii="uv_extended", wave_range=(2200, 3300))
 r.feii()            # flux and EW in the standard band, R_FeII</pre>
 <div class="note">Fit the UV model over a wide window (2200&ndash;3300 &Aring;) and mask intervening absorbers: in a narrow window
 around Mg&#8202;II the pseudo-continuum is degenerate with the power law.</div>
+<h2>Weak Fe&#8202;II</h2>
+<p>The strength of every group is free and cannot be negative, so noise moves a weak or absent group only upwards: the summed
+Fe&#8202;II comes out too high, the continuum too low and the neighbouring broad line too strong. In simulations of an SDSS
+quasar at S/N 30 (<code>presets.hbeta()</code>) the Fe&#8202;II flux was 9% too high at R<sub>Fe&#8202;II</sub> = 0.25, 66% at 0.08, and
+with no Fe&#8202;II at all the fit returned R<sub>Fe&#8202;II</sub> = 0.12 and a broad H&beta; flux 12% too high. With strong
+Fe&#8202;II or high S/N the effect is below 2%.</p>
+<pre>r = fa.fit(spec, fa.presets.hbeta())
+r = fa.prune_feii(r)        # groups below 2 sigma fixed at 0, then fitted again
+r.feii_pruning              # group, amplitude, error, kept or dropped</pre>
+<p><code>fa.prune_feii</code> removes most of that bias where it is large (broad H&beta; with no Fe&#8202;II: +15% &rarr; +1%). Where
+Fe&#8202;II is moderate it drops real weak groups too: at R<sub>Fe&#8202;II</sub> = 0.25 the Fe&#8202;II flux came out 13% too low
+instead of 6% too high. It is a choice for weak Fe&#8202;II and low S/N, not a default; state it with the results.</p>
 """),
 
 ("presets", "Modelling", "Presets", """
@@ -400,7 +661,8 @@ model.tie("broad2.shift", "broad.shift")
 model.tie("narrow.[NII]6548.flux", "narrow.[NII]6583.flux", factor=1/3.05)
 model.set("broad*.shift", min=-2000)
 model.untie("broad2.shift")
-model.set_profile("broad", "lorentzian")      # change the line profile of a component</pre>
+model.set_profile("broad", "lorentzian")      # change the line profile of a component
+model.split_lines("narrow", ["[OIII]4959", "[OIII]5007"], "narrow_oiii")   # own shift and width for [O III]</pre>
 <p>A tie is affine:</p>
 <div class="eq">p = a &middot; p<sub>target</sub> + b</div>
 <p>Amplitudes can be tied only to amplitudes (b = 0), widths and shifts only to widths and shifts; cycles are refused.
@@ -408,7 +670,9 @@ Limits are given as <code>(start, min, max)</code>, e.g. <code>fwhm=(3000, 1000,
 <div class="warn"><b>Parameters at a limit.</b> When a parameter ends at its limit, the limit and not the data sets its value and
 its error is not meaningful. The summary lists them; widen the limit, fix the parameter or change the model.</div>
 <p>After a fit, <code>r.params</code> gives value, error, limits and status; <code>r.at_limit</code> the parameters at a limit;
-<code>r.unconstrained</code> those without data (e.g. a line outside the fitted range).</p>
+<code>r.unconstrained</code> those without data (e.g. a line outside the fitted range);
+<code>r.not_measured</code> the widths and shifts of components without flux (their values mean nothing, so <code>r.lines</code> shows NaN);
+<code>r.unmeasured_fluxes</code> the line fluxes with an error at least as large as the flux.</p>
 """),
 
 ("saved-models", "Modelling", "Saved models", """
@@ -501,7 +765,9 @@ covariance or the samples.</div>
 the fits gives the errors. More reliable for weak or blended lines and parameters near limits.</p>
 <h2>Posterior (HMC)</h2>
 <p><code>errors="mcmc"</code>: Hamiltonian Monte Carlo with flat priors within the limits; 4 chains, 300 warm-up and 600 samples each.
-<code>r.mcmc_info</code> gives the acceptance, split-R&#770; and effective sample size; the app shows the corner plot.</p>
+<code>r.mcmc_info</code> gives the acceptance, split-R&#770; and effective sample size; the app shows the corner plot.
+All free parameters are sampled, also those at a limit, and the chains run in parallel. Chains that have not converged are run once more with a 3&times; longer warm-up and twice the trajectory (<code>r.mcmc_info["attempts"]</code>). <code>r.upper_limit("broad.Hb.flux")</code> gives the 95% limit
+on an undetected line; it assumes flat priors, so it depends on the parameter limits.</p>
 <h2>Derived quantities</h2>
 <p>The FWHM of a multi-component line, an EW, a luminosity or a black-hole mass is a function g(&theta;) of all parameters. Its error comes
 from the samples when there are any, otherwise from linear propagation of the full covariance,</p>
@@ -611,9 +877,31 @@ needs &Delta;BIC &gt; 25, S/N &gt; 5, EW &gt; 30 &Aring; and 1200 &lt; FWHM &lt;
 <tr><td>type1_host</td><td>broad lines, host &ge; 50% at 5100 &Aring;</td><td>optical with host</td></tr>
 <tr><td>seyfert2, liner, composite</td><td>narrow-line AGN</td><td>the preset of the same name</td></tr>
 <tr><td>starforming</td><td>below the Kauffmann line</td><td>starforming</td></tr>
-<tr><td>retired, passive</td><td>EW(H&alpha;) &lt; 3 &Aring; / &lt; 0.5 &Aring;</td><td>passive</td></tr></table>
+<tr><td>retired, passive</td><td>EW(H&alpha;) &lt; 3 &Aring; / &lt; 0.5 &Aring;</td><td>passive</td></tr>
+<tr><td>uv_mgii, uv_civ</td><td>the spectrum ends below 5200 &Aring; in the rest frame, so the optical classes cannot be tested</td><td>mgii, or civ if Mg&#8202;II is not covered</td></tr></table>
+<p>A UV label says which line can be fitted, not that the object has broad lines: nothing tests that. Look at the width of the
+line and at the catalogs.</p>
+<h2>Catalogs</h2>
+<p><b>Look up</b> in step 1 (Read), below the list of spectra, or <code>fa.lookup_catalogs(files)</code>, shows a sky image and searches around the sky position in SIMBAD,
+NED and Milliquas (name, type, redshift), AllWISE, FIRST and NVSS, and XMM, Chandra and 2RXS. Only the coordinates are sent, and only
+when you press the button. It warns when a catalog lists a quasar classified here as passive or star-forming, a star, a galaxy fitted
+with broad lines, a different redshift, or W1&minus;W2 &ge; 0.8 (Stern et al. 2012) for a class without an AGN. A catalog redshift
+often comes from the same spectrum, so agreement is not always an independent test. A service that cannot be reached is named; its results are
+missing, not negative.</p>
 <p><code>c.uncertain</code> is set when a ratio is within its error of a boundary or a diagnostic is missing; <code>c.plot()</code> and
 <code>c.plot_steps()</code> show the diagrams and the steps. The diagnostics need H&alpha;: up to z &asymp; 0.4 for SDSS and DESI.</p>
+<h2>Preliminary and final class</h2>
+<p><code>fa.classify</code> is <i>preliminary</i>: it chooses the model before the fit, from its own quick fits. The <i>final</i>
+class comes from the fit, <code>fa.classify_fit(r)</code> (the Results page shows it after every fit), with the same rules on the
+fitted values:</p>
+<ul><li>a broad H&alpha; (else H&beta;, Mg&#8202;II, C&#8202;IV), all broad components summed (<code>r.measure</code>), with flux S/N &ge; 5
+and FWHM &ge; 1200 km/s: <b>type1</b>, or <b>type1_host</b> when the fitted host is detected (&sigma;<sub>&#9733;</sub> S/N &ge; 5 or host
+&ge; 50% at 5100 &Aring;). The position of the narrow lines is given as well (<code>c.measurements["narrow_class"]</code>);</li>
+<li>otherwise the narrow (+ outflow) line ratios and EW(H&alpha;) of the fit (<code>r.diagnostics()</code>) on the BPT and WHAN diagrams,
+a ratio counting when both lines have S/N &ge; 3. A broad component of the model that is not detected, or detected only weakly
+(type 1.8/1.9?), is named in the reason.</li></ul>
+<p>The final class can only see what the model contains: a model without broad lines cannot give a type 1, and a model without
+H&alpha; gives no BPT class. With <code>preliminary=c</code> the reason says when the two disagree.</p>
 """),
 
 # ======================================================================== Figures
@@ -627,20 +915,35 @@ r.plot(colors={"broad": "navy"}, hide=("host",), title=None)
 r.plot(styles={"feii": {"fill": False, "ls": "--"},
                "broad": {"fill": True, "lw": 1.5},
                "model": {"lw": 0.6}})
-r.savefig("fit.pdf")                             # PDF, EPS, SVG, PNG (300 dpi)</pre>
+r.plot(zoom=[(4650, 5150), (6350, 6800)])        # zoom panels of the H&beta; and H&alpha; regions under the spectrum
+r.plot(zoom=[(4650, 5150)], zoom_subtract=("continuum", "feii"))   # ... with the continuum and Fe II subtracted
+r.plot(width="mnras-double", legend="inside")    # a journal column; the legend where the plot is free
+r.plot(style="sans-serif", height=0.8)           # sans-serif font; a compact (0.8) or tall (1.25) figure
+r.savefig("fit.pdf")                             # PDF, EPS, SVG (editable text), PNG (300 dpi)</pre>
 <dl class="params">
 <dt><code>group</code></dt><dd><code>"auto"</code>: the sum of each kind and, when a line has several components of a kind, each of them (dashed, dotted); <code>True</code> only sums; <code>False</code> every component.</dd>
 <dt><code>styles</code></dt><dd>per kind (<code>data</code>, <code>model</code>, <code>continuum</code>, <code>host</code>, <code>feii</code>, <code>narrow</code>, <code>broad</code>, <code>outflow</code>, &hellip;):
 <code>fill</code>, <code>lw</code> (points), <code>ls</code> (<code>"-"</code>, <code>"--"</code>, <code>":"</code>, <code>"-."</code>).</dd>
-<dt><code>width</code></dt><dd><code>"single"</code> (3.5 in, one journal column), <code>"double"</code> (7.1 in) or inches.</dd>
+<dt><code>width</code></dt><dd><code>"single"</code> (3.5 in, one journal column), <code>"double"</code> (7.1 in), a journal column
+(<code>"mnras"</code> 84 mm, <code>"mnras-double"</code> 174 mm, <code>"aa"</code> 88 mm, <code>"aa-double"</code> 180 mm, <code>"apj"</code>, <code>"apj-double"</code>) or inches.</dd>
+<dt><code>legend</code></dt><dd><code>"above"</code> (default), <code>"inside"</code> (where it covers the fewest data and line labels; above if nowhere is free), <code>"right"</code> or <code>False</code>.</dd>
+<dt><code>zoom</code></dt><dd>wavelength ranges drawn again in a row of panels under the spectrum; the main panel marks them with a faint blue band and a letter.
+<code>zoom_subtract</code>: kinds subtracted from the data and the model in these panels (<code>"continuum"</code>, <code>"feii"</code>, <code>"host"</code>), so the lines stand alone.</dd>
 <dt><code>label_lines</code></dt><dd>name the strongest or all fitted lines; <code>label_options</code> for font, size, direction, colour, connectors.</dd>
 </dl>
 <h2>Single lines and grids</h2>
 <pre>r.plot_line("Hb")                                # the line alone, its components and their sum
 r.plot_line("Ha", others=True, velocity=False)
 r.plot_lines(["Hg", "Hb", "Ha"], residuals=True) # a grid: 1, 2, 3 in a row, 4 as 2 &times; 2</pre>
-<p>A single-line panel shows the data with everything else in the model subtracted, each component with its FWHM, their sum,
-the FWHM and flux of the line and its residuals. In the app: Results &rarr; <b>Line profiles</b>, tick the lines.</p>
+<p>A single-line panel shows the data with everything else in the model subtracted, each component with its FWHM, their sum
+(and the summed broad profile), the FWHM, line dispersion &sigma; and flux of the line rounded to their errors, a bar between the
+half-maximum points and its residuals. A FWHM that a shoulder at half maximum makes fragile is marked; &sigma; is then the safer width.
+Wide windows are labelled in 10<sup>3</sup> km/s.</p>
+<pre>r.plot_profiles(["Hb", "Ha"])                    # broad profiles overlaid, each scaled to its peak
+fa.plotting.plot_profiles([r1, r2], "Hb", labels=["power law", "broken"])   # one line in two fits</pre>
+<p>The overlay compares the shapes of lines (is broad H&beta; wider than H&alpha;? more asymmetric?) or of one line in several fits or epochs;
+the legend gives FWHM and &sigma;, the dots the half-maximum points. In the app: Results &rarr; <b>Line profiles</b>, tick the lines and choose
+<b>Each in a panel</b> or <b>Overlaid</b>. Both figure tabs show the <b>Python code</b> of the figure, to copy into a script.</p>
 <h2>Colours</h2>
 <table class="doc"><tr><th>kind</th><th>colour</th></tr>
 <tr><td>data, model</td><td><span class="sw" style="background:#9b9a95"></span> grey &nbsp; <span class="sw" style="background:#0b0b0b"></span> ink</td></tr>
@@ -667,6 +970,19 @@ me.plot(epoch=5)              # me.epochs[5] is the full result of epoch 5
 me.scales                     # the flux scale of every epoch, with errors</pre>
 <p>Every epoch is first fitted on its own (in parallel), which gives the starting values; then all epochs are fitted together with a
 block-sparse Jacobian.</p>
+<p>What else differs between epochs and can be fitted, measured like the flux scale on the shared narrow lines:</p>
+<pre>me = fa.fit_epochs(spectra, model,
+                   wavelength_offsets=True,     # a velocity per epoch: calibration, redshifts of the files
+                   epoch_broadening=True,       # a FWHM per epoch, in quadrature: the resolution differs
+                   epoch_scaled=("host",))      # one host spectrum, an amplitude per epoch: apertures, seeing
+me.offsets; me.broadening; me.redshift()</pre>
+<p>The broadening is exact for Gaussian lines: a line of FWHM w seen at resolution R has w<sup>2</sup> + R<sup>2</sup>, so an extra
+b<sup>2</sup> on every width is a resolution &radic;(R<sup>2</sup> + b<sup>2</sup>). Each epoch's result keeps the intrinsic widths, and its
+spectrum carries the broadened resolution.</p>
+<p>Two checks of a joint fit:</p>
+<pre>chk = fa.calibration_check(me)    # every epoch alone, with the joint flux scales: do the shared lines agree?
+chk.table; chk.epochs; chk.excess  # excess: calibration noise not in the error bars
+sim = fa.simulation_check(me, n=20)  # sets of epochs drawn from the fit and fitted jointly again</pre>
 <div class="warn">Intercalibration on the narrow lines helps only when they are strong: with weak [O&#8202;III] it adds a few percent of noise per
 epoch, and FANTASY warns when the median scale error exceeds 2%. For a good pipeline calibration (SDSS) compare with
 <code>intercalibrate=False</code>.</div>
@@ -686,6 +1002,10 @@ me.rms_spectrum("Hb")</pre>
 selection (Peterson et al. 1998, 2004). Also available: the von Neumann estimator (Chelouche et al. 2017), the z-transformed
 discrete correlation function (ZDCF; Alexander 1997) and a damped-random-walk model that uses the correlated errors of each epoch's fit. The ICCF is adopted; FANTASY warns when the methods disagree or a lag distribution
 has aliases.</dd>
+<dt>Significance</dt><dd><code>rm.lag_table()</code> has <code>p_side</code>, the share of the lag distribution (all samples, aliases
+included) on the side of zero where the lag is, and <code>significance</code>, its one-sided Gaussian equivalent
+(<code>fa.rm.lag_significance(lag)</code>). Below 2&sigma; FANTASY warns that the lag is not significant, and below r<sub>max</sub> = 0.5 that
+the light curves are weakly correlated.</dd>
 <dt>rms spectrum</dt><dd>the broad line alone in every epoch, noise-corrected rms (Park et al. 2012), widths with bootstrap errors.</dd>
 <dt>Mass</dt><dd>M = f c&tau; &sigma;<sub>line</sub>(rms)<sup>2</sup>/G with f = 4.47 (Woo et al. 2015); the 0.3 dex scatter of f is not in the error.</dd>
 </dl>

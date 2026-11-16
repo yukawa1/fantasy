@@ -1,0 +1,82 @@
+# Publish FANTASY to PyPI when a version tag is pushed:
+#     git tag v2.0.1 && git push origin v2.0.1
+# It runs the tests (Linux and macOS), checks that the tag matches fantasy_agn.__version__, builds the
+# wheel and source archive, uploads them to PyPI by Trusted Publishing (no password or token stored
+# here: PyPI trusts this workflow, see RELEASING.md) and makes a GitHub release with the files.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      FANTASY_NO_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Stellar templates (cached; the tests of the host galaxy need them)
+        uses: actions/cache@v4
+        with:
+          path: ~/.fantasy_agn/templates
+          key: stellar-templates-emiles-galaxev-v1
+      - name: Download the templates when not cached
+        run: uv run --python 3.12 python -c "import fantasy_agn as fa; fa.templates.download('emiles'); fa.templates.download('galaxev')"
+      - name: Tests
+        run: uv run --python 3.12 --with pytest python -m pytest tests/test_core.py -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tag matches the package version
+        run: |
+          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' fantasy_agn/__init__.py)
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match fantasy_agn.__version__ = $v"; exit 1
+          fi
+      - name: Build
+        run: uv build
+      - name: Check
+        run: uvx twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/fantasy-agn/
+    permissions:
+      id-token: write          # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: GitHub release with the files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "FANTASY ${GITHUB_REF_NAME#v}" --notes "Changes: https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md · Install or update: pip install -U fantasy_agn"

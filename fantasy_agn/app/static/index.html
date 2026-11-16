@@ -17,11 +17,16 @@
   </a>
   <span class="grow"></span>
   <span id="objlabel" class="objlabel mono"></span>
+  <div class="menuwrap hidden" id="updwrap">
+    <button id="updbtn" class="updpill" aria-haspopup="true" title="A new version of FANTASY is published"></button>
+    <div id="updpanel" class="updpanel hidden" role="dialog" aria-label="New version"></div>
+  </div>
   <button id="pychip" class="pychip mono" title="Show or hide the live Python session (Ctrl+`)">
     <span class="dot"></span><span id="pyver">python</span> · server<span class="chev" aria-hidden="true">›_</span>
   </button>
   <a class="toplink" href="#" id="docslink">Docs</a>
   <a class="toplink" href="https://github.com/yukawa1/fantasy" target="_blank" rel="noopener">GitHub</a>
+  <button id="stopbtn" class="btn stopbtn hidden" title="Stop the running step: parallel workers are ended and the step is interrupted; its results are incomplete">■ Stop</button>
   <button id="newbtn" class="btn">New analysis</button>
   <div class="menuwrap">
     <button id="morebtn" class="btn icon" title="More" aria-haspopup="true">⋯</button>
@@ -30,6 +35,8 @@
       <a data-dl="/api/project.fantasy" role="menuitem">Save project (.fantasy)</a>
       <a data-dl="/api/session.py" role="menuitem">Download script (.py)</a>
       <a data-dl="/api/session.ipynb" role="menuitem">Download notebook (.ipynb)</a>
+      <hr>
+      <button data-act="check-update" role="menuitem">Check for updates <span class="muted mono" id="curver"></span></button>
       <hr>
     </div>
     <input type="file" id="projectfile" accept=".fantasy" hidden>
@@ -45,6 +52,7 @@
   <!-- ================================================================ 1 READ -->
   <section class="page" id="page-read" data-step="read">
     <div class="pagehead"><h1>Read spectra</h1><code class="hint" id="read-hint">fa.read(…)</code></div>
+    <div id="restorebox" class="restorebox hidden"></div>
     <h3 class="label">What are you analysing?</h3>
     <div class="modes" id="modes">
       <label class="mode" data-mode="single"><input type="radio" name="mode" value="single">
@@ -83,7 +91,7 @@
             <input type="text" id="pathin" class="mono grow" placeholder="~/data/AT2024zkr/*.txt   or   /path/spec-1059-52618-0453.fits">
             <button class="btn" id="pathbtn">Read</button>
           </div>
-          <p class="note">A path, or a pattern with * and ? (all matching files).</p>
+          <p class="note">A file, a folder (its FITS and text spectra), or a pattern with * and ? (all matching files). Full paths; quotes and <code>\&nbsp;</code> escapes from a terminal are fine.</p>
         </div>
         <div class="srcpane hidden" data-src="desi">
           <div class="row">
@@ -99,6 +107,7 @@
           </div>
           <p class="note">SDSS DR17 spectra from the Science Archive Server, kept in ~/.fantasy_agn/sdss.</p>
         </div>
+        <p class="readerr hidden" id="readerr" role="alert"></p>
         <div class="srcside" id="groupbox">
           <div id="fmtbox">
             <label class="lbl" for="fmtsel">File format</label>
@@ -133,6 +142,7 @@
         <button class="btn small" id="removesel" disabled>Remove selected</button></div>
       <div class="card flush"><table class="tbl" id="loadedtbl"></table></div>
       <p class="note" id="loadednote"></p>
+      <div class="card catcard" id="catcard"></div>
     </div>
 
     <footer class="pagefoot"><span class="grow"></span>
@@ -150,8 +160,13 @@
           <legend>Redshift</legend>
           <label class="lbl" for="zin">z</label>
           <div class="row"><input type="text" inputmode="decimal" id="zin" class="mono grow" placeholder="from file">
-            <select id="zsrc"><option value="manual">manual</option><option value="file">from file</option></select></div>
+            <select id="zsrc"><option value="manual">manual</option><option value="file">from file</option><option value="median">one for all (median)</option></select></div>
+          <p class="note hidden" id="znote"></p>
           <label class="check"><input type="checkbox" id="restin" checked> Move to rest frame</label>
+          <div class="row" style="margin-top:8px"><button class="btn small" id="zfind" type="button">Find the redshift</button>
+            <code class="hint">fa.find_redshift(spec)</code></div>
+          <p class="note" id="zfindnote"></p>
+          <div class="hidden" id="zfindout"></div>
         </fieldset>
         <fieldset class="card" id="fubox">
           <legend>Flux unit</legend>
@@ -163,6 +178,15 @@
               <option value="1e-19">10⁻¹⁹ erg s⁻¹ cm⁻² Å⁻¹</option><option value="custom">other…</option></select>
             <input id="fuin" class="mono hidden" placeholder="2.5e-17" style="width:96px"></div>
           <p class="note" id="funote"></p>
+        </fieldset>
+        <fieldset class="card" id="resbox">
+          <legend>Instrumental resolution</legend>
+          <label class="lbl" for="ressel">The lines are broadened by the instrument by</label>
+          <div class="row"><select id="ressel" class="grow">
+              <option value="file">as in the file</option>
+              <option value="kms">FWHM in km/s…</option><option value="R">resolving power R = λ/Δλ…</option></select>
+            <input id="resin" class="mono hidden" placeholder="150" style="width:96px"></div>
+          <p class="note" id="resnote"></p>
         </fieldset>
         <fieldset class="card">
           <legend>Galactic extinction</legend>
@@ -227,6 +251,11 @@
       </div>
       <div class="ccbtns" id="ccbtns"></div>
     </div>
+    <div class="card galcard hidden" id="galcard">
+      <div class="plothead"><b>Compare models on this spectrum</b><code class="hint">fa.fit · BIC = χ² + k ln n</code><span class="grow"></span>
+        <span class="muted small" id="gx-draft"></span><button class="btn small gx-newbtn" id="gx-new">+ Your own model</button></div>
+      <div id="gx-body"></div>
+    </div>
     <div class="card optbar" id="optbar">
       <div><label class="lbl">Start from</label>
         <div class="seg" id="startseg"><button data-s="preset" class="on">A preset</button><button data-s="custom">Your own model</button><button data-s="saved">A saved model</button></div></div>
@@ -235,6 +264,8 @@
         <div id="broadbox"><label class="lbl">Broad components</label>
           <div class="stepperin"><button id="bminus">−</button><span id="bcount" class="mono">2</span><button id="bplus">+</button></div></div>
         <div id="hostbox"><label class="lbl" for="hostsel">Host galaxy</label><select id="hostsel"></select></div>
+        <div id="contbox"><label class="lbl" for="contsel">Continuum</label><select id="contsel">
+          <option value="powerlaw">power law</option><option value="broken">broken power law</option></select></div>
         <label class="check" id="o-outflow"><input type="checkbox" data-opt="outflow"> Outflow wing</label>
         <label class="check" id="o-stratified"><input type="checkbox" data-opt="stratified"> Stratified BLR</label>
         <label class="check" id="o-coronal"><input type="checkbox" data-opt="coronal"> Coronal lines</label>
@@ -261,7 +292,8 @@
         <div class="savebar"><button class="btn small" id="savemodel" title="Keep this model (components, limits, fixed and tied parameters) to use it again">Save model…</button>
           <button class="btn small ghost" id="dlmodel" title="Download the model as a JSON file to share it">Download</button></div>
         <ul id="comps"></ul>
-        <div class="addfoot"><button class="btn addbtn" id="addcomp">+ Add component</button></div>
+        <div class="addfoot"><button class="btn addbtn" id="addcomp">+ Add component</button>
+          <button class="btn small" id="openmb" title="Edit every component and parameter of this model in the model builder">Open in the model builder</button></div>
       </div>
       <div class="modelright">
         <div class="card plotcard">
@@ -279,11 +311,21 @@
             <div id="profbox"><label class="lbl">Line profile</label>
               <div class="seg small" id="profseg"></div></div>
             <div id="kinbox"><label class="lbl" for="kinsel">Shift and width</label>
-              <select id="kinsel" class="small"></select></div>
+              <select id="kinsel" class="small"></select>
+              <p class="note small hidden" id="kintie"></p></div>
           </div>
           <p class="note small pnote">Initial values and limits of the selected component. Line fluxes are solved exactly, so they have no
             bounds. Any single parameter can be fixed or tied to another one in the last columns.</p>
           <table class="tbl params" id="paramtbl"></table>
+        </div>
+        <div class="card hidden" id="sharecard">
+          <div class="plothead"><b>The same in all epochs, or one per epoch?</b><code class="hint">fa.fit_epochs(spectra, model, shared=…)</code><span class="grow"></span>
+            <button class="btn small ghost" id="sharereset">Defaults</button></div>
+          <p class="note">In the joint fit a shared quantity has one value for all epochs; the others are fitted in every epoch. The <b>shared fluxes</b> are what the flux
+            scale of each epoch is measured on, so they must be lines that do not vary (the narrow lines; the host). A shared <b>shape</b> (shift, width, profile) says the line
+            looks the same in every epoch and only its flux changes. These are assumptions about the object: set them here.</p>
+          <div class="tblwrap"><table class="tbl" id="sharetbl"></table></div>
+          <p class="note" id="sharenote"></p>
         </div>
       </div>
     </div>
@@ -297,26 +339,45 @@
     <div class="pagehead"><h1>Fit</h1><code class="hint" id="fit-hint">fa.fit(spec, model)</code></div>
     <div class="fitwrap">
       <div class="card fitwhat" id="fitwhat"></div>
+      <div class="card" id="trialbox">
+        <h3 class="sect">First, try the model on one epoch <code class="hint">r = fa.fit(spectra[k], model)</code></h3>
+        <p class="note">Fit one epoch alone and look at the result: the residuals, the checks, the line profiles. Change the model and try again until it is right for this
+          object. Then fit all epochs with it; they start from this solution. A second look at the faintest epoch shows whether the model is too rich for the weak ones.</p>
+        <div class="row">
+          <select id="trialsel" class="grow"></select>
+          <button class="btn" id="trialrun">Fit this epoch</button>
+        </div>
+        <p class="note" id="trialnote"></p>
+      </div>
       <div class="card" id="epochsbox">
         <h3 class="sect">How to fit the epochs</h3>
         <div class="choices two">
           <label class="choice"><input type="radio" name="epochs" value="joint" checked>
-            <span><b>Together <em>recommended</em></b><small>One joint fit of all epochs. The narrow lines and the host are shared, so the epochs are
-              intercalibrated on them; best for light curves and reverberation mapping.</small></span></label>
+            <span><b>Together <em>recommended</em></b><small>One joint fit of all epochs. They are intercalibrated on the fluxes they share (the narrow lines and
+              the host unless you chose otherwise in the Model step); best for light curves and reverberation mapping.</small></span></label>
           <label class="choice"><input type="radio" name="epochs" value="own">
             <span><b>Each epoch on its own</b><small>Independent fits, run in parallel. Simple, but the epochs are not
               intercalibrated: the flux calibration of each spectrum is taken as it is.</small></span></label>
         </div>
+        <label class="check hidden" id="fromtrialbox" title="model.starting_from(r): every epoch also starts from the values of the trial fit and keeps the better solution">
+          <input type="checkbox" id="fromtrial" checked> <span>Start every epoch from the trial fit <small class="muted" id="fromtrialnote"></small></span></label>
         <div id="jointopts">
-          <label class="check" title="The shape of the broad lines (shift, widths, profile parameters) and the Fe II width are fitted once for all epochs; only the fluxes vary.">
-            <input type="checkbox" id="sharedshape" checked> <span>Same broad-line shape in all epochs, only the fluxes vary
-            <small class="muted">Recommended: free shapes trade flux with the continuum and Fe II at SDSS S/N and can wash out the reverberation signal.</small></span></label>
+          <input type="checkbox" id="sharedshape" checked class="hidden">
+          <p class="note" id="sharesum"></p>
           <div class="row two">
             <div id="refbox"><label class="lbl" for="refsel">Flux reference epoch</label><select id="refsel"></select></div>
             <div><label class="lbl" for="calsel">Calibration between epochs</label>
               <select id="calsel"><option value="0">one flux scale per epoch</option>
                 <option value="1">scale and tilt</option><option value="2">scale, tilt and curvature</option></select></div>
           </div>
+          <div><label class="lbl" for="offsel">Wavelength scale of the epochs</label>
+            <select id="offsel"><option value="1" selected>fit a small offset per epoch (recommended)</option>
+              <option value="0">as prepared: no offsets</option></select>
+            <p class="note" id="offnote"></p></div>
+          <div><label class="lbl" for="broadsel">Resolution of the epochs</label>
+            <select id="broadsel"><option value="0" selected>as prepared</option>
+              <option value="1">fit an extra broadening per epoch</option></select>
+            <p class="note" id="broadnote"></p></div>
         </div>
       </div>
       <div class="card" id="samplebox">
@@ -325,6 +386,7 @@
           <div><label class="lbl" for="smodel">Model</label><select id="smodel"></select></div>
           <div><label class="lbl" for="snjobs">Processes</label><input type="number" id="snjobs" min="1" class="mono"></div>
         </div>
+        <label class="check"><input type="checkbox" id="sprune"> Drop undetected Fe&#8202;II groups and fit again <span class="muted small">(<code>prune_feii=True</code>: weak Fe&#8202;II otherwise comes out too high; with moderate Fe&#8202;II it also removes real weak groups)</span></label>
         <p class="note">Each spectrum is classified and fitted with the model its class needs (or the one chosen). Figures and fits are saved
           to ~/.fantasy_agn/sample_fits.</p>
       </div>
@@ -351,17 +413,16 @@
             <small class="muted">Also fits other decompositions (e.g. with and without the host) and adds their spread to the errors.</small></span></label>
           <label class="check" id="uncbox-abs"><input type="checkbox" id="absorb"> <span>Find and fit absorption troughs
             <small class="muted">Looks for absorption below the continuum and adds troughs to the model.</small></span></label>
-          <label class="check" id="adv-host"><input type="checkbox" id="hostepoch"> <span>Host amplitude free in each epoch
+          <label class="check hidden" id="adv-host"><input type="checkbox" id="hostepoch"> <span>Host amplitude free in each epoch
             <small class="muted">For spectra taken with different apertures or seeing.</small></span></label>
           <label class="check" id="adv-rescale"><input type="checkbox" id="rescale"> <span>Rescale the errors of each epoch
             <small class="muted">By √χ²ᵣ of its own fit, for epochs whose errors are under- or overestimated.</small></span></label>
-          <div id="adv-shared"><label class="lbl" for="sharedin">Parameters shared by the epochs</label>
-            <input id="sharedin" class="mono" placeholder="default: narrow.*, host.*">
+          <div id="adv-shared"><label class="lbl" for="sharedin">Shared parameters by name pattern (replaces the table of the Model step)</label>
+            <input id="sharedin" class="mono" placeholder="empty: as set in the Model step">
             <small class="muted">Patterns of parameter names; replaces the default.</small></div>
           <div id="adv-jobs"><label class="lbl" for="njobs">Processes</label><input type="number" id="njobs" min="1" class="mono"></div>
         </div>
       </details>
-      <div class="runbar"><button class="btn primary big" id="runfit">▶ Run fit</button><span class="muted" id="runnote"></span></div>
       <div class="card flush hidden" id="progcard">
         <div class="cardhead"><b>Progress</b><span class="grow"></span><span class="mono small" id="progstate">not run</span></div>
         <ul class="progress" id="proglist"></ul>
@@ -370,9 +431,10 @@
       <div class="card donecard hidden" id="donecard"></div>
       <div class="card flush hidden" id="epochtblbox"><table class="tbl" id="epochtbl"></table></div>
     </div>
-    <footer class="pagefoot">
+    <footer class="pagefoot runfoot">
       <button class="btn" data-go="model" id="backmodel">← Model</button><span class="grow"></span>
-      <button class="btn primary" id="toresults" disabled>See the results →</button></footer>
+      <span class="muted small" id="runnote"></span><button class="btn primary" id="runfit">▶ Run fit</button>
+      <button class="btn" id="toresults" disabled>See the results →</button></footer>
   </section>
 
   <!-- ============================================================= 5 RESULTS -->
@@ -386,6 +448,7 @@
           <a data-dl="/api/wf/lines.fits" id="dl-fits" role="menuitem"><b>Fitted lines (FITS)</b><small>The same table as a FITS file</small></a>
           <a id="dl-comp" role="menuitem"><b>Model and components</b><small>CSV of the shown fit: data, model, every component, host, AGN</small></a>
           <a data-dl="/api/wf/plots.pdf" id="dl-plots" role="menuitem"><b>Fit figures</b><small>PDF, one page per spectrum</small></a>
+          <a data-dl="/api/report.html" id="dl-report" role="menuitem"><b>Report</b><small>One HTML file: the figure, key numbers, the checks run and their outcome, the settings and code</small></a>
           <hr>
           <a data-dl="/api/session.py" role="menuitem"><b>Python script</b><small>Every step of this analysis, to run again</small></a>
           <a data-dl="/api/session.ipynb" role="menuitem"><b>Notebook</b><small>The same as a Jupyter notebook</small></a>
@@ -395,33 +458,50 @@
     <div class="epochtabs" id="etabs"></div>
     <nav class="viewtabs" id="rnav" aria-label="result views">
       <button data-v="fit" class="on">Fit</button>
+      <button data-v="atlas">Atlas</button>
+      <button data-v="anatomy">Anatomy</button>
+      <button data-v="degen">Degeneracies</button>
+      <button data-v="sdiag">Diagrams</button>
+      <button data-v="checks">Checks<span class="tabcount hidden" id="checkcount"></span></button>
       <button data-v="figure">Publication figure</button>
       <button data-v="lines">Line profiles</button>
       <button data-v="posterior">Posterior</button>
       <button data-v="class">Classification</button>
       <button data-v="ms">Main sequence</button>
       <button data-v="time">Light curves &amp; lags</button>
+      <button data-v="corr">Correlations</button>
     </nav>
     <div id="res-sample" class="hidden">
-      <div class="stats" id="sstats"></div>
-      <div class="cols half">
-        <div class="card flush tblwrap mid"><table class="tbl clickable" id="stbl"></table></div>
-        <div class="card plotcard">
-          <div class="plothead"><b>Sample · [N II] BPT</b><span class="grow"></span><span class="muted small">click a point to see its fit</span></div>
-          <div class="plot square" id="sbpt"></div>
-        </div>
+      <div class="sgtiles" id="sstats"></div>
+      <div class="callout hidden" id="sfails"></div>
+      <div class="card flush sgcard">
+        <div class="sgbar"><div class="sgclasses" id="sclasses"></div><span class="grow"></span>
+          <input id="ssearch" type="search" placeholder="Find a spectrum" aria-label="Find a spectrum"><span class="muted small" id="scount"></span></div>
+        <div class="sgtbl" id="stblwrap" tabindex="0"><table class="tbl clickable" id="stbl"></table></div>
       </div>
-      <h3 class="label" id="ssel"></h3>
+      <div class="sgsel"><button class="btn small" type="button" id="sprev" aria-label="Previous spectrum">←</button><button class="btn small" type="button" id="snext" aria-label="Next spectrum">→</button>
+        <b id="ssel"></b><span class="muted small" id="sselnote"></span></div>
+    </div>
+    <div id="res-sdiag" class="hidden">
+      <div class="sgdiag">
+        <div class="card plotcard"><div class="plothead"><b>[N II] BPT diagram</b><span class="grow"></span><span class="muted small">click a point to open its fit</span></div><div class="plot square" id="sbpt"></div></div>
+        <div class="card plotcard"><div class="plothead"><b>Quasar main sequence</b><span class="grow"></span><label class="check small hidden" id="smsqallbox" title="the positions before the undetected Fe II groups were dropped"><input type="checkbox" id="smsqall"> before pruning Fe&#8202;II</label><span class="muted small">FWHM of broad Hβ against R(Fe II)</span></div><div class="plot square" id="smsq"></div></div>
+      </div>
+      <div class="sgclasses sglegend" id="sdiaglegend"></div>
     </div>
     <div id="res-fit">
+      <div class="callout hidden" id="rtrial"></div>
       <div class="summary" id="rsummary"></div>
       <div class="callout hidden" id="rlimits"></div>
+      <div class="callout hidden" id="rsampling"></div>
+      <div class="callout hidden" id="rcatnote"></div>
       <div class="card plotcard">
         <div class="plothead"><b id="rtitle"></b><span class="grow"></span>
           <span class="mono muted small" id="raxis"></span></div>
         <div class="plot tall" id="rplot"></div>
         <div class="plotfoot" id="rfoot"><span id="rlegend" class="legend"></span><span class="grow"></span>
-          <span class="muted small">click a legend entry to hide it · drag to zoom, double-click to reset</span></div>
+          <span class="muted small">click a legend entry to hide it · drag to zoom, double-click to reset</span>
+          <button class="btn small hidden" type="button" id="userange" title="Draw the publication figure over the zoomed range">Use this range in the figure →</button></div>
       </div>
       <div class="card flush">
         <div class="tabs" id="rtabs">
@@ -434,35 +514,190 @@
         </div>
         <div class="tblwrap"><table class="tbl" id="rtbl"></table></div>
       </div>
-      <div class="card" id="residcard">
-        <div class="plothead"><b>Does the model miss anything?</b><code class="hint" id="residhint">fa.analyze_residuals(r)</code><span class="grow"></span>
+      <div class="card checkhint" id="checkhint">
+        <div><b>Can you trust these numbers?</b>
+          <p class="note">The <b>Checks</b> tab looks for what the model misses, tests how firmly the data fix each result and compares this fit with another one.</p></div>
+        <button class="btn" type="button" id="tochecks">Open Checks →</button>
+      </div>
+    </div>
+    <div id="res-checks" class="hidden">
+      <div class="card ckcard collapsed" id="residcard">
+        <div class="plothead"><button type="button" class="cktoggle" aria-expanded="false" title="show or hide the details"><span class="chev" aria-hidden="true"></span><span class="stepno">1</span><b>Does the model miss anything?</b></button><code class="hint" id="residhint">fa.analyze_residuals(r)</code><span class="badge ckstatus" id="residcard-status"></span><span class="grow"></span>
           <select id="rscope" class="small"></select>
           <select id="rnsig" class="small" title="detection threshold"><option value="3">3σ</option><option value="4" selected>4σ</option><option value="5">5σ</option><option value="6">6σ</option></select>
           <button class="btn small" id="residrun">Analyse residuals</button></div>
         <p class="note" id="residnote">Finds coherent features in the residuals (missing lines, wings, absorption, continuum shape, sky residuals), identifies them and suggests a change to the model you can apply.</p>
+        <div class="lsbox hidden" id="lsbox">
+          <div class="row"><b>Lines to add or separate</b><code class="hint">fa.suggest_lines(r)</code><span class="grow"></span>
+            <button class="btn small" id="lsall">Apply all &amp; refit</button><button class="btn small primary hidden" id="lsrefit">Fit again →</button></div>
+          <p class="note" id="lsnote"></p>
+          <div class="tblwrap"><table class="tbl" id="lstbl"></table></div>
+        </div>
         <div class="tblwrap mid hidden" id="residbox"><table class="tbl" id="residtbl"></table></div>
         <div class="row hidden" id="residfoot" style="margin-top:10px"><span class="muted small grow" id="residapplied"></span>
           <button class="btn primary" id="residrefit">Refit with the changes →</button></div>
       </div>
+      <div class="card ckcard collapsed" id="robcard">
+        <div class="plothead"><button type="button" class="cktoggle" aria-expanded="false" title="show or hide the details"><span class="chev" aria-hidden="true"></span><span class="stepno">2</span><b>How robust is this fit?</b></button><code class="hint">fa.robustness(r)</code><span class="badge ckstatus" id="robcard-status"></span><span class="grow"></span>
+          <button class="btn primary small" id="robrun">Check robustness</button></div>
+        <p class="note" id="robnote">Refits the spectrum with each width, shift and ratio fixed at values across its limits (a few hundred fits, about 1&ndash;3 minutes).
+          It shows which parameters the data really measure, whether another solution fits almost as well, and how much your results change between fits that are all acceptable.</p>
+        <div class="hidden" id="robout"></div>
+      </div>
+      <div class="card ckcard collapsed" id="cmpcard">
+        <div class="plothead"><button type="button" class="cktoggle" aria-expanded="false" title="show or hide the details"><span class="chev" aria-hidden="true"></span><span class="stepno">3</span><b>Compare with another fit</b></button><code class="hint">fa.compare_fits(a, b)</code><span class="badge ckstatus" id="cmpcard-status"></span><span class="grow"></span>
+          <input id="pinlabel" class="small" type="text" maxlength="60" placeholder="name, e.g. power law" style="width:190px">
+          <button class="btn small" id="pinbtn">Pin this fit</button></div>
+        <p class="note">Two fits can describe the spectrum equally well and still give different results, because components trade flux where they overlap.
+          Pin this fit, change the model (continuum, line profile, ties) and fit again, then compare: both fits, where the flux went, and both broad-line profiles.</p>
+        <div id="pinlist"></div>
+        <div class="hidden" id="cmpout"></div>
+      </div>
+      <div class="card ckcard collapsed" id="feiicard">
+        <div class="plothead"><button type="button" class="cktoggle" aria-expanded="false" title="show or hide the details"><span class="chev" aria-hidden="true"></span><span class="stepno">4</span><b>Is weak Fe&#8202;II inflating the fit?</b></button><code class="hint">fa.prune_feii(r)</code><span class="badge ckstatus" id="feiicard-status"></span><span class="grow"></span>
+          <select id="feiinsig" class="small" title="a group is kept if its strength is at least this many times its error"><option value="2" selected>2σ</option><option value="3">3σ</option></select>
+          <button class="btn small" id="feiirun">Drop undetected groups</button></div>
+        <p class="note">Every Fe&#8202;II group has its own strength, which cannot be negative, so noise can only push a weak group up: Fe&#8202;II comes out too high,
+          the continuum too low and the broad line beside it too strong. This fixes the groups below the threshold at zero and fits again.
+          Use it for weak Fe&#8202;II or low S/N. With moderate Fe&#8202;II it also removes real weak groups (in simulations at R<sub>Fe&#8202;II</sub> = 0.25 the Fe&#8202;II flux came out 13% too low instead of 6% too high), so say in your results that you used it.</p>
+        <div id="feiiout"></div>
+      </div>
+      <div class="card ckcard collapsed" id="simcard">
+        <div class="plothead"><button type="button" class="cktoggle" aria-expanded="false" title="show or hide the details"><span class="chev" aria-hidden="true"></span><span class="stepno">5</span><b>Would this fit recover the truth?</b></button><code class="hint">fa.simulation_check(r)</code><span class="badge ckstatus" id="simcard-status"></span><span class="grow"></span>
+          <select id="simn" class="small" title="number of simulated spectra: more show a smaller bias"><option value="30">30 spectra</option><option value="60" selected>60 spectra</option><option value="120">120 spectra</option></select>
+          <button class="btn small" id="simrun">Run simulations</button></div>
+        <p class="note">Takes the fitted model as the truth, draws spectra from it with the noise of your spectrum and fits each one again from scratch, exactly as your spectrum was fitted
+          (60 fits, about a minute). It shows whether a result comes back too high or too low on average, and whether its error bar is the right size.
+          It tests the fitting procedure for this model at this S/N; it cannot see what the model itself leaves out (checks 1 and 3).</p>
+        <div class="hidden" id="simout"></div>
+      </div>
+      <div class="card ckcard collapsed hidden" id="jointcard">
+        <div class="plothead"><button type="button" class="cktoggle" aria-expanded="false" title="show or hide the details"><span class="chev" aria-hidden="true"></span><span class="stepno">5</span><b>Is the calibration between the epochs right?</b></button><code class="hint">fa.calibration_check(me) · fa.simulation_check(me)</code><span class="badge ckstatus" id="jointcard-status"></span><span class="grow"></span>
+          <button class="btn small" id="calrun">Check the calibration</button>
+          <select id="jsimn" class="small" title="number of simulated sets of epochs"><option value="10">10 sets</option><option value="20" selected>20 sets</option><option value="40">40 sets</option></select>
+          <button class="btn small" id="jsimrun">Run simulations</button></div>
+        <p class="note"><b>Calibration check</b>: fits every epoch again on its own, divided by the flux scale of the joint fit, with everything free. If the scales are right and the narrow lines really the same in every epoch,
+          their fluxes agree within the errors. More scatter is calibration noise the error bars do not contain (extended narrow lines seen through different apertures, resolution or wavelength scale differing between epochs).
+          With one strong narrow line the scales are set by it, so it agrees almost by construction; the test has power through the other lines and the line widths.</p>
+        <p class="note"><b>Simulations</b>: draws sets of epochs from the joint fit with their noise, fits each set jointly again exactly as yours, and compares the flux scales, the light curve and the shared parameters with the truth (each set is a whole joint fit: minutes).</p>
+        <div class="hidden" id="calout"></div>
+        <div class="hidden" id="jsimout"></div>
+      </div>
+    </div>
+    <div id="res-atlas" class="hidden">
+      <div class="card at-controls">
+        <div class="at-row">
+          <span>order by</span><div class="seg small" id="at-sort"></div>
+          <div class="seg small" id="at-dir"><button data-d="-1" class="on">high first</button><button data-d="1">low first</button></div>
+          <span class="grow"></span>
+          <label><input type="checkbox" id="at-common"> common wavelength axis</label>
+          <label id="at-samewrap"><input type="checkbox" id="at-same"> same flux scale</label>
+          <span>size</span><input type="range" id="at-size" min="190" max="420" step="10" value="250">
+        </div>
+        <div class="at-row"><div class="at-chips" id="at-chips"></div></div>
+        <svg id="at-dist"></svg>
+      </div>
+      <div class="at-grid" id="at-grid"></div>
+    </div>
+    <div id="res-degen" class="hidden">
+      <div class="dg-grid">
+        <div class="card dg-main">
+          <div class="dg-bar">
+            <span>pairs with |ρ| ≥ <b class="mono" id="dg-thv">0.30</b></span><input type="range" id="dg-th" min="0.2" max="0.95" step="0.05" value="0.3">
+            <div class="seg small" id="dg-scope"><button data-s="between" class="on">between components</button><button data-s="all">all pairs</button></div>
+            <span class="grow"></span><span class="muted small" id="dg-src"></span>
+          </div>
+          <svg id="dg-wheel" viewBox="-400 -400 800 800"></svg>
+          <div class="dg-legend">
+            <span><i style="background:#c8432f"></i>move together (ρ &gt; 0)</span>
+            <span><i style="background:#2a62c0"></i>trade against each other (ρ &lt; 0)</span>
+            <span>ribbon width = |ρ| · dot size = relative error · <span style="color:#b42318">○</span> at a limit</span>
+          </div>
+        </div>
+        <aside class="card dg-side" id="dg-side"></aside>
+      </div>
+    </div>
+    <div id="res-anatomy" class="hidden">
+      <div class="an-grid">
+        <div class="card an-main">
+          <div class="an-top"><div class="seg small" id="an-zoom"></div><span class="grow"></span>
+            <span class="muted small">drag to zoom · double-click: full range · hover: composition at λ · click a budget segment or chip to isolate</span></div>
+          <div class="an-budget-head"><b>Flux budget</b><span class="mono muted small" id="an-range"></span><span class="grow"></span><span class="muted small">share of the model flux in view</span></div>
+          <div class="an-budget" id="an-budget"></div>
+          <svg id="an-plot" class="an-plot"></svg>
+          <svg id="an-resid" class="an-resid"></svg>
+          <div class="an-key"><span class="key"><i class="kb1"></i>±1σ</span><span class="key"><i class="kb3"></i>±3σ</span>
+            <span class="key" title="running mean over 15 pixels: noise averages out, a component the model misses does not"><i class="kline"></i>smoothed</span>
+            <span class="key"><i class="kout"></i>beyond 3σ</span><span class="grow"></span><span class="mono" id="an-residstat"></span></div>
+          <svg id="an-mini" class="an-mini"></svg>
+          <div class="an-peel"><label for="an-peelr">Peel layers</label><input type="range" id="an-peelr" min="0" max="6" value="0" step="1"></div>
+          <div class="an-peelsteps" id="an-peelsteps"></div>
+          <div class="an-peelnote" id="an-peelnote"></div>
+          <div class="an-legend" id="an-legend"></div>
+        </div>
+        <aside class="card an-side">
+          <div><b id="an-sidetitle">Composition in view</b><div class="mono muted small" id="an-sideat"></div></div>
+          <svg id="an-donut" viewBox="0 0 200 200"></svg>
+          <table class="an-table" id="an-sidetable"></table>
+          <div class="an-note" id="an-sidenote"></div>
+        </aside>
+      </div>
     </div>
     <div id="res-lines" class="hidden">
       <div class="figlayout">
-        <form class="card figopts" id="lineopts" autocomplete="off">
-          <h3>Lines</h3>
-          <p class="note small">Tick the lines to draw; the grid follows: two lines side by side, three in a row, four as 2 × 2.</p>
-          <div class="linepick" id="lo-lines"></div>
-          <h3>Layout</h3>
-          <div class="row two"><div><label class="lbl" for="lo-x">Axis</label><select data-l="velocity" id="lo-x"><option value="1">velocity</option><option value="0">wavelength</option></select></div>
-            <div><label class="lbl" for="lo-cols">Columns</label><select data-l="ncols" id="lo-cols"><option value="">auto</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>
-          <div><label class="lbl" for="lo-width">Width</label><select data-l="width" id="lo-width"><option value="double">two columns</option><option value="single">one column</option></select></div>
-          <div class="checks">
-            <label class="check"><input type="checkbox" data-l="residuals" checked> Residuals</label>
-            <label class="check"><input type="checkbox" data-l="info" checked> FWHM, flux</label>
-            <label class="check"><input type="checkbox" data-l="others"> Other lines</label></div>
-          <h3>Save</h3>
-          <div class="row figbtns"><button class="btn" type="button" data-lfmt="pdf">PDF</button><button class="btn" type="button" data-lfmt="png">PNG</button>
-            <button class="btn" type="button" data-lfmt="eps">EPS</button></div>
-          <p class="note small">Each line alone: the data with everything else in the model subtracted, its components and their sum.</p>
+        <form class="card fpanel" id="lineopts" autocomplete="off">
+        <div class="pbody">
+          <details class="psec" data-sec="ln-lines" open><summary><span>Lines</span><small class="psum" id="sum-llines"></small></summary>
+            <div class="linepick" id="lo-lines"></div>
+          </details>
+          <details class="psec" data-sec="ln-show" open><summary><span>Display</span><small class="psum" id="sum-lshow"></small></summary>
+            <div class="seg full" id="lo-modeseg"><button type="button" data-mode="grid" class="on">Each in a panel</button><button type="button" data-mode="overlay">Overlaid</button></div>
+            <input type="hidden" data-l="mode" id="lo-mode" value="grid">
+            <p class="note small" id="lo-modenote"></p>
+            <div class="lo-grid">
+              <label class="switch"><input type="checkbox" data-l="residuals" checked><span></span>Residuals</label>
+              <label class="switch"><input type="checkbox" data-l="info" checked><span></span>FWHM, σ and flux</label>
+              <label class="switch"><input type="checkbox" data-l="others"><span></span>Other lines in the window</label>
+            </div>
+            <div class="lo-ov hidden">
+              <div class="field hidden" id="lo-acrossbox"><label class="lbl">Compare</label>
+                <div class="seg sm" data-seg="lo-across"><button type="button" data-v="" title="the chosen lines of the shown epoch">This epoch</button><button type="button" data-v="epochs" title="the first chosen line in every epoch, in time order">Every epoch</button></div>
+                <input type="hidden" data-l="across" id="lo-across" value=""></div>
+              <div class="field"><label class="lbl" for="lo-which">Profile</label><select data-l="which" id="lo-which"><option value="broad">broad components, summed</option><option value="all">all components</option></select></div>
+              <label class="switch"><input type="checkbox" data-l="normalize" checked><span></span>Scale each to its peak</label>
+              <label class="switch"><input type="checkbox" data-l="data" checked><span></span>Data behind each profile</label>
+            </div>
+            <label class="switch"><input type="checkbox" data-l="mark_fwhm" checked><span></span>Mark the FWHM</label>
+            <label class="switch"><input type="checkbox" data-l="legend" checked><span></span>Legend</label>
+            <label class="switch lo-grid"><input type="checkbox" data-l="sharey"><span></span>Same flux scale in every panel</label>
+          </details>
+          <details class="psec" data-sec="ln-axes" open><summary><span>Axes</span><small class="psum" id="sum-laxes"></small></summary>
+            <div class="field lo-grid"><label class="lbl">x axis</label>
+              <div class="seg sm" data-seg="lo-x"><button type="button" data-v="1">Velocity</button><button type="button" data-v="0">Wavelength</button></div>
+              <input type="hidden" data-l="velocity" id="lo-x" value="1"></div>
+            <div class="field"><label class="lbl" for="lo-win">Velocity range <small>± km/s</small></label><input data-l="window" id="lo-win" class="mono" placeholder="auto, from the line width"></div>
+            <div class="field lo-grid"><label class="lbl">Columns</label>
+              <div class="seg sm" data-seg="lo-cols"><button type="button" data-v="">Auto</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button></div>
+              <input type="hidden" data-l="ncols" id="lo-cols" value=""></div>
+          </details>
+          <details class="psec" data-sec="ln-size"><summary><span>Size and style</span><small class="psum" id="sum-lsize"></small></summary>
+            <div class="field"><label class="lbl" for="lo-width">Journal and width</label><select data-l="width" id="lo-width">
+              <optgroup label="Any journal"><option value="double">two columns · 7.1 in</option><option value="single">one column · 3.5 in</option></optgroup>
+              <optgroup label="MNRAS"><option value="mnras-double">two columns · 174 mm</option><option value="mnras">one column · 84 mm</option></optgroup>
+              <optgroup label="A&amp;A"><option value="aa-double">two columns · 180 mm</option><option value="aa">one column · 88 mm</option></optgroup>
+              <optgroup label="ApJ / AJ"><option value="apj-double">two columns · 7.1 in</option><option value="apj">one column · 3.5 in</option></optgroup></select></div>
+            <div class="field"><label class="lbl">Font</label>
+              <div class="seg sm" data-seg="lo-font"><button type="button" data-v="">Serif</button><button type="button" data-v="sans-serif">Sans-serif</button></div>
+              <input type="hidden" data-l="font" id="lo-font" value=""></div>
+          </details>
+          <details class="psec codebox" data-sec="ln-code" id="linecodebox"><summary><span>Python code</span><small class="psum">to draw it in a script</small></summary>
+            <pre class="code" id="linecode"></pre><button class="btn small" type="button" data-copy="linecode">Copy</button></details>
+        </div>
+        <div class="pfoot">
+          <div class="savebtns"><button class="btn" type="button" data-lfmt="pdf">PDF</button><button class="btn" type="button" data-lfmt="png">PNG</button><button class="btn" type="button" data-lfmt="eps">EPS</button><button class="btn" type="button" data-lfmt="svg">SVG</button></div>
+          <div class="pfootrow"><label class="small muted" for="lo-dpi">PNG</label><select id="lo-dpi" class="sm"><option value="300">300 dpi</option><option value="600">600 dpi</option></select>
+            <span class="grow"></span><button class="btn small ghost" type="button" id="linereset">Reset</button></div>
+        </div>
         </form>
         <div class="card plotcard figview"><div class="figwait hidden" id="linewait">Drawing…</div>
           <div class="empty hidden" id="linesempty">Tick a line on the left to draw it.</div>
@@ -471,37 +706,112 @@
     </div>
     <div id="res-figure" class="hidden">
       <div class="figlayout">
-        <form class="card figopts" id="figopts" autocomplete="off">
-          <h3>Layout</h3>
-          <div><label class="lbl">Wavelength range <small>Å</small></label><div class="row two"><input data-o="xmin" class="mono" placeholder="from"><input data-o="xmax" class="mono" placeholder="to"></div></div>
-          <div><label class="lbl">Flux range</label><div class="row two"><input data-o="ymin" class="mono" placeholder="auto"><input data-o="ymax" class="mono" placeholder="auto"></div></div>
-          <div><label class="lbl" for="fo-title">Title</label><input data-o="title" id="fo-title" placeholder="the spectrum name">
-            <label class="check small"><input type="checkbox" data-o="notitle" id="fo-notitle"> No title</label></div>
-          <div class="row two"><div><label class="lbl" for="fo-width">Width</label><select data-o="width" id="fo-width"><option value="double">two columns</option><option value="single">one column</option></select></div>
-            <div><label class="lbl" for="fo-fs">Font size</label><input data-o="fontsize" id="fo-fs" class="mono" placeholder="auto"></div></div>
-          <div class="checks">
-            <label class="check"><input type="checkbox" data-o="residuals" checked> Residuals</label>
-            <label class="check"><input type="checkbox" data-o="legend" checked> Legend</label></div>
-          <h3>What is drawn</h3>
-          <p class="note small">Untick to leave out; click a colour to change it.</p>
-          <div class="drawlist" id="fo-draw"></div>
-          <div><label class="lbl" for="fo-group">Several components of a kind</label><select data-o="group" id="fo-group"><option value="auto">the sum and each component</option><option value="sum">only the sum</option><option value="all">every component separately</option></select></div>
-          <h3>Line labels</h3>
-          <div><label class="lbl" for="fo-labels">Name the lines</label><select data-o="label_lines" id="fo-labels"><option value="0">no labels</option><option value="1">the strongest lines</option><option value="all">all fitted lines</option></select></div>
-          <div class="labelopts" id="fo-labelopts">
-            <div><label class="lbl" for="fo-conn">Line to the label</label><select data-o="connectors" id="fo-conn"><option value="leader">grey line to the spectrum</option><option value="full">grey dotted line across the plot</option><option value="none">none</option></select></div>
-            <div class="row two"><div><label class="lbl" for="fo-lfont">Font</label><select data-o="label_font" id="fo-lfont"><option value="">serif (as the figure)</option><option value="sans-serif">sans-serif</option><option value="monospace">monospace</option></select></div>
-              <div><label class="lbl" for="fo-lfs">Size <small>pt</small></label><input data-o="label_fs" id="fo-lfs" class="mono" placeholder="7"></div></div>
-            <div class="row two"><div><label class="lbl" for="fo-lrot">Direction</label><select data-o="label_rot" id="fo-lrot"><option value="90">vertical</option><option value="0">horizontal</option></select></div>
-              <div><label class="lbl" for="fo-lcol">Colour</label><input type="color" data-o="label_color" id="fo-lcol" value="#262626"></div></div>
-          </div>
-          <button class="btn small" type="button" id="figreset">Reset</button>
-          <h3>Save</h3>
-          <div class="row figbtns"><button class="btn" type="button" data-fmt="pdf">PDF</button><button class="btn" type="button" data-fmt="png">PNG</button>
-            <button class="btn" type="button" data-fmt="eps">EPS</button></div>
-          <p class="note small">PDF and EPS are vector figures; PNG is 300 dpi.</p>
+        <form class="card fpanel" id="figopts" autocomplete="off">
+        <div class="pbody">
+          <details class="psec" data-sec="fig-size" open><summary><span>Size and style</span><small class="psum" id="sum-fsize"></small></summary>
+            <div class="field"><label class="lbl" for="fo-width">Journal and width</label><select data-o="width" id="fo-width">
+              <optgroup label="Any journal"><option value="double">two columns · 7.1 in</option><option value="single">one column · 3.5 in</option></optgroup>
+              <optgroup label="MNRAS"><option value="mnras-double">two columns · 174 mm</option><option value="mnras">one column · 84 mm</option></optgroup>
+              <optgroup label="A&amp;A"><option value="aa-double">two columns · 180 mm</option><option value="aa">one column · 88 mm</option></optgroup>
+              <optgroup label="ApJ / AJ"><option value="apj-double">two columns · 7.1 in</option><option value="apj">one column · 3.5 in</option></optgroup></select></div>
+            <div class="field"><label class="lbl">Height</label>
+              <div class="seg sm" data-seg="fo-height"><button type="button" data-v="compact">Compact</button><button type="button" data-v="">Standard</button><button type="button" data-v="tall">Tall</button></div>
+              <input type="hidden" data-o="height" id="fo-height" value=""></div>
+            <div class="field"><label class="lbl">Font</label>
+              <div class="seg sm" data-seg="fo-font"><button type="button" data-v="">Serif</button><button type="button" data-v="sans-serif">Sans-serif</button></div>
+              <input type="hidden" data-o="font" id="fo-font" value=""></div>
+            <div class="field two"><div><label class="lbl" for="fo-fs">Font size</label><input data-o="fontsize" id="fo-fs" class="mono" placeholder="9 pt"></div>
+              <div><label class="lbl">Residual panel</label><label class="switch"><input type="checkbox" data-o="residuals" checked><span></span></label></div></div>
+            <div class="field"><label class="lbl" for="fo-title">Title</label><input data-o="title" id="fo-title" placeholder="the spectrum name">
+              <label class="switch inline small"><input type="checkbox" data-o="notitle" id="fo-notitle"><span></span>No title</label></div>
+          </details>
+          <details class="psec" data-sec="fig-range" open><summary><span>Range and zoom</span><small class="psum" id="sum-frange"></small></summary>
+            <div class="field"><label class="lbl">Wavelength <small>Å</small></label><div class="two"><input data-o="xmin" class="mono" placeholder="from"><input data-o="xmax" class="mono" placeholder="to"></div></div>
+            <div class="field"><label class="lbl">Flux</label><div class="two"><input data-o="ymin" class="mono" placeholder="auto"><input data-o="ymax" class="mono" placeholder="auto"></div></div>
+            <div class="field"><label class="lbl" for="fo-zoom">Zoom panels <small>under the spectrum</small></label><input data-o="zoom" id="fo-zoom" class="mono" placeholder="e.g. 4650-5150, 6350-6800">
+              <div class="zoomquick" id="fo-zoomquick"></div>
+              <select data-o="zoom_subtract" id="fo-zoomsub" title="what the zoom panels subtract from the data and the model">
+                <option value="">show the whole fit</option><option value="continuum">subtract the continuum</option>
+                <option value="continuum_feii">subtract continuum and Fe II</option>
+                <option value="lines">lines only (continuum, host, Fe II subtracted)</option></select></div>
+          </details>
+          <details class="psec" data-sec="fig-comp"><summary><span>Components</span><small class="psum" id="sum-fcomp"></small></summary>
+            <p class="note small">Untick to leave out; click a colour to change it.</p>
+            <div class="drawlist" id="fo-draw"></div>
+            <div class="field"><label class="lbl" for="fo-group">Several components of a kind</label><select data-o="group" id="fo-group"><option value="auto">the sum and each component</option><option value="sum">only the sum</option><option value="all">every component separately</option></select></div>
+          </details>
+          <details class="psec" data-sec="fig-legend"><summary><span>Legend and labels</span><small class="psum" id="sum-fleg"></small></summary>
+            <div class="field"><label class="lbl">Legend</label>
+              <div class="seg sm" data-seg="fo-legend"><button type="button" data-v="1">Above</button><button type="button" data-v="inside">Inside</button><button type="button" data-v="right">Beside</button><button type="button" data-v="0">None</button></div>
+              <input type="hidden" data-o="legend" id="fo-legend" value="1"></div>
+            <div class="field"><label class="lbl">Line names</label>
+              <div class="seg sm" data-seg="fo-labels"><button type="button" data-v="0">None</button><button type="button" data-v="1">Strongest</button><button type="button" data-v="all">All fitted</button></div>
+              <input type="hidden" data-o="label_lines" id="fo-labels" value="0"></div>
+            <div class="labelopts" id="fo-labelopts">
+              <div class="field"><label class="lbl" for="fo-conn">Line to the label</label><select data-o="connectors" id="fo-conn"><option value="leader">grey line to the spectrum</option><option value="full">dotted line across the plot</option><option value="none">none</option></select></div>
+              <div class="field two"><div><label class="lbl" for="fo-lfont">Font</label><select data-o="label_font" id="fo-lfont"><option value="">as the figure</option><option value="sans-serif">sans-serif</option><option value="monospace">monospace</option></select></div>
+                <div><label class="lbl" for="fo-lfs">Size</label><input data-o="label_fs" id="fo-lfs" class="mono" placeholder="7 pt"></div></div>
+              <div class="field two"><div><label class="lbl">Direction</label>
+                  <div class="seg sm" data-seg="fo-lrot"><button type="button" data-v="90">Vertical</button><button type="button" data-v="0">Horizontal</button></div>
+                  <input type="hidden" data-o="label_rot" id="fo-lrot" value="90"></div>
+                <div><label class="lbl" for="fo-lcol">Colour</label><input type="color" data-o="label_color" id="fo-lcol" value="#262626"></div></div>
+            </div>
+          </details>
+          <details class="psec codebox" data-sec="fig-code" id="figcodebox"><summary><span>Python code</span><small class="psum">to draw it in a script</small></summary>
+            <pre class="code" id="figcode"></pre><button class="btn small" type="button" data-copy="figcode">Copy</button></details>
+        </div>
+        <div class="pfoot">
+          <div class="savebtns"><button class="btn" type="button" data-fmt="pdf">PDF</button><button class="btn" type="button" data-fmt="png">PNG</button><button class="btn" type="button" data-fmt="eps">EPS</button><button class="btn" type="button" data-fmt="svg">SVG</button></div>
+          <div class="pfootrow"><label class="small muted" for="fo-dpi">PNG</label><select id="fo-dpi" class="sm"><option value="300">300 dpi</option><option value="600">600 dpi</option></select>
+            <span class="grow"></span><button class="btn small ghost" type="button" id="figreset">Reset</button></div>
+        </div>
         </form>
         <div class="card plotcard figview"><div class="figwait hidden" id="figwait">Drawing…</div><img id="rpub" class="figimg" alt="publication figure"></div>
+      </div>
+    </div>
+    <div id="res-corr" class="hidden">
+      <div class="card cxstart" id="cxstart">
+        <p><b>How do the epochs vary together?</b></p>
+        <p class="note">Every broad line is measured in every epoch, with the continuum, R<sub>Fe II</sub> and [O III].</p>
+        <p class="cxmsg" id="cxmsg"></p>
+        <div class="cxbarwrap hidden" id="cxbarwrap"><div class="cxbar" id="cxbar"></div></div>
+        <button class="btn primary hidden" type="button" id="cxretry">Measure the epochs</button>
+      </div>
+      <div class="hidden" id="cxmain">
+        <div class="card cxtop">
+          <label class="cxfield"><span class="lbl">Vertical</span><select id="cx-y"></select></label>
+          <button class="btn small ghost cxswap" type="button" id="cx-swap" title="Swap the two axes" aria-label="Swap the two axes">⇄</button>
+          <label class="cxfield"><span class="lbl">Horizontal</span><select id="cx-x"></select></label>
+          <label class="cxfield cxlag"><span class="lbl">Continuum earlier by <small>days, observed frame</small></span>
+            <span class="cxlagrow"><input id="cx-lag" type="range" min="0" max="300" step="1" value="0" aria-label="Time lag in days"><input id="cx-lagv" class="mono" type="number" min="0" step="any" value="0" aria-label="Time lag in days"></span></label>
+          <button class="btn small hidden" type="button" id="cx-restore"></button>
+        </div>
+        <div class="cxgrid">
+          <div class="card cxcard">
+            <div class="cxhead"><b>Which quantities vary together</b><span class="muted small">Spearman ρ. Click a square.</span></div>
+            <div class="cxwrap"><div id="cxmap"></div><div class="cxtip hidden"></div></div>
+            <div class="cxscale"><span>−1</span><i></i><span>+1</span><span class="muted small">Numbers: p &lt; 0.05. “=”: the same number twice.</span></div>
+            <p class="note small" id="cx-chance"></p>
+            <details class="cxmore"><summary>Quantities in the map <small class="muted" id="cx-mapsum"></small></summary><div class="cxpick" id="cx-pick"></div></details>
+            <div class="cxsave"><span class="muted small">Grid of all pairs</span><button class="btn small" type="button" data-cxsave="correlations.pdf">PDF</button><button class="btn small" type="button" data-cxsave="correlations.png">PNG</button><button class="btn small" type="button" data-cxsave="correlations.svg">SVG</button></div>
+            <details class="cxmore codebox" id="cx-mapcodebox"><summary>Python code</summary><pre class="code" id="cx-mapcode"></pre><button class="btn small" type="button" data-copy="cx-mapcode">Copy</button></details>
+          </div>
+          <div class="card cxcard">
+            <div class="cxhead"><b id="cx-title"></b></div>
+            <div class="cxstats">
+              <div><span>Slope</span><b id="cx-slope"></b></div>
+              <div><span>Intrinsic scatter</span><b id="cx-scatter"></b></div>
+              <div><span>Spearman ρ</span><b id="cx-rho"></b></div>
+              <div><span>p</span><b id="cx-p"></b></div>
+              <div><span>Epochs</span><b id="cx-n"></b></div>
+            </div>
+            <div class="cxwrap"><div id="cxplot"></div><div class="cxtip hidden"></div></div>
+            <div class="cxscale"><span>first epoch</span><i class="time"></i><span>last epoch</span><span class="muted small">Click a point to leave it out.</span></div>
+            <p class="note small"><span class="mono" id="cx-eq"></span><br>Maximum likelihood with errors in both quantities and an intrinsic scatter. Shaded: 68% range of the line (200 bootstrap samples of the epochs; saved figures use 500).</p>
+            <div class="cxsave"><span class="muted small">This relation</span><button class="btn small" type="button" data-cxsave="relation.pdf">PDF</button><button class="btn small" type="button" data-cxsave="relation.png">PNG</button><button class="btn small" type="button" data-cxsave="relation.svg">SVG</button></div>
+            <details class="cxmore codebox" id="cx-codebox"><summary>Python code</summary><pre class="code" id="cx-code"></pre><button class="btn small" type="button" data-copy="cx-code">Copy</button></details>
+          </div>
+        </div>
       </div>
     </div>
     <div id="res-ms" class="hidden">
@@ -525,12 +835,37 @@
       </div>
     </div>
     <div id="res-time" class="hidden">
-      <div class="card plotcard">
-        <div class="plothead"><b>Light curves</b><code class="hint">me.light_curve()</code><span class="grow"></span>
-          <span class="muted small">click a point to open that epoch</span>
-          <div class="seg small" id="lckind"><button data-k="flux" class="on">Flux</button><button data-k="fwhm">FWHM</button><button data-k="ew">EW</button></div>
+      <div class="card plotcard lx">
+        <div class="plothead"><b>Light curves &amp; lags</b><code class="hint" title="fantasy_agn.rm: ccf_lag, vn_lag, zdcf_lag, gp_lag">me.light_curve() · fa.rm lags</code><span class="grow"></span>
+          <div class="seg small" id="lx-seasons"></div>
           <a class="btn small" data-dl="/api/lightcurve.csv">CSV</a></div>
-        <div class="lcgrid" id="lcgrid"></div>
+        <p class="muted" id="lx-msg"></p>
+        <div id="lx-body" class="hidden">
+          <div class="lx-cmp">
+            <div class="lx-pick" id="lx-pa"><span class="lx-lbl">driver</span><button type="button"></button><div class="lx-menu"></div></div>
+            <div class="lx-arrow"><svg viewBox="0 0 64 16"><path d="M2 8H58M52 3l7 5-7 5" fill="none" stroke="#9aa1ad" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><button type="button" class="lx-swap" id="lx-swap" title="swap driver and responder">⇄ swap</button></div>
+            <div class="lx-pick" id="lx-pb"><span class="lx-lbl">responder</span><button type="button"></button><div class="lx-menu"></div></div>
+            <span class="grow"></span>
+            <div class="lx-quick"><span class="lx-lbl">common comparisons</span><div class="lx-chips" id="lx-quick"></div></div>
+          </div>
+          <div class="lx-bar"><span id="lx-hover">% change from the mean of the epochs shown · hover for an epoch, click to open it</span><span class="grow"></span>
+            <label class="check small"><input type="checkbox" id="lx-ghost" checked> <span style="color:var(--accent)">overlay the responder shifted back by τ</span></label></div>
+          <svg id="lx-lc"></svg>
+        </div>
+      </div>
+      <div class="lx-scrub hidden" id="lx-scrub">
+        <div class="card lx-ccfcard">
+          <div class="lx-adoptrow"><b>Slide the responder back in time</b>
+            <div class="lx-adopt"><span class="muted small">adopted lag</span><div class="seg small" id="lx-adopt"></div></div></div>
+          <p class="note small" id="lx-intro">Drag the slider, or along the curve below: the responder moves back by τ over the driver. Where they match, the curve of the adopted method reaches its optimum: that shift is the lag.</p>
+          <div class="lx-slider"><span class="muted small">τ</span><input type="range" id="lx-tau" min="-100" max="100" step="0.25" value="0"><button type="button" class="btn small" id="lx-play">▶ sweep</button></div>
+          <div class="lx-ccfbar"><span id="lx-axisnote" class="muted"></span><span class="grow"></span>
+            <label id="lx-lbiccf"><input type="checkbox" id="lx-showiccf" checked><i style="background:#1d2128"></i>ICCF (epochs shown, live)</label>
+            <label id="lx-lbzdcf"><input type="checkbox" id="lx-showzdcf" checked><i style="background:#7b3fd0"></i>ZDCF (all epochs, ±1σ)</label></div>
+          <svg id="lx-ccf"></svg>
+          <svg id="lx-meth"></svg>
+        </div>
+        <aside class="card lx-readout" id="lx-readout"></aside>
       </div>
       <div class="card">
         <div class="plothead"><b>Reverberation mapping</b><code class="hint">me.reverberation(line)</code></div>
@@ -559,6 +894,8 @@
       </div>
     </div>
     <div id="res-class" class="hidden">
+      <div class="callout info hidden" id="cempty"><div><b>No classification.</b><div class="small" style="margin-top:4px">The final class comes from the values of the fit (<code>fa.classify_fit(r)</code>): its broad lines, and the narrow-line ratios and EW(Hα) on the BPT and WHAN diagrams. This fit could not be classified (it needs a broad line, or the narrow Hα with its neighbours). The preliminary classification, <code>fa.classify</code>, fits the spectrum on its own and can still be run.</div><div style="margin-top:8px"><button class="btn" id="crun">Classify spectrum</button></div></div></div>
+      <div id="cbody">
       <div class="cols half" id="cmulti">
         <div class="card flush tblwrap mid"><table class="tbl clickable" id="ctbl"></table></div>
         <div class="card plotcard">
@@ -567,23 +904,6 @@
         </div>
       </div>
       <div class="callout info" id="cverdict"></div>
-      <div class="card plotcard">
-        <div class="plothead"><b>1 · Starlight</b><span class="muted small" id="cstart"></span></div>
-        <div class="plot" id="cstar"></div>
-        <div class="plotfoot"><span class="legend" id="cstarleg"></span><span class="grow"></span><span class="mono muted small">rest-frame λ (Å) · drag to zoom</span></div>
-      </div>
-      <div class="cols half">
-        <div class="card plotcard">
-          <div class="plothead"><b>2 · Broad Hα?</b><span class="muted small" id="chat"></span></div>
-          <div class="plot mid" id="cha"></div>
-          <div class="plotfoot"><span class="legend" id="chaleg"></span></div>
-        </div>
-        <div class="card plotcard">
-          <div class="plothead"><b>3 · Emission lines</b><span class="muted small">fit to the starlight-subtracted spectrum</span></div>
-          <div class="plot mid" id="clines"></div>
-          <div class="plotfoot"><span class="legend" id="clinesleg"></span></div>
-        </div>
-      </div>
       <div class="diagrams">
         <div class="card plotcard"><b>[N II] BPT</b><div class="plot square" id="cd-nii"></div></div>
         <div class="card plotcard"><b>[S II] BPT</b><div class="plot square" id="cd-sii"></div></div>
@@ -598,6 +918,27 @@
             <a class="btn small" id="cfigdl" download>PNG</a><a class="btn small" id="cfigpdf">PDF</a></div>
           <img id="cfig" alt="classification figure" class="figimg">
         </div>
+      </div>
+      <div id="cprelim">
+        <p class="sub" id="cprelimhead"><b>Preliminary classification</b> <span class="muted small" id="cprelimtxt"></span></p>
+        <div class="card plotcard">
+          <div class="plothead"><b>1 · Starlight</b><span class="muted small" id="cstart"></span></div>
+          <div class="plot" id="cstar"></div>
+          <div class="plotfoot"><span class="legend" id="cstarleg"></span><span class="grow"></span><span class="mono muted small">rest-frame λ (Å) · drag to zoom</span></div>
+        </div>
+        <div class="cols half">
+          <div class="card plotcard">
+            <div class="plothead"><b>2 · Broad Hα?</b><span class="muted small" id="chat"></span></div>
+            <div class="plot mid" id="cha"></div>
+            <div class="plotfoot"><span class="legend" id="chaleg"></span></div>
+          </div>
+          <div class="card plotcard">
+            <div class="plothead"><b>3 · Emission lines</b><span class="muted small">fit to the starlight-subtracted spectrum</span></div>
+            <div class="plot mid" id="clines"></div>
+            <div class="plotfoot"><span class="legend" id="clinesleg"></span></div>
+          </div>
+        </div>
+      </div>
       </div>
     </div>
     <footer class="pagefoot">
@@ -664,6 +1005,8 @@
   </form>
 </div>
 <div id="toast" class="toast hidden"></div>
+<div class="mb hidden" id="mb"></div>
 <script src="/static/wf.js"></script>
+<script src="/static/mb.js"></script>
 </body>
 </html>

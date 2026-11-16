@@ -21,6 +21,7 @@ import os
 import re
 
 import numpy as np
+import pandas as pd
 
 from ..spectrum import date_from_name, mjd_to_date
 
@@ -64,8 +65,52 @@ def _fmt_err(v, e, digits=4):
         return "—"
     s = f"{v:.{digits}g}"
     if e is not None and np.isfinite(e) and e > 0:
-        s += f" ± {e:.2g}"
+        s += f" ± {float(f'{e:.2g}'):g}"         # two significant digits, written out (280, not 2.8e+02)
     return s
+
+
+SPECTRUM_EXTENSIONS = (".fits", ".fit", ".fts", ".fits.gz", ".fit.gz", ".txt", ".dat", ".csv", ".tsv", ".ascii",
+                       ".asc", ".spec", ".flm")
+
+
+def resolve_pattern(text):
+    """
+    The files a path typed in the Read step stands for, and the glob pattern for the generated code
+    (None when it was not a pattern). Forgiving about how paths get pasted: surrounding quotes,
+    shell escapes ("My\\ Data"), file:// URLs, ~; a folder means the spectra in it; an existing
+    file is taken as it is, also with [ ] in its name.
+    """
+    from urllib.parse import unquote
+    raw = str(text).strip()
+    if len(raw) > 1 and raw[0] == raw[-1] and raw[0] in "'\"":
+        raw = raw[1:-1].strip()
+    if raw.startswith("file://"):
+        raw = unquote(raw[len("file://"):])
+    path = os.path.expanduser(raw)
+    if not os.path.exists(path) and "\\" in path:
+        unescaped = re.sub(r"\\(.)", r"\1", path)
+        if os.path.exists(unescaped) or glob.glob(unescaped):
+            path = unescaped
+    if os.path.isfile(path):
+        return [path], None
+    if os.path.isdir(path):
+        files = sorted(os.path.join(path, f) for f in os.listdir(path)
+                       if not f.startswith(".") and f.lower().endswith(SPECTRUM_EXTENSIONS)
+                       and os.path.isfile(os.path.join(path, f)))
+        if not files:
+            raise ValueError(f"no spectra (FITS or text files) in the folder {path}")
+        return files, None
+    files = sorted(f for f in glob.glob(path) if os.path.isfile(f))
+    if files:
+        return files, path
+    where = os.path.dirname(path) or "."
+    if not os.path.isabs(path):
+        hint = f" (a relative path starts from {os.getcwd()}; give the full path)"
+    elif not os.path.isdir(where) and not glob.has_magic(where):
+        hint = f" (the folder {where} does not exist)"
+    else:
+        hint = ""
+    raise ValueError(f"no files match {raw!r}{hint}")
 
 
 class StepsMixin:
@@ -124,6 +169,33 @@ class StepsMixin:
         ok = isinstance(c, Classification) and c.spectrum.name in names
         return [c] if ok else None
 
+    def _final_classifications(self):
+        """
+        The final classes: ``fa.classify_fit`` of each fit of the workflow (from the fitted
+        values; the preliminary ``fa.classify`` uses its own quick fits). None without a fit.
+        Cached by fit, outside ``_wf_cache`` (one fit takes a second or two).
+        """
+        if self.wf.get("fit_kind") not in ("single", "joint", "fits"):
+            return None
+        res = [x for x in (self.wf_results() or []) if x[2] is not None]
+        if not res:
+            return None
+        prelim = {c.spectrum.name: c for c in (self._classifications() or [])}
+        key = (tuple(id(r) for _, _, r, _ in res), tuple(id(c) for c in prelim.values()))
+        kept = self.__dict__.get("_final_kept")
+        if kept is not None and kept[0] == key:
+            return kept[1]
+        from ..classify import classify_fit
+        out = []
+        for _, _, r, _ in res:
+            try:
+                out.append(classify_fit(r, preliminary=prelim.get(r.spectrum.name)))
+            except Exception:                        # noqa: BLE001  (a fit that cannot be classified)
+                pass
+        out = out or None
+        self._final_kept = (key, out)
+        return out
+
     def _replace_last(self, marker):
         """Index of the last cell if it was made by the same workflow action (rerun it in place)."""
         if self.cells and self.cells[-1].code.startswith(marker) and len(self.cells) > 1:
@@ -166,10 +238,9 @@ class StepsMixin:
                 raise ValueError("one plate-mjd-fiber for a single spectrum (or choose Sample / Multi-epoch)")
             lines.append(f"raw = [fa.sdss.fetch(*pmf) for pmf in {ids!r}]   # SDSS DR17 (plate, mjd, fiber)")
         else:
+            glob_expr = None
             if pattern:
-                files = sorted(glob.glob(os.path.expanduser(pattern.strip())))
-                if not files:
-                    raise ValueError(f"no files match {pattern!r}")
+                files, glob_expr = resolve_pattern(pattern)
             elif paths:
                 files = [os.path.expanduser(str(p).strip()) for p in paths if str(p).strip()]
             else:
@@ -189,8 +260,8 @@ class StepsMixin:
                                      + ": choose 'automatic' (MJD from the headers) or file order")
                 else:
                     group = "mjd"                     # e.g. SDSS spec-PLATE-MJD-FIBER files
-            if pattern and len(files) > 40:
-                lines += ["import glob", f"files = sorted(glob.glob({os.path.expanduser(pattern.strip())!r}))"]
+            if glob_expr and len(files) > 40:
+                lines += ["import glob", f"files = sorted(glob.glob({glob_expr!r}))"]
             elif len(files) == 1:
                 lines.append(f"files = [{files[0]!r}]")
             else:
@@ -211,7 +282,7 @@ class StepsMixin:
             lines.append('missing = [s.name for s in raw if s.mjd is None]\n'
                          'if missing:\n    print("no MJD in the header of", ", ".join(missing), "(kept at the end)")')
         # the model is kept (e.g. after removing an epoch); preparation and fits start again
-        lines.append("spectra = r = me = fits = classes = None")
+        lines.append("spectra = r = me = fits = classes = catalogs = None")
         lines.append('print(len(raw), "spectra:", ", ".join(s.name for s in raw[:8]))')
         return "# read\n" + "\n".join(ln for ln in lines if ln)
 
@@ -247,6 +318,9 @@ class StepsMixin:
                          "ra": s.ra, "dec": s.dec, "z": s.z,
                          "range": [float(s.wave[good].min()), float(s.wave[good].max())] if good.any() else None,
                          "npix": int(good.sum()), "flux_unit": s.flux_unit,
+                         "resolution": float(s.resolution) if s.resolution else None,
+                         "resolution_varies": s.resolution_curve is not None,
+                         "pixel_kms": float(s.pixel_kms()) if s.wave.size > 1 else None,
                          "flux_unit_source": s.meta.get("flux_unit_source")
                          or (f"{fmt} header" if s.flux_unit else None)})
         n_all = len(files) if files else len(raw)
@@ -257,7 +331,8 @@ class StepsMixin:
     # ----------------------------------------------------------- 2 Prepare
     def wf_prepare_code(self, z=None, z_source="file", rest_frame=True, extinction="coords", ebv=None,
                         ra=None, dec=None, wmin=None, wmax=None, telluric=True, sky_lines=False,
-                        absorption=False, masks=(), apply_to="all", flux_unit="file"):
+                        absorption=False, masks=(), apply_to="all", flux_unit="file", resolution="file",
+                        resolution_unit="kms"):
         raw = self.raw
         if raw is None:
             raise ValueError("read the spectra first (step 1)")
@@ -270,6 +345,20 @@ class StepsMixin:
             if unit is None or not 0 < unit < 1:
                 raise ValueError("flux unit: give the value of one flux unit in erg/s/cm2/A, e.g. 1e-16")
             chain.append(f".with_flux_unit({unit:g})")
+        res_val = None
+        if resolution not in (None, "", "file"):
+            try:
+                res_val = _num(resolution)
+            except ValueError:
+                res_val = None
+            if resolution_unit not in ("kms", "R"):
+                raise ValueError("resolution: FWHM in km/s or resolving power R")
+            if res_val is None or res_val <= 0:
+                raise ValueError("instrumental resolution: give the FWHM in km/s (e.g. 150) or the resolving power "
+                                 "R (e.g. 2000), or take it from the file")
+            if resolution_unit == "R" and res_val < 60 or resolution_unit == "kms" and res_val >= 5000:
+                raise ValueError("instrumental resolution: the FWHM must be below 5000 km/s (R above 60)")
+            chain.append(f".with_resolution({'R=' if resolution_unit == 'R' else ''}{res_val:g})")
         if ra not in (None, "") or dec not in (None, ""):
             from ..spectrum import parse_coordinates
             parse_coordinates(ra, dec)
@@ -287,12 +376,17 @@ class StepsMixin:
             opts = [] if telluric else ["telluric=False"]
             opts += [] if sky_lines else ["sky_lines=False"]
             chain.append(f".mask_sky({', '.join(opts)})")
+        if z_source not in ("file", "manual", "median"):
+            raise ValueError("unknown redshift choice")
         zval = _num(z) if z_source == "manual" else None
         if z_source == "manual" and zval is None:
             raise ValueError("give the redshift z, or take it from the file")
+        if z_source == "median" and not any(s.z for s in raw):
+            raise ValueError("these files have no redshift: enter z")
         if rest_frame:
-            chain.append(f".to_rest_frame({'z=' + _g(zval) if zval is not None else ''})")
-            if zval is None and any(s.z is None for s in raw):
+            chain.append(".to_rest_frame(z=z)" if z_source == "median" else
+                         f".to_rest_frame({'z=' + _g(zval) if zval is not None else ''})")
+            if z_source == "file" and any(s.z is None for s in raw):
                 raise ValueError("these files have no redshift: enter z")
         lo, hi = _num(wmin), _num(wmax)
         if lo is not None or hi is not None:
@@ -311,6 +405,8 @@ class StepsMixin:
         if len(expr) > 60:
             expr = "s" + "\n            ".join(chain)
         lines = ["# prepare"]
+        if z_source == "median" and rest_frame:
+            lines.append("z = float(np.median([s.z for s in raw if s.z]))      # one redshift for all spectra")
         if apply_to not in ("all", None, ""):
             k = int(apply_to)
             if not 0 <= k < len(raw):
@@ -328,17 +424,73 @@ class StepsMixin:
                               "extinction": extinction, "ebv": _num(ebv), "ra": ra, "dec": dec,
                               "wmin": lo, "wmax": hi, "telluric": bool(telluric), "sky_lines": bool(sky_lines),
                               "absorption": bool(absorption), "masks": [list(map(float, m)) for m in masks or ()],
-                              "flux_unit": flux_unit if flux_unit not in (None, "") else "file"}
+                              "flux_unit": flux_unit if flux_unit not in (None, "") else "file",
+                              "resolution": res_val if res_val is not None else "file",
+                              "resolution_unit": resolution_unit if res_val is not None else "kms"}
         return "\n".join(lines)
+
+    # ------------------------------------------------- finding the redshift
+    def wf_find_redshift_code(self, k=0):
+        """Code that finds the redshift of one spectrum as read (fa.find_redshift)."""
+        raw = self.raw
+        if raw is None:
+            raise ValueError("read the spectra first (step 1)")
+        k = int(k)
+        if not 0 <= k < len(raw):
+            raise ValueError(f"spectrum {k} does not exist")
+        if raw[k].rest_frame:
+            raise ValueError("this spectrum is already in the rest frame: the search needs the observed one")
+        return ("# find redshift\n"
+                f"zf = fa.find_redshift(raw[{k}])   # chi2 against galaxy and quasar templates at every redshift\n"
+                "print(zf.summary())")
+
+    def _redshift_result(self):
+        from ..redshift import RedshiftResult
+        zf, raw = self.ns.get("zf"), self.raw
+        if not isinstance(zf, RedshiftResult) or raw is None:
+            return None, None
+        k = next((i for i, s in enumerate(raw) if s is zf.spectrum), None)
+        return (zf, k) if k is not None else (None, None)
+
+    def wf_redshift(self):
+        """The last redshift search, while it belongs to one of the spectra read (for the Prepare step)."""
+        from ..redshift import MARK_LINES
+        zf, k = self._redshift_result()
+        if zf is None:
+            return None
+        num = lambda v: float(v) if v is not None and np.isfinite(v) else None
+        rows = [{"z": num(d["z"]), "error": num(d["error"]), "kind": d["kind"],
+                 "dchi2": num(d["dchi2"] / zf.n_pixels), "rchi2": num(d["rchi2"]), "peaks": d["peaks"],
+                 "lines": d["lines"]} for d in zf.candidates.to_dict("records")]
+        return {"id": id(zf), "k": k, "z": num(zf.z), "error": num(zf.error), "kind": zf.kind,
+                "secure": bool(zf.secure), "method": zf.method, "file_z": num(zf.spectrum.z),
+                "threshold": float(zf.min_dchi2), "candidates": rows,
+                "marks": [[n, float(w), t] for n, w, t in MARK_LINES]}
+
+    def wf_redshift_figure(self, fmt="png"):
+        from matplotlib.figure import Figure
+        zf, _ = self._redshift_result()
+        if zf is None:
+            return None
+        with self._render_lock:
+            return self._fig_bytes(zf.plot(fig=Figure(figsize=(7.1, 5.0))), fmt, 130 if fmt == "png" else 300)
 
     def prepared_state(self):
         sp = self.spectra
         if sp is None:
             return None
-        s = sp[0]
+        s = next((x for x in sp if x.good.any()), sp[0])       # the first usable one: a broken file has no z, no pixels
         good = s.good
+        raw = self.raw if self.raw is not None and len(self.raw) == len(sp) else sp
+        zs = [float(x.z) for x, y in zip(raw, sp) if y.good.any() and x.z]      # the redshifts of the files
         return {"n": len(sp), "z": s.z, "ebv": s.meta.get("ebv"), "ebv_source": s.meta.get("ebv_source"),
+                "z_spread_kms": (float(299792.458 * (max(zs) - min(zs)) / (1 + float(np.median(zs)))) if len(zs) > 1 else 0.0),
+                "z_rms_kms": (float(299792.458 * np.std(zs) / (1 + float(np.median(zs)))) if len(zs) > 1 else 0.0),
+                "z_one": len({x.z for x in sp if x.good.any()}) == 1,
+                "unusable": sum(not x.good.any() for x in sp),
                 "flux_unit": s.flux_unit,
+                "resolution": float(s.resolution) if s.resolution else None,
+                "resolution_given": s.meta.get("resolution_source") == "given",
                 "rest_frame": bool(s.rest_frame),
                 "range": [float(s.wave[good].min()), float(s.wave[good].max())] if good.any() else None,
                 "id": id(self.ns.get("spectra"))}
@@ -363,6 +515,7 @@ class StepsMixin:
         masked = _runs(~s.good & fin, s.wave) if kind == "prepared" else []
         return {"k": k, "kind": kind, "name": s.name, "x": _arr(s.wave, idx), "flux": _arr(s.flux, idx),
                 "masked": masked, "telluric": bands, "rest_frame": bool(s.rest_frame),
+                "z": float(s.z) if s.z else None, "medium": s.medium,
                 "date": mjd_to_date(s.mjd)}
 
     # ------------------------------------------------------------- 3 Model
@@ -413,14 +566,18 @@ class StepsMixin:
     # --------------------------------------------------------------- 4 Fit
     def wf_fit_code(self, epochs="joint", reference="auto", n_jobs=-1, shared="", errors="covariance",
                     scale_errors=True, rescale_errors=False, calibration_degree=0, host_per_epoch=False,
-                    uncertainty=False, absorbers=False, sample_model="auto", out=None, shared_shape=False):
+                    uncertainty=False, absorbers=False, sample_model="auto", out=None, shared_shape=False,
+                    prune_feii=False, trial=None, from_trial=True, wavelength_offsets=False, epoch_broadening=False):
         mode = self.wf.get("mode")
         self.wf["fit_opts"] = {"epochs": epochs, "reference": reference, "n_jobs": n_jobs, "shared": shared,
                                "shared_shape": bool(shared_shape),
                                "errors": errors, "scale_errors": bool(scale_errors),
                                "rescale_errors": bool(rescale_errors), "calibration_degree": int(calibration_degree or 0),
                                "host_per_epoch": bool(host_per_epoch), "uncertainty": bool(uncertainty),
-                               "absorbers": bool(absorbers), "sample_model": sample_model}
+                               "absorbers": bool(absorbers), "sample_model": sample_model,
+                               "prune_feii": bool(prune_feii), "from_trial": bool(from_trial),
+                               "wavelength_offsets": bool(wavelength_offsets),
+                               "epoch_broadening": bool(epoch_broadening)}
         sp = self.spectra
         if mode != "sample" and sp is None:
             raise ValueError("prepare the spectra first (step 2)")
@@ -433,7 +590,7 @@ class StepsMixin:
             return ("# fit\nclasses = [fa.classify(s) for s in spectra]\nc = classes[0]\n"
                     "[(s.name, c.label) for s, c in zip(spectra, classes)]")
         if mode == "sample":
-            return self._wf_sample_code(sample_model, n_jobs, out)
+            return self._wf_sample_code(sample_model, n_jobs, out, prune_feii)
         if self.model is None:
             raise ValueError("create the model first (step 3)")
         if mode == "single":
@@ -449,6 +606,24 @@ class StepsMixin:
             if not scale_errors:
                 code = re.sub(r"(r(?:_host)? = fa\.fit\(spec, model(?:_host)?)", r"\1, scale_errors=False", code)
             return "# fit\n" + code
+        if not (trial is None or trial is False or (isinstance(trial, str) and trial == "")):   # epoch 0 is a choice
+            # one epoch first: the model is worked out on it (with all the checks of a single fit)
+            # before every epoch is fitted
+            k = self.wf_reference() if trial is True or (isinstance(trial, str) and trial == "auto") else int(trial)
+            if not 0 <= k < len(sp):
+                raise ValueError(f"epoch {k} does not exist")
+            if not sp[k].rest_frame:
+                raise ValueError("the models are defined in the rest frame: tick 'Move to rest frame' in Prepare")
+            self.wf["fit_kind"] = "single"
+            args = "" if errors == "covariance" else f", errors={err_arg!r}"
+            if not scale_errors:
+                args += ", scale_errors=False"
+            date = mjd_to_date(sp[k].mjd)
+            return ("# trial fit\n"
+                    f"spec = spectra[{k}]   # one epoch first{f' ({date})' if date else ''}: agree on the model, then fit them all\n"
+                    f"r = fa.fit(spec, model{args})\nr.key_results()")
+        # the epochs start from the trial fit of one of them, if there is one
+        start = "model.starting_from(r)" if from_trial and self._trial() is not None else "model"
         if epochs == "own":
             self.wf["fit_kind"] = "fits"
             opts = [f"n_jobs={n_jobs}"]
@@ -456,20 +631,27 @@ class StepsMixin:
                 opts.append(f"errors={err_arg!r}")
             if not scale_errors:
                 opts.append("scale_errors=False")
-            return ("# fit\nfits = fa.fit_many(spectra, model, " + ", ".join(opts) + ")   # each epoch on its own\n"
+            return ("# fit\nfits = fa.fit_many(spectra, " + start + ", " + ", ".join(opts) + ")   # each epoch on its own\n"
+                    "me = fa.EpochSet(fits) if sum(hasattr(f, 'rchi2') for f in fits) > 1 else None"
+                    "   # together: light curves, lags (not intercalibrated)\n"
                     "[(f.spectrum.name, round(f.rchi2, 3)) for f in fits if hasattr(f, 'rchi2')]")
         if errors in ("mc", "mcmc"):
             raise ValueError("the joint fit has covariance errors (or none); Monte Carlo and MCMC are for independent fits")
         self.wf["fit_kind"] = "joint"
         patterns = tuple(p.strip() for p in str(shared or "").split(",") if p.strip())
-        if shared_shape:
-            # the shape of the broad lines (and the Fe II width) is the same in all epochs: only the
-            # fluxes vary. Free shapes per epoch trade flux with the continuum and Fe II at SDSS S/N
-            # and can wash out the reverberation signal; the explicit list replaces the default
-            # (narrow lines and host), so that is added too.
-            if not patterns:
-                patterns = ("narrow.*",) + tuple(f"{c.name}.*" for c in self.model.components if c.kind == "host")
-            patterns = patterns + tuple(self.broad_shape_params())
+        if patterns:
+            # patterns typed by hand replace the table (the expert override of the Fit step)
+            if shared_shape:
+                patterns = patterns + tuple(self.broad_shape_params())
+        else:
+            # the sharing table of the Model step. By default the narrow lines and the host are shared
+            # and, with shared_shape, the shape of the broad lines and the Fe II width: free shapes per
+            # epoch trade flux with the continuum and Fe II at SDSS S/N and can wash out the
+            # reverberation signal.
+            patterns = self.sharing_patterns(shape_default=shared_shape) or ()
+            if not patterns and self.wf.get("sharing"):
+                raise ValueError("nothing is shared between the epochs: share at least the narrow lines (Model step), "
+                                 "or fit each epoch on its own")
         opts = []
         if patterns:
             opts.append(f"shared={patterns!r}")
@@ -483,11 +665,17 @@ class StepsMixin:
             self.wf.pop("reference", None)
         if int(calibration_degree or 0):
             opts.append(f"calibration_degree={int(calibration_degree)}")
+        if wavelength_offsets:
+            opts.append("wavelength_offsets=True")
+        if epoch_broadening:
+            opts.append("epoch_broadening=True")
+        scaled = [] if patterns and str(shared or "").strip() else self.sharing_scaled()
         if host_per_epoch:
-            hosts = [c.name for c in self.model.components if c.kind == "host"]
-            if not hosts:
+            scaled = [c.name for c in self.model.components if c.kind == "host"]
+            if not scaled:
                 raise ValueError("the model has no host galaxy to scale per epoch")
-            opts.append(f"epoch_scaled={tuple(hosts)!r}")
+        if scaled:
+            opts.append(f"epoch_scaled={tuple(scaled)!r}")
         if rescale_errors:
             opts.append("rescale_errors=True")
         if not scale_errors:
@@ -495,8 +683,105 @@ class StepsMixin:
         if err_arg is None:
             opts.append("errors=None")
         opts.append(f"n_jobs={n_jobs}")
-        return ("# fit\nme = fa.fit_epochs(spectra, model,\n                   " +
+        return ("# fit\nme = fa.fit_epochs(spectra, " + start + ",\n                   " +
                 ",\n                   ".join(opts) + ")")
+
+    def _trial(self):
+        """(epoch index, FitResult) of the trial fit of one epoch, while it belongs to the prepared
+        spectra and shares parameters with the current model; else None."""
+        r, sp, m = self.result, self.spectra, self.model
+        if r is None or sp is None or m is None or self.wf.get("mode") != "multi" or len(sp) < 2:
+            return None
+        k = next((i for i, s in enumerate(sp) if s is r.spectrum), None)
+        if k is None or not any(p.free and p.name in r.model.params for p in m.params):
+            return None
+        return k, r
+
+    def wf_trial(self):
+        """The trial fit of one epoch, for the Fit and Results steps of a multi-epoch analysis."""
+        t = self._trial()
+        if t is None:
+            return None
+        k, r = t
+        m = self.model
+        same = [p.name for p in m.params] == [p.name for p in r.model.params]
+        return {"k": k, "name": r.spectrum.name, "date": mjd_to_date(r.spectrum.mjd), "rchi2": float(r.rchi2),
+                "n": len(self.spectra), "active": self.wf.get("fit_kind") == "single",
+                "model_changed": not same}
+
+    # ---------------------------------------------- what is the same in all epochs
+    def sharing_table(self, shape_default=True):
+        """
+        For every component of the model, whether its fluxes and its shape (shift, width, profile
+        parameters, slope: everything that is not an amplitude) take one value for all epochs of a joint
+        fit or one per epoch. ``flux``/``shape`` are True (shared), False (per epoch) or None (the
+        component has no free parameter of that kind). The defaults are those of ``fa.fit_epochs`` (the
+        component ``narrow`` and a stellar host: everything shared) plus, with ``shape_default``, the
+        shape of the broad lines and of Fe II; choices made in the Model step (``wf['sharing']``)
+        replace them. For a stellar host, ``flux`` False means its spectrum (the template weights) is
+        shared but its amplitude is free in each epoch (``epoch_scaled``): the host seen through
+        different apertures or seeing; ``host`` marks those rows.
+        """
+        m = self.model
+        if m is None:
+            return []
+        chosen = self.wf.get("sharing") or {}
+        rows = []
+        for c in m.components:
+            free = [p for p in c.params if not p.fixed and not p.tie]
+            has_flux, has_shape = any(p.linear for p in free), any(not p.linear for p in free)
+            whole = c.name == "narrow" or c.kind == "host"
+            broad = getattr(c, "role", None) == "broad" or type(c).__name__ == "FeII"
+            d_flux, d_shape = whole, whole or (bool(shape_default) and broad)
+            pick = chosen.get(c.name) or {}
+            rows.append({"name": c.name,
+                         "flux": bool(pick.get("flux", d_flux)) if has_flux else None,
+                         "shape": bool(pick.get("shape", d_shape)) if has_shape else None,
+                         "default_flux": d_flux if has_flux else None,
+                         "default_shape": d_shape if has_shape else None,
+                         "lines": list(getattr(c, "line_names", []) or [])[:6],
+                         "host": c.kind == "host"})
+        return rows
+
+    def sharing_scaled(self):
+        """Host components whose amplitude is free per epoch in the sharing table (``epoch_scaled``)."""
+        return [r["name"] for r in self.sharing_table() if r.get("host") and r["flux"] is False]
+
+    def set_sharing(self, component=None, part=None, shared=None, reset=False):
+        """Choose whether the fluxes or the shape of a component are shared by the epochs (a setting, not code)."""
+        if reset:
+            self.wf.pop("sharing", None)
+            return
+        if self.model is None or component not in [c.name for c in self.model.components]:
+            raise ValueError(f"no component {component!r} in the model")
+        if part not in ("flux", "shape"):
+            raise ValueError("part: flux or shape")
+        table = self.wf.setdefault("sharing", {})
+        table.setdefault(component, {})[part] = bool(shared)
+
+    def sharing_patterns(self, shape_default=True):
+        """The ``shared=`` argument of fa.fit_epochs for the sharing table: whole components as
+        'name.*', then the single parameters of those shared in part. None: the default of fit_epochs."""
+        m = self.model
+        rows = self.sharing_table(shape_default)
+        whole, single = [], []
+        for c, row in zip(m.components, rows):
+            flux, shape = row["flux"], row["shape"]
+            if row.get("host") and flux is False:
+                flux = True                             # the host's spectrum is shared, its amplitude is not
+            if flux in (True, None) and shape in (True, None) and (flux or shape):
+                whole.append(f"{c.name}.*")
+                continue
+            for p in c.params:
+                if p.fixed or p.tie:                    # a tied parameter follows its target
+                    continue
+                if (flux and p.linear) or (shape and not p.linear):
+                    single.append(p.name)
+        default = ["narrow.*"] if any(c.name == "narrow" for c in m.components) else []
+        default += [f"{c.name}.*" for c in m.components if c.kind == "host"]
+        if not single and whole == default and default:
+            return None
+        return tuple(whole + single)
 
     def broad_shape_params(self):
         """Non-linear parameters that set the shape of the broad lines (shift, widths and the profile
@@ -518,7 +803,7 @@ class StepsMixin:
                 names.append(p.name)
         return names
 
-    def _wf_sample_code(self, sample_model, n_jobs, out):
+    def _wf_sample_code(self, sample_model, n_jobs, out, prune_feii=False):
         from .session import MODELS
         files = self.ns.get("files")
         if not isinstance(files, list) or not files:
@@ -543,6 +828,8 @@ class StepsMixin:
             args.append("mask_absorption=True")
         if p and not (p.get("telluric") or p.get("sky_lines")):
             args.append("mask_sky=False")
+        if prune_feii:
+            args.append("prune_feii=True")
         args.append(f"n_jobs={int(n_jobs)}")
         self.wf["fit_kind"] = "sample"
         return ("# fit\nsample = fa.fit_sample(files, " + ", ".join(args) + ")\n"
@@ -594,13 +881,38 @@ class StepsMixin:
                 epochs.append({"k": k, "name": name, "date": date, "failed": True})
                 continue
             epochs.append({"k": k, "name": name, "date": date, "reference": ref, "rchi2": float(fr.rchi2),
-                           "limits": list(fr.at_limit), "scale": float(getattr(fr, "scale", 1.0) or 1.0)})
+                           "limits": list(fr.at_limit), "scale": float(getattr(fr, "scale", 1.0) or 1.0),
+                           "undersampled": [{"parameter": u["parameter"], "pixels": round(u["pixels"], 2),
+                                             "fwhm": round(u["fwhm"], 1), "pixel": round(u["pixel"], 1),
+                                             "resolution_known": u["resolution_known"]}
+                                            for u in (fr.undersampled() if hasattr(fr, "undersampled") else [])]})
         if kind == "joint" or (kind is None and self.multi is not None):
             me = self.multi
             out = {"kind": "joint", "chi2": float(me.chi2), "dof": int(me.dof), "rchi2": float(me.rchi2),
                    "error_scale": float(me.error_scale), "time": float(me.time), "nfev": int(me.nfev),
                    "success": bool(me.success), "summary": me.summary(), "epochs": epochs,
                    "reference": int(getattr(me, "reference", 0))}
+            # median flux-scale error of the epochs; NaN without intercalibration
+            off = getattr(me, "offsets", None)
+            if off is not None:
+                v, e = off.offset[~off.reference].to_numpy(float), off.error[~off.reference].to_numpy(float)
+                out["offsets"] = {"rms": float(np.sqrt(np.mean(v ** 2))), "min": float(v.min()), "max": float(v.max()),
+                                  "error": float(np.nanmedian(e)) if np.isfinite(e).any() else None}
+            br = getattr(me, "broadening", None)
+            if br is not None:
+                v = br.broadening[~br.reference].to_numpy(float)
+                out["broadening"] = {"min": float(v.min()), "max": float(v.max()), "median": float(np.median(np.abs(v)))}
+            try:
+                z, ze = me.redshift()
+                out["z_best"] = [float(z), float(ze) if np.isfinite(ze) else None]
+            except Exception:                              # no redshift, or the narrow shift is not shared
+                out["z_best"] = None
+            cal = getattr(me, "calibration_error", None)
+            try:
+                cal = float(cal)
+            except (TypeError, ValueError):
+                cal = None
+            out["calibration_error"] = cal if cal is not None and np.isfinite(cal) else None
         elif kind == "fits":
             ok = [f for _, _, f, _ in res if f is not None]
             chi2 = float(sum(f.chi2 for f in ok))
@@ -702,6 +1014,8 @@ class StepsMixin:
                 flags.append(("outside range", "muted"))
             elif flux_p in r.at_zero or not (row.flux > 0):
                 flags.append(("not detected", "muted"))
+            elif flux_p in r.unmeasured_fluxes:
+                flags.append(("not measured", "warn"))
             elif np.isfinite(row.flux_err) and row.flux_err > 0 and row.flux < 2 * row.flux_err:
                 flags.append(("weak (<2σ)", "muted"))
             if fwhm_p in params.names and params[fwhm_p].tie:
@@ -710,7 +1024,18 @@ class StepsMixin:
                 flags.append(("FWHM at bound", "warn"))
             if shift_p in r.at_limit:
                 flags.append(("shift at bound", "warn"))
-            rows.append({"component": comp, "role": roles.get(comp), "line": ln, "label": plain_line(ln),
+            limit = None
+            if flags and flags[0][0] in ("not detected", "weak (<2σ)") and "-" not in ln:
+                # what the spectrum allows: a 3 sigma limit from the noise under a line of this shape
+                # (the 95% limit of the posterior with MCMC errors)
+                try:
+                    lim = r.line_limit(ln, comp)
+                    if np.isfinite(lim["limit"]):
+                        limit = {"value": float(lim["limit"]),
+                                 "how": "95% of the posterior" if lim["method"] == "mcmc" else "3σ from the noise under the line"}
+                except Exception:                  # noqa: BLE001  (a line without its own flux parameter)
+                    limit = None
+            rows.append({"component": comp, "role": roles.get(comp), "line": ln, "label": plain_line(ln), "limit": limit,
                          "wave": float(row.wavelength),
                          "flux": float(row.flux), "flux_err": float(row.flux_err),
                          "fwhm": float(row.fwhm), "fwhm_err": float(row.fwhm_err),
@@ -732,6 +1057,193 @@ class StepsMixin:
             rows.append({"name": q.parameter, "value": _fmt_err(q.value, q.error), "min": q.min, "max": q.max,
                          "unit": q.unit or "", "status": q.status, "component": comp})
         return rows
+
+    @staticmethod
+    def _atlas_card(r, nbins=200, kv=None):
+        """
+        One card of Results › Atlas: the fit binned to ``nbins`` points over its fitted range (data, model,
+        broad lines, host, residuals in sigma) and the numbers the cards are ordered and flagged by. ``kv``:
+        those numbers already at hand (a sample's catalog row), else from ``r.key_results()``.
+        """
+        good = np.asarray(r.mask, bool)
+        if not good.any():
+            raise ValueError("no pixel was fitted")
+        i0, i1 = int(np.argmax(good)), len(good) - int(np.argmax(good[::-1]))
+        s = r.spectrum
+        w, f, e, good = s.wave[i0:i1], s.flux[i0:i1], s.err[i0:i1], good[i0:i1]
+        parts = {k: v[i0:i1] for k, v in r.model_flux(components=True).items()}
+        model = np.sum(list(parts.values()), axis=0)
+        comps = r.model.components
+        broad = sum((parts[c.name] for c in comps if getattr(c, "role", None) == "broad"), np.zeros_like(w))
+        host = sum((parts[c.name] for c in comps if getattr(c, "kind", "") == "host"), np.zeros_like(w))
+        edges = np.linspace(w[0], w[-1], nbins + 1)
+        k = np.clip(np.digitize(w, edges) - 1, 0, nbins - 1)
+        z = (f - model) / e
+
+        def binned(y, use):
+            out = []
+            for b in range(nbins):
+                v = y[(k == b) & use]
+                v = v[np.isfinite(v)]
+                out.append(round(float(np.median(v)), 4) if v.size else None)
+            return out
+
+        allpix = np.ones_like(good)
+        zz = z[good & np.isfinite(z)]
+        run = np.convolve(zz, np.ones(40) / 40, mode="valid") * np.sqrt(40) if zz.size >= 40 else np.zeros(1)
+        num = lambda v: None if v is None or not np.isfinite(v) else float(v)
+        if kv is None:
+            kv = {}
+            try:
+                kr = r.key_results()
+                kv = dict(zip(kr["quantity"], kr["value"]))
+            except Exception:
+                pass
+        fw = next((q for q in kv if q.startswith("broad ") and q.endswith(" FWHM")), None)
+        bline = fw.split()[1] if fw else None
+        mbh, lum, edd = kv.get("log M_BH"), None, None
+        try:                 # Eddington ratio with bolometric corrections 9.26 (5100 A) and 5.15 (3000 A)
+            at, bc = (3000.0, 5.15) if bline in ("MgII2798", "CIV1549") else (5100.0, 9.26)
+            lum = r.luminosity(at)[0]
+            if mbh is not None and np.isfinite(mbh):
+                edd = float(np.log10(bc * 10 ** lum / (1.26e38 * 10 ** mbh)))
+        except Exception:
+            pass
+        flux_b = binned(f, good)
+        return {"z": num(getattr(s, "z", None)), "mjd": num(s.mjd) if s.mjd is not None else None,
+                "rchi2": num(r.rchi2), "limits": list(r.at_limit),
+                "fwhm": num(kv.get(fw)) if fw else None, "bline": bline, "bflux": num(kv.get(f"broad {bline} flux")) if bline else None,
+                "rfeii": num(kv.get("R_FeII")), "mbh": num(mbh), "lum": num(lum), "edd": num(edd),
+                "o3hb": num(kv.get("log [OIII]/Hb", kv.get("log [OIII]5007/Hb"))),
+                "struct": float(np.max(np.abs(run))), "w0": float(w[0]), "w1": float(w[-1]),
+                "scale": float(np.nanpercentile([v for v in flux_b if v is not None] or [1.0], 99)) or 1.0,
+                "flux": flux_b, "model": binned(model, allpix), "broad": binned(broad, allpix) if broad.any() else None,
+                "host": binned(host, allpix) if host.any() else None,
+                "resid": [None if v is None else round(v, 2) for v in binned(z, good)]}
+
+    def wf_atlas(self):
+        """
+        Results › Atlas: every fit of a sample (or every epoch of a multi-epoch fit) as a small card, with
+        the numbers the cards can be ordered by. Cached per sample or per set of epoch fits.
+        """
+        kind = self.wf.get("fit_kind")
+        if kind == "sample":
+            sm = self.sample
+            if sm is None:
+                return None
+            key = ("atlas", id(sm))
+            if key in self._wf_cache:
+                return self._wf_cache[key]
+            t = sm.table
+            text = lambda v: v if isinstance(v, str) else ""
+            cards = []
+            for k in range(len(t)):
+                row = t.iloc[k]
+                c = {"k": k, "name": str(row.get("name", f"row {k}")), "cls": text(row.get("cls")), "preset": text(row.get("preset"))}
+                err = row.get("error") if "error" in t else None
+                if isinstance(err, str) and err:
+                    c["error"] = err
+                else:
+                    try:
+                        kv = {q: float(v) for q, v in row.items() if isinstance(v, (int, float, np.floating)) and not q.endswith(" err")}
+                        c.update(self._atlas_card(sm.load(k), kv=kv))
+                    except Exception as exc:
+                        c["error"] = f"{type(exc).__name__}: {exc}"
+                cards.append(c)
+            out = {"kind": "sample", "cards": cards}
+        else:
+            res = self.wf_results()
+            if not res or len(res) < 2:
+                return None
+            key = ("atlas", tuple(id(r) for _, _, r, _ in res))
+            if key in self._wf_cache:
+                return self._wf_cache[key]
+            cards = []
+            for k, (name, date, r, ref) in enumerate(res):
+                c = {"k": k, "name": name, "date": date, "reference": bool(ref), "cls": ""}
+                if r is None:
+                    c["error"] = "this spectrum could not be fitted"
+                else:
+                    try:
+                        c.update(self._atlas_card(r))
+                    except Exception as exc:
+                        c["error"] = f"{type(exc).__name__}: {exc}"
+                cards.append(c)
+            out = {"kind": "epochs", "cards": cards}
+        if len(self._wf_cache) > 80:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
+
+    def wf_degeneracy(self, k=0):
+        """
+        Results › Degeneracies: the free parameters of fit ``k`` and their correlation matrix (from
+        the MCMC samples when there are, else from the covariance), for the wheel of the browser.
+        """
+        from ..plotting import plain_line
+        res = self.wf_results()
+        if not res:
+            return None
+        k = min(max(int(k), 0), len(res) - 1)
+        name, _, r, _ = res[k]
+        if r is None:
+            return {"k": k, "name": name, "error": "this spectrum could not be fitted"}
+        key = ("degeneracy", id(r))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        plist = list(r.model.params)
+        if r.samples is not None and len(r.samples) > 10:
+            sam = np.asarray(r.samples, float)
+            sig = sam.std(axis=0)
+            src = "MCMC samples"
+        elif r.cov is not None:
+            sig = np.sqrt(np.clip(np.diag(r.cov), 0, None))
+            src = "covariance"
+        else:
+            out = {"k": k, "name": name, "error": "this fit has no errors (errors='none'), so no correlations"}
+            self._wf_cache[key] = out
+            return out
+        free = [i for i, q in enumerate(plist) if q.free and np.isfinite(sig[i]) and sig[i] > 0]
+        if len(free) < 2:
+            return {"k": k, "name": name, "error": "fewer than two free parameters with an error"}
+        if src == "MCMC samples":
+            C = np.corrcoef(sam[:, free], rowvar=False)
+        else:
+            C = r.cov[np.ix_(free, free)] / np.outer(sig[free], sig[free])
+        C = np.clip(np.nan_to_num(C), -1, 1)
+        status = dict(zip(r.params["parameter"], r.params["status"]))
+        comps = {c.name: c for c in r.model.components}
+        broad_n = {}
+        groups = []
+        for c in r.model.components:
+            role, kind, tname = getattr(c, "role", None), getattr(c, "kind", ""), type(c).__name__
+            fam = ("broad" if role == "broad" else "narrow" if role == "narrow" else "outflow" if role == "outflow"
+                   else "host" if kind == "host" else "feii" if tname == "FeII"
+                   else "balmer" if tname in ("BalmerContinuum", "HighOrderBalmer") else "continuum" if kind == "continuum" else "other")
+            if fam == "broad":
+                broad_n[c.name] = len(broad_n)
+            groups.append({"name": c.name, "family": fam, "n": broad_n.get(c.name, 0),
+                           "lines": [plain_line(n).replace(" λ", " ") for n in getattr(c, "line_names", [])]})
+
+        def short(pname):
+            rest = pname.split(".", 1)[1] if "." in pname else pname
+            parts = rest.rsplit(".", 1)
+            return f"{plain_line(parts[0]).replace(' λ', ' ')} {parts[1]}" if len(parts) == 2 else rest
+
+        fin = lambda v: float(v) if v is not None and np.isfinite(v) else None
+        params = [{"name": plist[i].name, "comp": plist[i].name.split(".")[0], "short": short(plist[i].name),
+                   "value": fin(r.full[i]), "err": fin(sig[i]), "unit": plist[i].unit or "",
+                   "lim": status.get(plist[i].name, "") in ("at limit", "at bound") or str(status.get(plist[i].name, "")).startswith("lower limit")}
+                  for i in free]
+        out = {"k": k, "name": name, "source": src, "rchi2": float(r.rchi2), "groups": [g for g in groups if any(p["comp"] == g["name"] for p in params)],
+               "params": params, "corr": [[round(float(v), 3) for v in row] for row in C],
+               # free parameters at a limit have no error from the covariance, so they are not in the wheel
+               "limits": [q.name for i, q in enumerate(plist) if q.free and i not in free
+                          and str(status.get(q.name, "")).startswith(("at ", "lower limit"))]}
+        if len(self._wf_cache) > 80:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
 
     def wf_result(self, k=0):
         res = self.wf_results()
@@ -761,6 +1273,13 @@ class StepsMixin:
         self._wf_cache[key] = out
         return out
 
+    def _has_main_sequence(self):
+        """Whether the fit itself (not the model now being edited) has Fe II and a broad H-beta."""
+        r = next((e[2] for e in self.wf_results() or [] if e[2] is not None), None)
+        if r is None or not hasattr(r, "_feii_components"):
+            return False
+        return bool(r._feii_components()) and any(c.role == "broad" and "Hb" in c.line_names for c in r._line_components())
+
     def wf_main_sequence(self):
         """Every epoch's position on the quasar main sequence (R_FeII, FWHM of broad H-beta) and the grid."""
         from ..plotting import MS_TYPES, main_sequence_grid
@@ -769,13 +1288,11 @@ class StepsMixin:
             return None
         key = ("ms", tuple(id(r) for _, _, r, _ in res))
         if key not in self._wf_cache:
+            from ..correlations import main_sequences
             pts = []
-            for k, (name, date, r, ref) in enumerate(res):
-                if r is None:
-                    continue
-                try:
-                    m = r.main_sequence()
-                except Exception:                    # noqa: BLE001
+            usable = [(k, e) for k, e in enumerate(res) if e[2] is not None]
+            for (k, (name, date, r, ref)), m in zip(usable, main_sequences([e[2] for _, e in usable])):
+                if m is None:
                     continue
                 mjd = getattr(r.spectrum, "mjd", None)
                 pts.append({"k": k, "name": name, "date": date, "reference": bool(ref),
@@ -832,6 +1349,16 @@ class StepsMixin:
                                "scatter": q.scatter_dex})
             except Exception:
                 pass
+            # a black-hole mass has two errors: that of the fit, and the scatter of the recipe (0.3-0.6 dex)
+            main = bh[0]["line"] if bh else None
+            first = {}
+            for b in bh:
+                first.setdefault(b["line"], b["scatter"])
+            for row in rows:
+                if row["name"].startswith("log M_BH"):
+                    line = row["name"][row["name"].index("(") + 1:-1] if "(" in row["name"] else main
+                    if line in first:
+                        row["scatter"] = float(first[line])
             self._wf_cache[key] = {"key": rows, "bh": bh}
         return self._wf_cache[key]
 
@@ -874,16 +1401,654 @@ class StepsMixin:
         self._wf_cache[key] = out
         return out
 
+    # ------------------------------------------------------------ missing lines
+    def _linescan(self):
+        """fa.suggest_lines of the single fit (milliseconds; cached per fit)."""
+        from ..linescan import suggest_lines
+        r = self.result
+        if r is None or self.wf.get("fit_kind") != "single":
+            return None
+        key = ("linescan", id(r))
+        if key not in self._wf_cache:
+            try:
+                t = suggest_lines(r)
+            except Exception:       # a model without line components, an odd mask: nothing to suggest
+                t = None
+            self._wf_cache[key] = t
+        return self._wf_cache[key]
+
+    def _line_homes(self):
+        """{line: names of the components of the current model that have it}."""
+        out = {}
+        for c in (self.model.components if self.model is not None else []):
+            for ln in getattr(c, "line_names", []) or []:
+                out.setdefault(ln, set()).add(c.name)
+        return out
+
+    @staticmethod
+    def _ls_done(d, homes):
+        """A suggestion the current model has already taken: the line added, or moved out of its component."""
+        if d["action"] == "split":
+            return d["component"] not in homes.get(d["line"], set())
+        return d["line"] in homes
+
+    def wf_linescan(self):
+        """Lines the single fit is missing, and lines to separate from their component, for the Results
+        page (those the model has since taken are marked)."""
+        t = self._linescan()
+        if t is None:
+            return None
+        homes = self._line_homes()
+        num = lambda v: None if v is None or not np.isfinite(v) else round(float(v), 1)
+        rows = [{"action": d["action"], "line": d["line"], "lines": list(d["lines"]), "wave": round(float(d["wave"]), 1),
+                 "ion": d["ion"], "type": d["type"], "component": d["component"], "role": d["role"],
+                 "snr": num(d["snr"]), "dv": num(d["dv"]), "dbic": num(d["dbic"]), "added": self._ls_done(d, homes)}
+                for d in t.to_dict("records")]
+        trial = self._trial()
+        return {"id": id(self.result), "rows": rows, "trial": trial[0] if trial else None}
+
+    def wf_addlines_code(self, lines, refit=False):
+        """Code that applies suggestions of fa.suggest_lines: adds the missing lines, tied to the kinematics
+        they were found with, and separates offset lines from their component (Model.split_lines);
+        ``refit``: and fits again in the same cell, with the options of the last fit."""
+        from ..linescan import _code, _split_name
+        t = self._linescan()
+        if t is None:
+            raise ValueError("fit one spectrum first: the lines are searched in its residuals")
+        if self.model is None:
+            raise ValueError("there is no model to add the lines to")
+        homes = self._line_homes()
+        comps = {c.name for c in self.model.components}
+        want = set(str(x) for x in lines or [])
+        rows = [d for d in t.to_dict("records") if d["line"] in want and not self._ls_done(d, homes)]
+        if not rows:
+            raise ValueError("these suggestions are already in the model")
+        lost = sorted({d["component"] for d in rows} - comps)
+        if lost:
+            raise ValueError(f"the model no longer has {', '.join(lost)}: fit again and search again")
+        adds = [d for d in rows if d["action"] == "add"]
+        parts = [_code(adds, self.model)] if adds else []
+        for d in rows:
+            if d["action"] == "split":
+                group = [ln for ln in d["lines"] if d["component"] in homes.get(ln, set())]
+                parts.append(f"model.split_lines({d['component']!r}, {group!r}, "
+                             f"{_split_name(self.model, d['component'], d['line'])!r})")
+        change = "\n".join(parts)
+        if not refit:
+            return "# add lines found by fa.suggest_lines(r)\n" + change + "\nmodel"
+        # the model is edited by the time the fit runs: no preset-specific host check
+        self.__dict__["_preset_made"] = None
+        opts = dict(self.wf.get("fit_opts") or {})
+        trial = self._trial()                  # multi-epoch: the trial fit of one epoch is refitted, not all epochs
+        if trial is not None:
+            opts["trial"] = trial[0]
+        fit = self.wf_fit_code(**opts)
+        fit = fit.split("\n", 1)[1] if fit.startswith(("# fit\n", "# trial fit\n")) else fit
+        stale = "resid = None\n" if self.ns.get("resid") is not None else ""
+        return "# add lines and refit (found by fa.suggest_lines(r))\n" + change + "\n" + stale + fit
+
+    # ------------------------------------------------------------ robustness
+    @staticmethod
+    def _plain(name):
+        """A parameter in words: 'feii.fwhm' -> 'Fe II width'."""
+        comp, _, rest = name.partition(".")
+        comp = {"feii": "Fe II", "heii": "He", "continuum": "continuum"}.get(comp, re.sub(r"(\D)(\d)", r"\1 \2", comp))
+        rest = {"fwhm": "width", "shift": "velocity shift", "index": "slope", "amp": "level"}.get(rest, rest.replace(".flux", " flux"))
+        return f"{comp} {rest}"
+
+    def wf_robust_code(self):
+        """Code that scans the parameters of the single fit (fa.robustness)."""
+        if self.result is None or self.wf.get("fit_kind") != "single":
+            raise ValueError("this check needs the fit of one spectrum")
+        return ("# robustness\nrob = fa.robustness(r)   # refit with each width, shift and ratio fixed across its limits\n"
+                "print(rob.summary())")
+
+    def wf_robust_apply_code(self):
+        """Code that starts the model from the better fit the scans found."""
+        from ..robustness import Robustness
+        rob = self.ns.get("rob")
+        if not isinstance(rob, Robustness) or not rob.improved:
+            raise ValueError("the scans did not find a better fit")
+        return "model = rob.best_model()   # the better solution, all scanned parameters free\nmodel"
+
+    @staticmethod
+    def _pretty(text):
+        for a, b in (("[OIII]5007", "[O III] \u03bb5007"), ("R_FeII", "R(Fe II)"), ("Hb", "H\u03b2"), ("Ha", "H\u03b1"), ("MgII2798", "Mg II"), ("CIV1549", "C IV")):
+            text = text.replace(a, b)
+        return text
+
+    def wf_robust(self):
+        """The last robustness check of the single fit, for the Results page."""
+        from ..robustness import Robustness
+        r, rob = self.result, self.ns.get("rob")
+        if r is None or self.wf.get("fit_kind") != "single":
+            return None
+        if not isinstance(rob, Robustness) or getattr(rob, "result", None) is not r:
+            return {"id": 0}
+        key = ("robust", id(rob))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and np.isfinite(v) else None
+        unit = {p.name: p.unit for p in r.model.params}
+        qunit = lambda q: "km/s" if q.split()[-1] in ("FWHM", "sigma", "shift") else ""
+        def qscan(name):
+            s = rob.profiles.get("result: " + name)
+            if s is None:
+                return []
+            s = s.sort_values("value")
+            return [[num(v), num(c)] for v, c in zip(s.value, s.dchi2)]
+        quants = [{"label": self._pretty(d["quantity"]), "unit": qunit(d["quantity"]),
+                   **{k: num(d[k]) for k in ("value", "error", "lo68", "hi68", "lo95", "hi95")}, "flag": d["flag"],
+                   "scan": qscan(d["quantity"])}
+                  for d in rob.quantities.to_dict("records")]
+        params = []
+        for d in rob.parameters.to_dict("records"):
+            p, s = r.model.params[d["parameter"]], rob.profiles[d["parameter"]]
+            params.append({"name": d["parameter"], "label": self._plain(d["parameter"]), "unit": unit.get(d["parameter"], ""),
+                           **{k: num(d[k]) for k in ("value", "error", "lo68", "hi68", "lo95", "hi95")},
+                           "flag": d["flag"], "note": d["note"], "min": num(p.min), "max": num(p.max),
+                           "scan": [[num(v), num(c)] for v, c in zip(s.value, s.dchi2)]})
+        alts = [{"i": i, "label": self._plain(a["parameter"]), "name": a["parameter"], "value": num(a["value"]), "dchi2": num(a["dchi2"])}
+                for i, a in enumerate(rob.alternatives)]
+        out = {"id": id(rob), "n_fits": rob.n_fits, "improved": bool(rob.improved), "alternatives": alts,
+               "chi2": [num(r.chi2), num(rob.best.chi2)], "quantities": quants, "params": params}
+        if len(self._wf_cache) > 50:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
+
+    # ------------------------------------------------------ simulation check
+    def wf_simcheck_code(self, n=60):
+        """Code that draws spectra from the single fit and fits them again (fa.simulation_check)."""
+        if self.wf.get("fit_kind") == "joint" and self.multi is not None:
+            n = int(n)
+            if not 4 <= n <= 200:
+                raise ValueError("the number of simulations is between 4 and 200")
+            return ("# simulation check\n"
+                    f"sim = fa.simulation_check(me, n={n})   # sets of epochs drawn from the joint fit, fitted jointly again\n"
+                    "print(sim.summary())")
+        if self.result is None or self.wf.get("fit_kind") != "single":
+            raise ValueError("this check needs the fit of one spectrum")
+        n = int(n)
+        if not 10 <= n <= 500:
+            raise ValueError("the number of simulations is between 10 and 500")
+        return ("# simulation check\n"
+                f"sim = fa.simulation_check(r, n={n})   # spectra drawn from the fit, fitted again as the spectrum was\n"
+                "print(sim.summary())")
+
+    def wf_simcheck(self):
+        """The last simulation check of the single fit, for the Results page."""
+        from ..simcheck import SimulationCheck
+        r, sim = self.result, self.ns.get("sim")
+        if r is None or self.wf.get("fit_kind") != "single":
+            return None
+        if not isinstance(sim, SimulationCheck) or sim.result is not r:
+            return {"id": 0}
+        key = ("simcheck", id(sim))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and np.isfinite(v) else None
+        unit = lambda q: "km/s" if q.split()[-1] in ("FWHM", "sigma", "shift") else ""
+        rows = [{"label": self._pretty(d["quantity"]), "unit": unit(d["quantity"]), "flag": d["flag"],
+                 **{k: num(d[k]) for k in ("value", "mean", "bias", "bias_sd", "bias_z", "scatter", "error",
+                                           "cover68", "cover95")}}
+                for d in sim.table.to_dict("records")]
+        out = {"id": id(sim), "n": int(sim.n), "failed": int(sim.failed), "pruned": num(sim.pruned), "rows": rows,
+               "rchi2": num(np.median(sim.rchi2))}
+        if len(self._wf_cache) > 50:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
+
+    def wf_tie_check(self, component):
+        """
+        Would tying the shift and width of ``component`` to another component change the results? From
+        the last single fit, where both are free (fa.model_confidence, no new fit): per possible target,
+        the probability that the main broad line (FWHM and flux) moves by less than 5%.
+        """
+        from ..confidence import model_confidence
+        r = self.result
+        if r is None or self.wf.get("fit_kind") != "single" or r.cov is None:
+            return {"available": False, "why": "needs a fit of one spectrum with covariance errors"}
+        params = r.model.params
+        comps = [c.name for c in r.model.components]
+        if component not in comps:
+            return {"available": False, "why": f"{component} is not in the last fit"}
+        key = ("tiecheck", id(r), component)
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        free = lambda n: n in params.names and params[n].free and not params[n].tie
+        broad = next((c for c in r.model.components if getattr(c, "role", None) == "broad"
+                      and free(f"{c.name}.fwhm")), None)
+        if broad is None:
+            return {"available": False, "why": "the fit has no broad line with a free width to judge by"}
+        line = next((n for n in broad.line_names if n in ("Hb", "Ha", "MgII2798", "CIV1549")), broad.line_names[0])
+        targets = {}
+        for name in (f"{broad.name}.fwhm", f"{broad.name}.{line}.flux"):
+            if name in params.names:
+                v = float(r.full[params.index(name)])
+                if v > 0:
+                    targets[name] = 0.05 * v
+        rows = []
+        for other in comps:
+            if other == component:
+                continue
+            ties = [(f"{component}.{k}", f"{other}.{k}") for k in ("fwhm", "shift")
+                    if free(f"{component}.{k}") and free(f"{other}.{k}")]
+            if not ties:
+                continue
+            try:
+                conf = model_confidence(r, ties, targets, n_draws=4000)
+                p = float(conf.probability)
+                rows.append({"to": other, "verdict": conf.verdict, "probability": p if np.isfinite(p) else None,
+                             "test_p": float(conf.test_p) if np.isfinite(conf.test_p) else None})
+            except Exception as exc:               # noqa: BLE001  (no error for a width at its limit, ...)
+                rows.append({"to": other, "verdict": "cannot assess", "probability": None, "test_p": None,
+                             "why": str(exc)})
+        out = {"available": True, "component": component, "fit": id(r), "rows": rows,
+               "targets": f"{self._pretty(broad.name)} {self._pretty(line)} FWHM and flux within 5%"}
+        if len(self._wf_cache) > 50:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
+
+    def wf_calcheck_code(self):
+        """Code that fits every epoch of the joint fit on its own with the joint flux scales (fa.calibration_check)."""
+        if self.wf.get("fit_kind") != "joint" or self.multi is None:
+            raise ValueError("this check needs a joint fit of the epochs")
+        if not self.multi._prob.scale_names:
+            raise ValueError("the epochs were not intercalibrated: there is no flux scale to check")
+        return ("# calibration check\n"
+                "chk = fa.calibration_check(me)   # each epoch on its own, with the flux scale of the joint fit\n"
+                "print(chk.summary())")
+
+    def wf_joint_checks(self):
+        """The calibration and simulation checks of the joint fit, for the Results page (None: no joint fit)."""
+        from ..jointcheck import CalibrationCheck, JointSimulationCheck
+        me = self.multi
+        if me is None or self.wf.get("fit_kind") != "joint":
+            return None
+        num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and np.isfinite(v) else None
+        out = {"intercalibrated": bool(me._prob.scale_names), "cal": {"id": 0}, "sim": {"id": 0},
+               "n_epochs": len(me.epochs)}
+        chk = self.ns.get("chk")
+        if isinstance(chk, CalibrationCheck) and chk.result is me:
+            bad = chk.epochs[np.abs(chk.epochs.pull) > 3]
+            out["cal"] = {"id": id(chk), "ok": chk.ok, "excess": num(chk.excess), "failed": len(chk.failed),
+                          "calibration_error": num(chk.calibration_error),
+                          "rows": [{"label": self._pretty(d["quantity"]).replace(".", " "), **{k: num(d[k]) for k in
+                                    ("mean", "snr", "rchi2", "p", "scatter", "error", "excess")}, "n": int(d["n"]),
+                                    "flag": d["flag"]} for d in chk.table.to_dict("records")],
+                          "outliers": [{"epoch": int(e.epoch), "name": str(e.name), "line": self._pretty(e.line).replace(".", " "), "pull": num(e.pull)}
+                                       for _, e in bad.sort_values("pull", key=np.abs, ascending=False).head(12).iterrows()],
+                          "n_outliers": int(len(bad))}
+        sim = self.ns.get("sim")
+        if isinstance(sim, JointSimulationCheck) and sim.result is me:
+            out["sim"] = {"id": id(sim), "n": int(sim.n), "failed": int(sim.failed),
+                          "rows": [{"label": self._pretty(d["quantity"]).replace(".", " "),
+                                    "flag": d["flag"], **{k: num(d[k]) for k in ("bias_sd", "bias_z", "spread", "cover68")},
+                                    "n": int(d["n"])} for d in sim.table.to_dict("records")]}
+        return out
+
+    # ------------------------------------------------------------ weak Fe II
+    def _feii_fit(self):
+        """The single fit if its model has Fe II, else None."""
+        r = self.result
+        if r is None or self.wf.get("fit_kind") != "single" or not hasattr(r, "_feii_components"):
+            return None
+        return r if r._feii_components() else None
+
+    def _feii_before(self, r):
+        """The fit that ``r`` was pruned from (kept as r_feii_all), if it is still that one."""
+        from ..result import FitResult
+        prev = self.ns.get("r_feii_all")
+        ok = (getattr(r, "feii_pruned", None) and isinstance(prev, FitResult) and prev is not r
+              and prev.spectrum is r.spectrum)
+        return prev if ok else None
+
+    def _feii_epochs(self):
+        """The epochs fitted one by one, if their model has Fe II, else None."""
+        fits = self.fits
+        if fits is None or self.wf.get("fit_kind") != "fits":
+            return None
+        ok = [f for f in fits if hasattr(f, "_feii_components")]
+        return fits if ok and ok[0]._feii_components() else None
+
+    def _feii_epochs_before(self, fits):
+        """The fits the epochs were pruned from (kept as fits_feii_all), if they are still those."""
+        prev = self.ns.get("fits_feii_all")
+        if not isinstance(prev, list) or prev is fits or len(prev) != len(fits):
+            return None
+        if not any(getattr(f, "feii_pruned", None) for f in fits):
+            return None
+        same = all(getattr(a, "spectrum", None) is getattr(b, "spectrum", None) for a, b in zip(prev, fits))
+        return prev if same else None
+
+    def wf_prune_feii_code(self, nsigma=2.0):
+        """Code that fits again without the Fe II groups the data do not detect (fa.prune_feii)."""
+        nsigma = float(nsigma)
+        if not 0 < nsigma <= 10:
+            raise ValueError("the threshold is a number of sigma between 0 and 10")
+        arg = "" if nsigma == 2.0 else f", nsigma={nsigma:g}"
+        fits = self._feii_epochs()
+        if fits is not None:
+            if not any(getattr(f, "cov", None) is not None or getattr(f, "samples", None) is not None for f in fits):
+                raise ValueError("the fits have no errors: fit with errors first (Fit step)")
+            # always from the fits with every group; the epochs together again for the light curves
+            return ("# prune Fe II\n"
+                    "fits_feii_all = fits_feii_all if any(getattr(f, 'feii_pruned', None) for f in fits) else fits"
+                    "   # the fits with every Fe II group\n"
+                    f"fits = fa.prune_feii(fits_feii_all{arg})   # every epoch: groups below {nsigma:g} sigma fixed at 0, fitted again\n"
+                    "me = fa.EpochSet(fits) if sum(hasattr(f, 'rchi2') for f in fits) > 1 else None\n"
+                    "[(f.spectrum.name, len(f.feii_pruned)) for f in fits if hasattr(f, 'feii_pruned')]")
+        r = self._feii_fit()
+        if r is None:
+            raise ValueError("this step needs the fit of one spectrum, or of epochs fitted one by one, with Fe II in the model")
+        if r.cov is None and r.samples is None:
+            raise ValueError("the fit has no errors: fit with errors first (Fit step)")
+        if getattr(r, "feii_pruned", None) and self._feii_before(r) is None:
+            # a pruned fit whose full fit is not in the session (e.g. opened from a file): prune it further
+            return ("# prune Fe II\n"
+                    f"r = fa.prune_feii(r{arg})   # groups below {nsigma:g} sigma fixed at 0, fitted again\n"
+                    "r.feii_pruning")
+        # always from the fit with every group, also when the threshold is changed after pruning
+        return ("# prune Fe II\n"
+                "r_feii_all = r_feii_all if getattr(r, 'feii_pruned', None) else r   # the fit with every Fe II group\n"
+                f"r = fa.prune_feii(r_feii_all{arg})   # groups below {nsigma:g} sigma fixed at 0, fitted again\n"
+                "r.feii_pruning")
+
+    def wf_prune_feii_undo_code(self):
+        fits = self._feii_epochs()
+        if fits is not None:
+            if self._feii_epochs_before(fits) is None:
+                raise ValueError("there are no fits with every Fe II group to go back to")
+            return ("fits = fits_feii_all   # back to the fits with every Fe II group\n"
+                    "me = fa.EpochSet(fits) if sum(hasattr(f, 'rchi2') for f in fits) > 1 else None\n"
+                    "len(fits)")
+        r = self._feii_fit()
+        if r is None or self._feii_before(r) is None:
+            raise ValueError("there is no fit with every Fe II group to go back to")
+        return "r = r_feii_all   # back to the fit with every Fe II group\nr"
+
+    def wf_feii(self):
+        """Fe II groups of the single fit: detected or not, and what pruning changed (for the Results page)."""
+        from ..refine import feii_detections
+        fits = self._feii_epochs()
+        if fits is not None:
+            return self._wf_feii_epochs(fits)
+        r = self._feii_fit()
+        if r is None:
+            return None
+        before = self._feii_before(r)
+        key = ("feii", id(r), id(before))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and np.isfinite(v) else None
+        errors = r.cov is not None or r.samples is not None
+        pruned = bool(getattr(r, "feii_pruned", None))
+        table = r.feii_pruning if pruned else feii_detections(r) if errors else None
+        rows = [] if table is None else [{"name": d["multiplet"], "label": d["multiplet"].split(".", 1)[1],
+                                           "amplitude": num(d["amplitude"]), "error": num(d["error"]),
+                                           "kept": bool(d["kept"])} for d in table.to_dict("records")]
+
+        def numbers(x):
+            out = {"bic": num(x.bic), "rchi2": num(x.rchi2)}
+            try:
+                f = x.feii()
+                out.update(flux=num(f["flux"]), flux_err=num(f["flux_err"]), r_feii=num(f["r_feii"]),
+                           r_feii_err=num(f["r_feii_err"]), reference=f["reference"])
+                if f["reference"]:
+                    broad = [c.name for c in x._line_components() if c.role == "broad" and f["reference"] in c.line_names]
+                    m = x.measure(f["reference"], broad)
+                    out.update(line_flux=num(m["flux"]), line_flux_err=num(m["flux_err"]),
+                               line_fwhm=num(m["fwhm"]), line_fwhm_err=num(m["fwhm_err"]))
+                out["continuum"] = num(x.continuum(5100.0 if f["band"][0] > 3500 else 3000.0)[0])
+            except Exception:                                             # noqa: BLE001
+                pass
+            return out
+
+        now = numbers(r)
+        out = {"id": id(r), "errors": bool(errors), "pruned": pruned, "rows": rows,
+               "weak": sum(not d["kept"] for d in rows), "now": now,
+               "before": numbers(before) if before is not None else None,
+               "line": self._pretty(now.get("reference") or "")}
+        if len(self._wf_cache) > 50:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
+
+    def _wf_feii_epochs(self, fits):
+        """Fe II groups of the epochs fitted one by one: how many each has, and how many are not detected."""
+        from ..refine import feii_detections
+        before = self._feii_epochs_before(fits)
+        key = ("feii-epochs", id(fits), id(before))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        pruned = before is not None or any(getattr(f, "feii_pruned", None) for f in fits)
+        rows, errors = [], False
+        for k, f in enumerate(fits):
+            if not hasattr(f, "_feii_components"):
+                continue
+            has = f.cov is not None or f.samples is not None
+            errors = errors or has
+            table = getattr(f, "feii_pruning", None) if pruned else None
+            if table is None and has:
+                table = feii_detections(f)
+            rows.append({"k": k, "name": f.spectrum.name, "date": mjd_to_date(f.spectrum.mjd),
+                         "groups": None if table is None else int(len(table)),
+                         "weak": None if table is None else int((~table.kept).sum())})
+        out = {"id": id(fits), "kind": "fits", "errors": bool(errors), "pruned": bool(pruned),
+               "can_undo": before is not None, "rows": rows,
+               "weak": sum(r["weak"] or 0 for r in rows), "groups": sum(r["groups"] or 0 for r in rows)}
+        if len(self._wf_cache) > 50:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
+
+    # ------------------------------------------------------- pin and compare
+    def wf_pin_code(self, label):
+        """Code that keeps the current single fit under ``label`` to compare later fits with."""
+        if self.result is None or self.wf.get("fit_kind") != "single":
+            raise ValueError("pin needs the fit of one spectrum")
+        label = str(label or "").strip()[:60] or f"fit {len(self.ns.get('pins') or {}) + 1}"
+        return f"pins = {{**globals().get('pins', {{}}), {label!r}: r}}   # keep this fit to compare later fits with\nlist(pins)"
+
+    def wf_pin_alternative_code(self, i):
+        """Code that pins an alternative solution found by the robustness scans."""
+        from ..robustness import Robustness
+        rob = self.ns.get("rob")
+        if not isinstance(rob, Robustness) or not 0 <= int(i) < len(rob.alternatives):
+            raise ValueError("no such alternative solution")
+        a = rob.alternatives[int(i)]
+        label = f"alternative: {a['parameter']} = {a['value']:.4g}"
+        return (f"pins = {{**globals().get('pins', {{}}), {label!r}: rob.alternatives[{int(i)}]['result']}}"
+                "   # another solution found by the scans\nlist(pins)")
+
+    def wf_unpin_code(self, label):
+        if label not in (self.ns.get("pins") or {}):
+            raise ValueError(f"no pinned fit {label!r}")
+        return f"pins = {{k: v for k, v in pins.items() if k != {label!r}}}\nlist(pins)"
+
+    def wf_compare_code(self, label):
+        """Code that compares a pinned fit with the current one."""
+        if label not in (self.ns.get("pins") or {}):
+            raise ValueError(f"no pinned fit {label!r}")
+        if self.result is None or self.wf.get("fit_kind") != "single":
+            raise ValueError("compare needs a current fit of one spectrum")
+        return (f"# compare fits\ncmp = fa.compare_fits(pins[{label!r}], r, labels=({label!r}, \"current\"))\n"
+                "print(cmp.summary())\ncmp.table.round(4)")
+
+    def wf_compare(self):
+        """Pinned fits and the last comparison with the current fit, for the Results page."""
+        from ..fitcompare import FitComparison
+        from ..result import FitResult
+        r = self.result
+        pins = {k: v for k, v in (self.ns.get("pins") or {}).items() if isinstance(v, FitResult)}
+        if r is None or self.wf.get("fit_kind") != "single":
+            return None
+        cmp = self.ns.get("cmp")
+        cmp = cmp if isinstance(cmp, FitComparison) and cmp.b is r else None
+        key = ("compare", id(r), tuple((k, id(v)) for k, v in pins.items()), id(cmp))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and np.isfinite(v) else None
+        same = lambda p: p.spectrum.wave.size == r.spectrum.wave.size and np.allclose(p.spectrum.wave, r.spectrum.wave)
+        out = {"pins": [{"label": k, "chi2": num(v.chi2), "rchi2": num(v.rchi2), "current": v is r, "same": bool(same(v)),
+                         "n_free": sum(1 for p in v.model.params if p.free),
+                         "components": ", ".join(c.name for c in v.model.components)} for k, v in pins.items()],
+               "cmp": None}
+        if cmp is not None:
+            la, lb = cmp.labels
+            rows = []
+            for d in cmp.table.to_dict("records"):
+                rows.append({"label": self._pretty(d["quantity"]), "a": num(d[la]), "ea": num(d[la + " error"]),
+                             "b": num(d[lb]), "eb": num(d[lb + " error"]), "diff": num(d["difference"]),
+                             "rel": num(d["relative"]), "sig": num(d["in errors"]),
+                             "unit": "km/s" if d["quantity"].split()[-1] in ("FWHM", "sigma", "shift") else ""})
+            s = cmp.stats
+            out["cmp"] = {"id": id(cmp), "labels": [la, lb], "line": cmp.line, "rows": rows, "warnings": list(cmp.warnings),
+                          "stats": {"chi2": [num(v) for v in s["chi2"]], "dchi2": num(s["dchi2"]), "n_pixels": s["n_pixels"],
+                                    "n_free": s["n_free"], "rms": num(s["rms_diff"])}}
+        if len(self._wf_cache) > 50:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
+
+    def wf_compare_figure(self, fmt="png"):
+        """The comparison figure (both fits, the change of each component, both broad profiles)."""
+        from ..fitcompare import FitComparison
+        cmp = self.ns.get("cmp")
+        if not isinstance(cmp, FitComparison):
+            return None
+        import io
+        from matplotlib.figure import Figure
+        from ..plotting import paper_style
+        with paper_style():
+            fig = cmp.plot(fig=Figure(figsize=(10, 5.2)))
+            buf = io.BytesIO()
+            fig.savefig(buf, format=fmt, dpi=150, bbox_inches="tight")
+        return buf.getvalue()
+
+    # ------------------------------------------------- correlations over epochs
+    def _epochs_name(self):
+        kind = self.wf.get("fit_kind")
+        if kind == "joint" and self.multi is not None:
+            return "me"
+        if kind == "fits" and self.ns.get("fits") is not None:
+            return "fits"
+        raise ValueError("correlations need a fit of several epochs")
+
+    def wf_correlations_code(self):
+        """Code that measures every epoch (fa.epoch_table)."""
+        name = self._epochs_name()
+        self._ep_source = id(self.multi if name == "me" else self.ns.get("fits"))
+        return f"# correlations\nep = fa.epoch_table({name})   # broad lines, continuum, R_FeII, [OIII] per epoch\nep.shape"
+
+    def _epoch_table(self):
+        """The measured epochs of the current fit (None if they are not measured or the fit has changed since)."""
+        import pandas as pd
+        kind = self.wf.get("fit_kind")
+        source = self.multi if kind == "joint" else self.ns.get("fits") if kind == "fits" else None
+        ep = self.ns.get("ep")
+        if source is None or getattr(self, "_ep_source", None) != id(source):
+            return None
+        return ep if isinstance(ep, pd.DataFrame) and "mjd" in ep else None
+
+    def _epoch_view(self, lag=0.0, off=()):
+        """The epoch table with the continuum taken ``lag`` days earlier and the epochs ``off`` left out."""
+        from ..correlations import shift_continuum
+        ep = self._epoch_table()
+        if ep is None:
+            return None
+        lag = float(lag or 0.0)
+        out = shift_continuum(ep, lag) if lag else ep
+        return out.drop(index=[k for k in off if k in out.index]).reset_index(drop=True) if off else out
+
+    def wf_correlations(self):
+        """For the state: whether the epochs are measured (None: not a fit of at least three epochs)."""
+        res = self.wf_results() or []
+        if self.wf.get("fit_kind") not in ("joint", "fits") or len(res) < 3:
+            return None
+        ep = self._epoch_table()
+        return {"id": id(ep) if ep is not None else 0, "n_epochs": len(res)}
+
+    def wf_correlations_data(self):
+        """The epoch table for the browser, which computes the correlations and fits itself (sent once)."""
+        from ..correlations import _use_log, default_columns, plain_label, quantity_columns
+        ep = self._epoch_table()
+        if ep is None:
+            return None
+        held = self._wf_cache.get("corrdata")   # holds the table, so its id cannot be reused by a newer one
+        if held is not None and held[0] is ep:
+            return held[1]
+        arr = lambda c: [float(v) if np.isfinite(v) else None for v in ep[c].to_numpy(float)] if c in ep else [None] * len(ep)
+        cols = quantity_columns(ep)
+        lines = default_columns(ep)
+        extra = [c for c in cols if c == "R_FeII" or c.startswith("[")]
+        shift = [c for c in cols if c.endswith("_shift") and c.replace("_shift", "_flux") in lines]
+        out = {"id": id(ep), "t": arr("mjd"), "names": [str(v) for v in ep["name"]],
+               "dates": [mjd_to_date(v) for v in ep["mjd"].to_numpy(float)],
+               "columns": [{"name": c, "label": plain_label(c), "log": _use_log(ep, c), "v": arr(c), "e": arr(c + "_err")}
+                           for c in cols],
+               "map": [c for c in cols if c in lines or c in extra or c in shift]}
+        self._wf_cache["corrdata"] = (ep, out)
+        return out
+
+    @staticmethod
+    def _view_code(name, lag, off):
+        lines = [f"ep = fa.epoch_table({name})"]
+        if lag:
+            lines.append(f"ep = fa.correlations.shift_continuum(ep, {lag:g})   # the continuum {lag:g} days earlier")
+        if off:
+            lines.append(f"ep = ep.drop(index={sorted(off)!r}).reset_index(drop=True)   # epochs left out")
+        return lines
+
+    def wf_correlations_figure(self, cols, fmt="png", dpi=None, lag=0.0, off=()):
+        from matplotlib.figure import Figure
+        from ..plotting import plot_correlations
+        ep = self._epoch_view(lag, off)
+        if ep is None:
+            return None
+        cols = [c for c in cols if c in ep.columns] or None
+        with self._render_lock:
+            fig = plot_correlations(ep, cols, fig=Figure())
+            return self._fig_bytes(fig, fmt, dpi or (150 if fmt == "png" else 300))
+
+    def wf_relation_figure(self, x, y, fmt="png", dpi=None, lag=0.0, off=()):
+        from matplotlib.figure import Figure
+        from ..plotting import plot_relation
+        ep = self._epoch_view(lag, off)
+        if ep is None or x not in ep.columns or y not in ep.columns:
+            return None
+        with self._render_lock:
+            fig, _ = plot_relation(ep, x, y, fig=Figure())
+            return self._fig_bytes(fig, fmt, dpi or (150 if fmt == "png" else 300))
+
+    def wf_relation_code(self, x, y, lag=0.0, off=()):
+        return "\n".join(["from fantasy_agn.plotting import paper_style, plot_relation", ""] +
+                         self._view_code(self._epochs_name(), lag, off) +
+                         ["with paper_style():", f"    fig, fit = plot_relation(ep, {x!r}, {y!r})   # fit: slope b, scatter, errors",
+                          '    fig.savefig("relation.pdf")'])
+
+    def wf_correlations_figure_code(self, cols, lag=0.0, off=()):
+        return "\n".join(["from fantasy_agn.plotting import paper_style, plot_correlations", ""] +
+                         self._view_code(self._epochs_name(), lag, off) +
+                         ["with paper_style():", f"    fig = plot_correlations(ep, {list(cols)!r})" if cols else "    fig = plot_correlations(ep)",
+                          '    fig.savefig("correlations.pdf")'])
+
     # -------------------------------------------- light curves, reverberation
     def wf_lightcurve(self):
         """Light curves of the joint fit (broad-line flux, FWHM, EW and continuum per epoch)."""
         me = self.multi
-        if me is None or self.wf.get("fit_kind") not in ("joint", None):
+        if me is None or self.wf.get("fit_kind") not in ("joint", "fits", None):
             return None
         if not me.has_light_curve():
             self.multi_state()                       # starts the background computation
             return {"computing": True}
-        key = ("lc", id(me))
+        fe = me.__dict__.get("_feii_lc")
+        if fe is None:
+            self._feii_job(me)                       # computed in the background
+        key = ("lc", id(me), fe is not None)
         if key in self._wf_cache:
             return self._wf_cache[key]
         from ..plotting import plain_line
@@ -900,34 +2065,136 @@ class StepsMixin:
                                    "unit": unit, "y": val(c), "err": val(c + "_err")})
             if c.startswith("cont") and not c.endswith("_err") and c + "_err" in t:
                 series.append({"name": c, "line": c, "label": f"continuum {c[4:]} \u00c5", "kind": "flux",
-                               "unit": "", "y": val(c), "err": val(c + "_err")})
+                               "unit": "", "y": val(c), "err": val(c + "_err"), "source": "fit"})
+        try:                                         # measured on the data in line-free windows (Shen et al. 2011)
+            w = me.window_continuum()
+            for c in w.columns:
+                if c.startswith("win") and not c.endswith("_err") and np.isfinite(w[c].to_numpy(float)).sum() >= 3:
+                    lo, hi = c[3:].split("_")
+                    wv = lambda col: [float(v) if np.isfinite(v) else None for v in w[col].to_numpy(float)]
+                    series.append({"name": c, "line": "cont" + c, "label": f"continuum {lo}\u2013{hi} \u00c5", "kind": "flux",
+                                   "unit": "", "y": wv(c), "err": wv(c + "_err"), "source": "window", "window": [float(lo), float(hi)]})
+        except Exception:
+            pass
         lines = sorted({d["line"] for d in series if not d["line"].startswith("cont")},
                        key=lambda ln: [d["line"] for d in series].index(ln))
+        try:                                         # the Fe II flux, when the model has Fe II
+            y = np.array([d["flux"] for d in fe or []], float)
+            if len(y) == len(mjd) and np.isfinite(y).any() and np.nanmax(np.abs(y)) > 0:
+                fix = lambda a: [float(v) if np.isfinite(v) else None for v in a]
+                series.append({"name": "feii", "line": "feii", "label": "Fe II", "kind": "flux", "unit": "",
+                               "y": fix(y), "err": fix(np.array([d.get("flux_err", np.nan) for d in fe], float))})
+        except Exception:
+            pass
         out = {"mjd": [float(v) if np.isfinite(v) else None for v in mjd], "t0": float(t0),
                "dates": [mjd_to_date(v) for v in mjd], "series": series, "lines": lines,
-               "names": [e.spectrum.name for e in me.epochs]}
+               "names": [e.spectrum.name for e in me.epochs], "z": float(me.epochs[0].spectrum.z or 0.0),
+               "lag_range": self._lag_range(t, mjd), "feii_pending": fe is None}
+        self._wf_cache[key] = out
+        return out
+
+    @staticmethod
+    def _lag_range(t, mjd):
+        """The lags to search, as me.reverberation() does by default: +-5x the R-L lag, 60 d to half the baseline."""
+        ok = np.isfinite(mjd)
+        lmax = 0.5 * (mjd[ok].max() - mjd[ok].min()) if ok.sum() > 1 else 100.0
+        lcol = [c for c in t.columns if c.startswith("logL") and not c.endswith("_err")]
+        if lcol and np.isfinite(t[lcol[0]].to_numpy(float)).any():
+            tau = 10 ** (1.527 + 0.533 * (np.nanmedian(t[lcol[0]].to_numpy(float)) - 44.0))
+            lmax = min(lmax, max(5 * tau, 60.0))
+        lmax = float(np.ceil(max(lmax, 10.0)))
+        return [-lmax, lmax]
+
+    def wf_lagpair(self, a, b):
+        """The lag of light curve b behind a by every method, with each method's curve (Results > Light curves)."""
+        L = self.wf_lightcurve()
+        if not L or "series" not in L:
+            return None
+        S = {d["name"]: d for d in L["series"]}
+        if a not in S or b not in S or a == b:
+            raise ValueError("unknown light curve")
+        key = ("lagpair", id(self.multi), a, b)
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        from .. import rm
+        arr = lambda v: np.array([np.nan if x is None else x for x in v], float)
+        t, fa, ea, fb, eb = arr(L["mjd"]), arr(S[a]["y"]), arr(S[a]["err"]), arr(S[b]["y"]), arr(S[b]["err"])
+        ok = np.isfinite(t) & np.isfinite(fa) & np.isfinite(fb) & np.isfinite(ea) & np.isfinite(eb) & (ea > 0) & (eb > 0)
+        t, fa, ea, fb, eb = t[ok], fa[ok], ea[ok], fb[ok], eb[ok]
+        o = np.argsort(t)
+        t, fa, ea, fb, eb = t[o], fa[o], ea[o], fb[o], eb[o]
+        lr = tuple(L["lag_range"])
+        out = {"a": a, "b": b, "lag_range": list(lr), "n": int(t.size), "methods": [], "zdcf": None}
+        if t.size < 5:
+            out["error"] = "fewer than 5 epochs with both light curves"
+            return out
+        num = lambda v: round(float(v), 4) if np.isfinite(v) else None
+        rng = np.random.default_rng(0)
+        runs = [("ICCF", "iccf", "r", lambda: rm.ccf_lag(t, fa, ea, t, fb, eb, lag_range=lr, n_mc=300)),
+                ("von Neumann", "vn", "statistic", lambda: rm.vn_lag(t, fa, ea, t, fb, eb, lr, n_mc=200)),
+                ("ZDCF", "zdcf", None, lambda: rm.zdcf_lag(t, fa, ea, t, fb, eb, lr, n_mc=50)),
+                ("DRW", "drw", "posterior", lambda: rm.gp_lag((t, fb, eb), spec_continuum=(t, fa, ea), lag_range=lr))]
+        for name, k, cy, fn in runs:
+            try:
+                r = fn()
+            except Exception:
+                continue
+            if not np.isfinite(r.get("tau_cen", np.nan)):
+                continue
+            smp = np.asarray(r.get("samples", []), float)
+            smp = smp[np.isfinite(smp)]
+            if smp.size > 300:
+                smp = rng.choice(smp, 300, replace=False)
+            m = {"key": k, "method": name, "tau": num(r["tau_cen"]), "lo": num(r["tau_err_lo"]), "hi": num(r["tau_err_hi"]),
+                 "samples": [round(float(v), 1) for v in smp]}
+            if cy and cy in r and "lags" in r:
+                lg, y = np.asarray(r["lags"], float), np.asarray(r[cy], float)
+                fin = y[np.isfinite(y)]
+                if k == "vn" and fin.size:
+                    y = y / np.median(fin)               # the statistic relative to its median
+                st = max(1, len(lg) // 200)
+                m["curve"] = {"lags": [round(float(v), 2) for v in lg[::st]], "y": [num(v) for v in y[::st]]}
+            out["methods"].append(m)
+        try:
+            z = rm.zdcf(t, fa, ea, t, fb, eb)
+            z = z[(z.tau >= lr[0]) & (z.tau <= lr[1])]
+            col = lambda c: [num(v) for v in z[c].to_numpy(float)]
+            out["zdcf"] = {"tau": col("tau"), "sl": col("-sig(tau)"), "sh": col("+sig(tau)"), "dcf": col("dcf"),
+                           "el": col("-err(dcf)"), "eh": col("+err(dcf)"), "n": [int(v) for v in z["#bin"]]}
+        except Exception:
+            pass
+        if len(self._wf_cache) > 80:
+            self._wf_cache.clear()
         self._wf_cache[key] = out
         return out
 
     def wf_reverb_code(self, line="Hb", n_mc=1000, methods=("iccf", "vn", "drw"), detrend=False,
-                       mjd_min=None, mjd_max=None):
+                       mjd_min=None, mjd_max=None, primary=None, window=None):
         if self.multi is None:
-            raise ValueError("fit the epochs jointly first")
+            raise ValueError("fit several epochs first")
         if not str(line).replace("[", "").replace("]", "").isalnum():
             raise ValueError("unknown line")
         methods = tuple(m for m in methods if m in ("iccf", "vn", "zdcf", "drw"))
         if not methods:
             raise ValueError("choose at least one lag method")
+        if primary not in methods:
+            primary = "iccf" if "iccf" in methods else methods[0]
         opts = [repr(str(line)), f"n_mc={int(n_mc)}"]
         if methods != ("iccf", "vn", "drw"):
             opts.append(f"methods={methods!r}")
-            if "iccf" not in methods:
-                opts.append(f"primary={methods[0]!r}")
+        if primary != "iccf":
+            opts.append(f"primary={primary!r}")
+        head = ""
+        if window:                                   # the continuum measured in a line-free window
+            lo, hi = (float(v) for v in window)
+            col = f"win{lo:g}_{hi:g}"
+            head = (f"w = me.window_continuum([({lo:g}, {hi:g})])   # mean of data minus lines and Fe II in the window\n")
+            opts.insert(1, f"continuum=(w.mjd, w.{col}, w.{col}_err)")
         if detrend:
             opts.append("detrend=True")
         if mjd_min not in (None, "") and mjd_max not in (None, ""):
             opts.append(f"mjd_range=({float(mjd_min):g}, {float(mjd_max):g})")
-        return ("# reverberation\nrm = me.reverberation(" + ", ".join(opts) + ")   # lag, rms spectrum, mass\n"
+        return ("# reverberation\n" + head + "rm = me.reverberation(" + ", ".join(opts) + ")   # lag, rms spectrum, mass\n"
                 "print(rm.lag_table().round(2).to_string(index=False))\nrm")
 
     def wf_reverb(self):
@@ -944,6 +2211,10 @@ class StepsMixin:
                 lags.append({"method": str(q.method), "lag": f"{q.lag_rest:.1f} (\u2212{q.err_lo:.1f} +{q.err_hi:.1f})",
                              "obs": fmt(q.lag_obs), "r_max": fmt(q.r_max),
                              "outside": f"{100 * q.frac_outside_peak:.0f}%" if np.isfinite(q.frac_outside_peak) else "\u2014",
+                             "sig": (None if not np.isfinite(q.significance) else
+                                     (f"> {q.significance:.1f}\u03c3" if q.p_side >= 1 else f"{q.significance:.1f}\u03c3")),
+                             "sig_value": float(q.significance) if np.isfinite(q.significance) else None,
+                             "p_side": float(q.p_side) if np.isfinite(q.p_side) else None,
                              "adopted": bool(q.adopted)})
         except Exception:
             pass
@@ -970,14 +2241,42 @@ class StepsMixin:
         res = self.wf_results()
         if not res or len(res) < 2:
             return None
-        if self.multi is not None and self.wf.get("fit_kind") in ("joint", None):
-            t = self.multi.light_curve()
-            cols = [c for c in t.columns if not c.endswith("_err") and not c.endswith("_corr")]
+        if self.multi is not None and self.wf.get("fit_kind") in ("joint", "fits", None):
+            from ..correlations import plain_label
+            me = self.multi
+            t = me.light_curve()
+            cols = [c for c in t.columns if not c.endswith("_err") and not c.endswith("_corr") and c != "mjd"]
+            # the flux scale of each epoch (the product of the intercalibration), when it was fitted
+            scales = [(getattr(e, "scale", None), getattr(e, "scale_err", None)) for e in me.epochs]
+            has_scale = len(scales) == len(t) and any(v is not None and abs(v - 1.0) > 1e-12 for v, _ in scales)
+            labels = {"epoch": "Epoch", "name": "Spectrum"}
+            head = [labels.get(c) or plain_label(c).replace("F_λ", "Fλ") for c in cols]
+            at = cols.index("name") + 1 if "name" in cols else 1
+            offsets = [(getattr(e, "offset", None), getattr(e, "offset_err", None)) for e in me.epochs]
+            has_offset = len(offsets) == len(t) and any(v is not None for v, _ in offsets)
+            broad = [(getattr(e, "broadening", None), getattr(e, "broadening_err", None)) for e in me.epochs]
+            has_broad = len(broad) == len(t) and any(v is not None for v, _ in broad)
+            head[at:at] = (["Date", "MJD"] + (["Flux scale"] if has_scale else []) + (["Offset (km/s)"] if has_offset else [])
+                           + (["Broadening (km/s)"] if has_broad else []))
             rows = []
-            for d in t.to_dict("records"):
-                rows.append([(_fmt_err(d[c], d.get(c + "_err")) if isinstance(d[c], (float, np.floating))
-                              else str(d[c])) for c in cols])
-            return {"columns": cols, "rows": rows}
+            for k, d in enumerate(t.to_dict("records")):
+                row = [(_fmt_err(d[c], d.get(c + "_err")) if isinstance(d[c], (float, np.floating))
+                        else str(d[c])) for c in cols]
+                mjd = d.get("mjd")
+                known = mjd is not None and np.isfinite(mjd)
+                extra = [mjd_to_date(mjd) or "" if known else "", f"{mjd:.2f}" if known else ""]
+                if has_scale:
+                    v, e = scales[k]
+                    extra.append("" if v is None else f"{v:.3f}" + (f" ± {e:.3f}" if e and np.isfinite(e) and e > 0 else " (reference)" if abs(v - 1) < 1e-12 else ""))
+                if has_offset:
+                    v, e = offsets[k]
+                    extra.append("" if v is None else f"{round(v, 1) + 0.0:+.1f}" + (f" ± {e:.1f}" if e and np.isfinite(e) and e > 0 else " (reference)" if v == 0 else ""))
+                if has_broad:
+                    v, e = broad[k]
+                    extra.append("" if v is None else f"{round(v) + 0.0:+.0f}" + (f" ± {e:.0f}" if e and np.isfinite(e) and e > 0 else " (reference)" if v == 0 else ""))
+                row[at:at] = extra
+                rows.append(row)
+            return {"columns": head, "rows": rows}
         rows, cols = [], ["epoch", "date", "name", "rchi2"]
         for k, (name, date, r, _) in enumerate(res):
             vals = {"epoch": str(k), "date": date or "", "name": name,
@@ -1082,14 +2381,102 @@ class StepsMixin:
                                                                   "xerr": val("log_nii_ha_err"), "yerr": None}
         return out
 
-    def classify_state(self, k=0):
-        cl = self._classifications()
+    def wf_catalogs_code(self):
+        """Code of the catalog lookup of what was read: every file of a sample, or the one object."""
+        raw, files = self.raw, self.ns.get("files")
+        if not raw:
+            raise ValueError("read a spectrum first")
+        if self.wf.get("mode") == "sample" and isinstance(files, list) and len(files) > len(raw):
+            return "# catalogs\ncatalogs = fa.lookup_catalogs(files)\ncatalogs"
+        if self.wf.get("mode") in ("sample", "classify") and len(raw) > 1:
+            return "# catalogs\ncatalogs = fa.lookup_catalogs(raw)\ncatalogs"
+        if raw[0].ra is None or raw[0].dec is None:
+            raise ValueError("this spectrum has no sky position, so the catalogs cannot be searched")
+        return "# catalogs\ncatalogs = fa.lookup_catalogs(raw[0])\ncatalogs"
+
+    def _catalog_view(self):
+        """The lookup of what is loaded, with the disagreements for the classes known so far; None if there is none."""
+        cat, raw = self.ns.get("catalogs"), self.raw
+        if not raw or not isinstance(cat, pd.DataFrame) or cat.empty or "name" not in cat:
+            return None
+        if str(cat["name"].iloc[0]) != str(raw[0].name):
+            return None
+        sm = self.sample if self.wf.get("fit_kind") == "sample" else None
+        if sm is not None and self._sample_catalogs(sm) is not None:
+            return self._sample_catalogs(sm)
+        cl = self.__dict__.get("_final_kept", (None, None))[1] or self._classifications()   # final classes once computed
+        key = (id(cat), id(cl[0]) if cl else 0, len(cl) if cl else 0)
+        kept = self.__dict__.get("_catalog_kept")
+        if kept is None or kept[0] != key:
+            view = cat
+            if cl and len(cl) >= len(cat):
+                from ..catalogs import with_fit_classes
+                view = with_fit_classes(cat, None, [c.label for c in cl[:len(cat)]])
+            kept = self._catalog_kept = (key, view)
+        return kept[1]
+
+    def wf_catalog(self):
+        """For the state: what the lookup of the loaded spectra found, in short."""
+        raw = self.raw
+        if not raw:
+            return None
+        files = self.ns.get("files")
+        n = len(files) if self.wf.get("mode") == "sample" and isinstance(files, list) else (
+            len(raw) if self.wf.get("mode") in ("sample", "classify") else 1)
+        out = {"n": n, "has_coords": any(s.ra is not None and s.dec is not None for s in raw), "done": False}
+        cat = self._catalog_view()
+        if cat is None:
+            return out
+        bad = np.nonzero(cat["n_disagreements"].to_numpy() > 0)[0]
+        found = int(cat["catalog_name"].notna().sum()) if "catalog_name" in cat else 0
+        out.update(done=True, stamp=id(cat), n=len(cat), found=found, flagged=[{"k": int(k), "name": str(cat["name"].iloc[k])}
+                                                                               for k in bad[:60]], n_flagged=len(bad))
+        if len(cat) == 1 and isinstance(cat["disagreements"].iloc[0], str):
+            out["text"] = cat["disagreements"].iloc[0]
+        return out
+
+    def wf_catalog_row(self, k=0):
+        """Everything the lookup found for object ``k``."""
+        cat = self._catalog_view()
+        if cat is None:
+            return None
+        k = min(max(int(k), 0), len(cat) - 1)
+        return {"k": k, **{c: (v.item() if hasattr(v, "item") else v) for c, v in cat.iloc[k].items()
+                           if v is not None and not (isinstance(v, (float, np.floating)) and not np.isfinite(v))}}
+
+    def wf_sky(self, k=0, fov=60):
+        """Image of the sky around object ``k`` of the lookup, as a data URL."""
+        row = self.wf_catalog_row(k)
+        if not row or "ra" not in row:
+            return {"image": None, "survey": None}
+        fov = min(max(float(fov), 10.0), 600.0)
+        key = ("sky", round(row["ra"], 5), round(row["dec"], 5), fov)
+        if key not in self._wf_cache:
+            import base64
+            from ..catalogs import sky_image
+            body, survey = sky_image(row["ra"], row["dec"], fov)
+            self._wf_cache[key] = {"image": "data:image/jpeg;base64," + base64.b64encode(body).decode() if body else None,
+                                   "survey": survey, "fov": fov}
+        return self._wf_cache[key]
+
+    def _class_sets(self, stage="final"):
+        """(classifications shown, {name: preliminary}, stage): the final classes (from the fit)
+        when there is a fit and ``stage`` is 'final', else the preliminary ones."""
+        prelim = self._classifications()
+        final = self._final_classifications() if stage == "final" else None
+        pmap = {c.spectrum.name: c for c in (prelim or [])}
+        if final:
+            return final, pmap, "final"
+        return prelim, pmap, "preliminary"
+
+    def classify_state(self, k=0, stage="final"):
+        cl, pmap, stage = self._class_sets(stage)
         if cl is None:
             return None
         k = min(max(int(k), 0), len(cl) - 1)
         c = cl[k]
-        fits = self._fit_diagram_points()
-        key = ("cstate", id(c), len(cl), fits[0])
+        fits = self._fit_diagram_points() if stage == "preliminary" else ((), {})
+        key = ("cstate", id(c), len(cl), fits[0], stage)
         if key in self._wf_cache:
             return self._wf_cache[key]
         rows = []
@@ -1097,14 +2484,32 @@ class StepsMixin:
             if isinstance(v, (int, float, np.floating)) and not isinstance(v, bool) and np.isfinite(v):
                 rows.append({"name": name, "value": f"{v:.4g}"})
         s = c.spectrum
+        pre = pmap.get(s.name) if stage == "final" else None
+
+        def points(x):
+            own = self._diagram_point(x.measurements)
+            if stage == "final":                     # every point is a value of the fit
+                return {d: (dict(p, fit=True) if p else None) for d, p in own.items()}
+            return self._merge_points(own, fits[1].get(x.spectrum.name))
         out = {"k": k, "label": c.label, "uncertain": bool(c.uncertain), "reason": str(c.reason or ""),
-               "name": s.name,
+               "name": s.name, "stage": stage,
+               "narrow_class": c.measurements.get("narrow_class") if stage == "final" else None,
+               "preliminary": ({"label": pre.label, "uncertain": bool(pre.uncertain), "reason": str(pre.reason or "")}
+                               if pre is not None else None),
                "labels": [{"k": i, "name": x.spectrum.name, "label": x.label, "uncertain": bool(x.uncertain),
-                           "date": mjd_to_date(x.spectrum.mjd),
-                           "points": self._merge_points(self._diagram_point(x.measurements), fits[1].get(x.spectrum.name))}
+                           "date": mjd_to_date(x.spectrum.mjd), "points": points(x),
+                           "preliminary": pmap[x.spectrum.name].label if stage == "final" and x.spectrum.name in pmap else None}
                           for i, x in enumerate(cl)],
-               "rows": rows, "diagrams": self.diagram_curves(),
-               "points": self._merge_points(self._diagram_point(c.measurements), fits[1].get(s.name))}
+               "rows": rows, "diagrams": self.diagram_curves(), "points": points(c)}
+        # the steps of the preliminary classification (its own fits), when it was made
+        c = pre if stage == "final" else c
+        if c is None:
+            out.update(starlight=None, halpha=None, lines_fit=None)
+            if len(self._wf_cache) > 80:
+                self._wf_cache.clear()
+            self._wf_cache[key] = out
+            return out
+        s = c.spectrum
         # 1: the spectrum with the stellar (+ power-law) fit and the masked lines
         try:
             st = c.stellar_fit
@@ -1150,19 +2555,23 @@ class StepsMixin:
         self._wf_cache[key] = out
         return out
 
-    def classify_figure(self, k=0, kind="steps", fmt="png"):
-        """Publication figure of classification ``k``: 'steps' (plot_steps) or 'diagrams' (plot)."""
+    def classify_figure(self, k=0, kind="steps", fmt="png", stage="final"):
+        """Publication figure of classification ``k``: 'steps' (plot_steps) or 'diagrams' (plot);
+        the final classes (from the fit) when there is a fit, else the preliminary ones."""
         from matplotlib.figure import Figure
-        cl = self._classifications()
+        cl, pmap, stage = self._class_sets(stage)
         if cl is None:
             return None
         k = min(max(int(k), 0), len(cl) - 1)
-        key = ("cfig", id(cl[k]), kind, fmt)
+        c = cl[k]
+        if kind != "diagrams" and stage == "final" and c.spectrum.name in pmap:
+            c = pmap[c.spectrum.name]               # the steps: those of the preliminary classification
+        key = ("cfig", id(c), kind, fmt, stage)
         if key in self._wf_cache:
             return self._wf_cache[key]
         with self._render_lock:
-            fig = (cl[k].plot(fig=Figure(), others=cl if len(cl) > 1 else None, highlight=False) if kind == "diagrams"
-                   else cl[k].plot_steps(fig=Figure()))
+            fig = (c.plot(fig=Figure(), others=cl if len(cl) > 1 else None, highlight=False) if kind == "diagrams"
+                   else c.plot_steps(fig=Figure()))
             data = self._fig_bytes(fig, fmt, 150)
         self._wf_cache[key] = data
         return data
@@ -1198,8 +2607,9 @@ class StepsMixin:
         key = ("sample", id(sm), k)
         if key in self._wf_cache:
             return self._wf_cache[key]
-        out = {"k": k, "name": str(row.get("name", f"row {k}")), "cls": str(row.get("cls", "") or ""),
-               "preset": str(row.get("preset", "") or "")}
+        text = lambda v: v if isinstance(v, str) else ""          # a missing value in the catalog is NaN
+        out = {"k": k, "name": str(row.get("name", f"row {k}")), "cls": text(row.get("cls")),
+               "preset": text(row.get("preset"))}
         err = row.get("error") if "error" in sm.table else None
         if isinstance(err, str) and err:
             out["error"] = err
@@ -1231,8 +2641,13 @@ class StepsMixin:
             return None
         t = sm.table
         col = lambda c: [float(v) if np.isfinite(v) else None for v in t[c].astype(float)] if c in t else None
+        from ..plotting import MS_TYPES, main_sequence_grid
         return {"names": [str(v) for v in t["name"]] if "name" in t else None,
-                "cls": [str(v) for v in t["cls"]] if "cls" in t else None,
+                "cls": [v if isinstance(v, str) else "" for v in t["cls"]] if "cls" in t else None,
+                "r_feii": col("R_FeII"), "hb_fwhm": col("broad Hb FWHM"),
+                "r_feii_all": col("R_FeII all groups"), "hb_fwhm_all": col("broad Hb FWHM all groups"),
+                "ms_grid": [{"x": list(x), "y": list(y)} for x, y in main_sequence_grid()],
+                "ms_types": [{"t": name, "x": x, "y": y} for name, x, y in MS_TYPES],
                 "nii": col("log [NII]/Ha"), "oiii": col("log [OIII]/Hb"),
                 "fwhm": col("broad Hb FWHM") or col("broad Ha FWHM"), "rchi2": col("rchi2"),
                 "nii_curves": self.diagram_curves()["nii"]}
@@ -1395,28 +2810,96 @@ class StepsMixin:
                   "n": len(d["components"]), "roles": sorted(set(d["roles"]))} for d in fitted_lines(r)]
         return {"lines": sorted(lines, key=lambda d: d["wave"]), "main": main_line(r)}
 
-    def wf_lines_figure(self, k=0, lines=(), opts=None, fmt="png"):
-        """
-        A grid of the chosen lines of fit ``k`` (plotting.plot_lines), one panel each; options:
-        velocity (0: wavelength axis), residuals, info (FWHM and flux), others (the other lines in
-        each window), ncols (default: from the number of lines), width ('single', 'double').
-        """
-        from matplotlib.figure import Figure
-        from ..plotting import fitted_lines, plot_lines
-        r = self._wf_fit(k)[2]
+    def _lines_kwargs(self, r, lines, opts):
+        """(function name, keyword arguments) of the line figure: a grid of panels or an overlay of profiles."""
+        from ..plotting import WIDTHS, fitted_lines
         opts = dict(opts or {})
         known = {d["line"] for d in fitted_lines(r)}
         lines = [ln for ln in lines if ln in known]
         if not lines:
             raise ValueError("choose at least one fitted line")
         on = lambda key, default="1": str(opts.get(key, default)) != "0"
+        width = opts.get("width") if opts.get("width") in WIDTHS else None
+        style = "sans-serif" if opts.get("font") == "sans-serif" else True
+        win = opts.get("window")
+        window = min(max(float(win), 500.0), 40000.0) if win not in (None, "") else None
+        if opts.get("mode") == "overlay" and opts.get("across") == "epochs" and len(self.wf_results() or []) > 1:
+            eps = [(name, date, e) for name, date, e, _ in self.wf_results() if e is not None]
+            ln = lines[0]
+            broad_in_all = all(any(c.role == "broad" and ln in c.line_names for c in e._line_components()) for _, _, e in eps)
+            kw = dict(lines=ln, labels=[date or name for name, date, _ in eps],
+                      which="broad" if opts.get("which", "broad") == "broad" and broad_in_all else "all",
+                      normalize=on("normalize"), data=on("data"), mark_fwhm=on("mark_fwhm"), width=width or "single",
+                      style=style, legend=on("legend"))
+            if window:
+                kw["window"] = window
+            kw["results"] = [e for _, _, e in eps]
+            return "plot_profiles_epochs", kw
+        if opts.get("mode") == "overlay":
+            broad = {d["line"] for d in fitted_lines(r) if "broad" in d["roles"]}
+            which = "broad" if opts.get("which", "broad") == "broad" and all(ln in broad for ln in lines) else "all"
+            kw = dict(lines=lines, which=which, normalize=on("normalize"), data=on("data"),
+                      mark_fwhm=on("mark_fwhm"), width=width or "single", style=style, legend=on("legend"))
+            if window:
+                kw["window"] = window
+            return "plot_profiles", kw
         nc = str(opts.get("ncols", ""))
-        ncols = min(int(nc), len(lines)) if nc.isdigit() and int(nc) > 0 else None
-        width = opts.get("width") if opts.get("width") in ("single", "double") else "double"
+        kw = dict(lines=lines, ncols=min(int(nc), len(lines)) if nc.isdigit() and int(nc) > 0 else None,
+                  velocity=on("velocity"), width=width or "double", residuals=on("residuals"), info=on("info"),
+                  others=on("others", "0"), mark_fwhm=on("mark_fwhm"), window=window, style=style,
+                  legend=on("legend"), sharey=on("sharey", "0"))
+        return "plot_lines", kw
+
+    def wf_lines_figure(self, k=0, lines=(), opts=None, fmt="png", dpi=None):
+        """
+        The chosen lines of fit ``k``: a grid of panels (plotting.plot_lines) or, with mode='overlay', the profiles
+        overlaid and scaled to their peaks (plotting.plot_profiles). Options: velocity (0: wavelength axis),
+        residuals, info (FWHM, sigma and flux), others (the other lines in each window), mark_fwhm, window (km/s),
+        ncols, width ('single', 'double' or a journal column), and for the overlay which ('broad', 'all'),
+        normalize, data.
+        """
+        from matplotlib.figure import Figure
+        from .. import plotting
+        r = self._wf_fit(k)[2]
+        func, kw = self._lines_kwargs(r, lines, opts)
         with self._render_lock:
-            fig = plot_lines(r, lines, fig=Figure(), ncols=ncols, velocity=on("velocity"), width=width,
-                             residuals=on("residuals"), info=on("info"), others=on("others", "0"))
-            return self._fig_bytes(fig, fmt, 150 if fmt == "png" else 300)
+            if func == "plot_profiles_epochs":
+                fig = plotting.plot_profiles(kw.pop("results"), fig=Figure(), **kw)
+            elif func == "plot_profiles":
+                fig = plotting.plot_profiles(r, fig=Figure(), **kw)
+            else:
+                fig = plotting.plot_lines(r, fig=Figure(), **kw)
+            return self._fig_bytes(fig, fmt, dpi or (150 if fmt == "png" else 300))
+
+    def _fit_name(self, k=0):
+        """How the notebook refers to fit ``k``: r, me.epochs[k] or fits[k]."""
+        kind = self.wf.get("fit_kind")
+        return {"joint": f"me.epochs[{int(k)}]", "fits": f"fits[{int(k)}]"}.get(kind, "r")
+
+    def wf_figure_code(self, k=0, opts=None):
+        return self.figure_code(dict(opts or {}), name=self._fit_name(k))
+
+    def wf_lines_code(self, k=0, lines=(), opts=None):
+        """Python code that draws the line figure with these options."""
+        import inspect
+        from .. import plotting
+        r = self._wf_fit(k)[2]
+        func, kw = self._lines_kwargs(r, lines, opts)
+        if func == "plot_profiles_epochs":
+            kw.pop("results")
+            defaults = {n: p.default for n, p in inspect.signature(plotting.plot_profiles).parameters.items()}
+            obj = "me.epochs" if self.wf.get("fit_kind") == "joint" else "fits"
+            line = kw.pop("lines")
+            args = [obj, repr(line)] + [f"{n}={v!r}" for n, v in kw.items() if not (n in defaults and v == defaults[n])]
+            head = "    fig = plot_profiles("
+            return "\n".join(["from fantasy_agn.plotting import paper_style, plot_profiles", "", "with paper_style():",
+                              head + (",\n" + " " * len(head)).join(args) + ")", '    fig.savefig("profiles.pdf")'])
+        defaults = {n: p.default for n, p in inspect.signature(getattr(plotting, func)).parameters.items()}
+        lines_arg = kw.pop("lines")
+        args = [repr(lines_arg)] + [f"{n}={v!r}" for n, v in kw.items() if not (n in defaults and v == defaults[n])]
+        head = f"    fig = {self._fit_name(k)}.{func}("
+        return "\n".join(["from fantasy_agn.plotting import paper_style", "", "with paper_style():",
+                          head + (",\n" + " " * len(head)).join(args) + ")", '    fig.savefig("lines.pdf")'])
 
     def wf_components_csv(self, k=0):
         """The fitted model of fit ``k`` and its components as CSV (see Session.components_csv)."""
@@ -1427,14 +2910,15 @@ class StepsMixin:
         with self._render_lock:
             return self.corner_figure(params=params, fmt=fmt, dpi=110 if fmt == "png" else 300, r=r)
 
-    def wf_custom_figure(self, k=0, opts=None, fmt="png"):
-        """The publication figure of fit ``k`` with the appearance options of the Results step."""
+    def wf_custom_figure(self, k=0, opts=None, fmt="png", dpi=None):
+        """The publication figure of fit ``k`` with the appearance options of the Results step; ``dpi`` of a
+        downloaded PNG (the preview is drawn at 150)."""
         name, date, r, many = self._wf_fit(k)
         opts = dict(opts or {})
         if "title" not in opts:
             opts["title"] = f"epoch {k}: {name}" + (f"  ({date})" if date else "") if many else name
         with self._render_lock:
-            return self.custom_figure(opts, fmt=fmt, dpi=150 if fmt == "png" else 300, r=r)
+            return self.custom_figure(opts, fmt=fmt, dpi=dpi or (150 if fmt == "png" else 300), r=r)
 
     def wf_lines_csv(self):
         t = self.wf_lines_table()
@@ -1487,8 +2971,9 @@ class StepsMixin:
                 "fit_kind": self.wf.get("fit_kind"), "settings": {k: v for k, v in self.wf.items()},
                 "loaded": self.loaded_state(), "prepared": self.prepared_state(),
                 "reference": self.wf_reference() if (self.spectra or self.raw) else None,
-                "fit": self.fit_state(), "reverb": self.wf_reverb(), "residuals": self.wf_residuals(),
-                "classified": self._classifications() is not None}
+                "fit": self.fit_state(), "reverb": self.wf_reverb(), "residuals": self.wf_residuals(), "linescan": self.wf_linescan(),
+                "redshift": self.wf_redshift(), "trial": self.wf_trial(), "sharing": self.sharing_table() if self.wf.get("mode") == "multi" else None,
+                "sharing_custom": bool(self.wf.get("sharing")), "robust": self.wf_robust(), "feii": self.wf_feii(), "simcheck": self.wf_simcheck(), "jointcheck": self.wf_joint_checks(), "compare": self.wf_compare(), "corr": self.wf_correlations(), "has_ms": self._has_main_sequence(), "catalog": self.wf_catalog(), "classified": self._classifications() is not None, "final_class": self.wf.get("fit_kind") in ("single", "joint", "fits") and bool(self.wf_results())}
 
 
 def _is_number(v):

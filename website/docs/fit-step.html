@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4 · Fit · FANTASY documentation</title><link rel="icon" href="../assets/mark.png">
+<link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="docs.css">
+<script defer src="search-index.js"></script><script defer src="docs.js"></script></head>
+<body><a class="skip" href="#content">Skip to article</a>
+<header class="mast"><nav class="wrap" aria-label="Main navigation"><a class="brand" href="../index.html"><img src="../assets/mark.png" alt="">FANTASY</a>
+<div class="doc-mast-links"><a href="../index.html#explore">Spectrum explorer</a><a href="index.html">Documentation</a></div></nav></header>
+<div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
+<label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
+<nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html" aria-current="page">4 · Fit</a><a href="results-step.html">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html">Components</a><a href="feii.html">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html">Classification</a></section><section><h3>Figures</h3><a href="figures.html">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a></section></nav></div></details></aside>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.0</a> / The app, step by step</p>
+<h1>4 · Fit</h1><div class="lead">Check what will be fitted, choose how epochs are treated and how uncertainties are computed,
+then run the fit.</div>
+<h2>Several epochs</h2>
+<dl class="params">
+<dt>First, try the model on one epoch</dt><dd><b>Fit this epoch</b> fits one epoch alone (by default the one of highest S/N; any
+epoch can be chosen) with the current model: <code>r = fa.fit(spectra[k], model)</code>. The Results step then shows that fit with all
+its checks (residuals, robustness, compare, weak Fe&#8202;II, simulations), and a line that leads back: <b>Change the model</b>, or
+<b>Fit all epochs</b>. Repeat until the model is right for the object; a look at the faintest epoch shows whether it is too rich for
+the weak ones.</dd>
+<dt>Start every epoch from the trial fit</dt><dd>shown once an epoch was tried: the epochs are fitted with
+<code>model.starting_from(r)</code>, so each also starts from the values of the trial fit and keeps the better of that and its own
+data-driven guess. The limits, fixed values and ties are those of the model. If the model was changed after the trial, the
+parameters it still shares with the trial are used.</dd>
+<dt>The same in all epochs, or one per epoch?</dt><dd>set in the <b>Model step</b> of a multi-epoch analysis, in the table under the
+component: for every component, its <b>fluxes</b> and its <b>shape</b> (shift, width, profile parameters, slope) are <i>the same</i> in
+all epochs or fitted <i>per epoch</i>. The shared fluxes are what the flux scale of each epoch is measured on, so they must not vary:
+the narrow lines and a stellar host by default. A shared shape says the line looks the same in every epoch and only its flux changes:
+the default for the broad lines and Fe&#8202;II, since free shapes per epoch trade flux with the continuum and can wash out the
+reverberation signal. Everything else (the continuum, the outflow wing) is per epoch by default. These are assumptions about the
+object; <i>changed</i> marks what differs from the default, <b>Defaults</b> restores it, and the Fit step repeats the choice in one
+line. In code: <code>fa.fit_epochs(spectra, model, shared=("narrow.*", "broad.fwhm", ...))</code>.</dd>
+<dt>Together (recommended)</dt><dd><code>fa.fit_epochs</code>: one joint fit, narrow lines (and a stellar host) shared, one flux scale per epoch
+fixed by the shared lines (intercalibration). Best for light curves and reverberation mapping.</dd>
+<dt>Each on its own</dt><dd><code>fa.fit_many</code>: independent fits in parallel, with the calibration of each spectrum as it is.</dd>
+<dt>Wavelength scale of the epochs</dt><dd><b>fit a small offset per epoch</b> (recommended;
+<code>fa.fit_epochs(..., wavelength_offsets=True)</code>): every epoch gets a velocity of up to &plusmn;150 km/s, added to all the shifts
+of the model in that epoch, with the reference epoch at 0. The shared narrow lines measure it, as they measure the flux scale. The
+epochs are never on exactly the same wavelength scale: the calibration differs by a few km/s (tens for slit spectra), and when the
+files carry slightly different redshifts (SDSS: about 20 km/s rms) each spectrum is moved to the rest frame with its own; the note
+under the choice says by how much they differ. In simulations, unmodelled offsets of 30 km/s raised the error of the flux scales
+from 4% to 17%; with the offsets fitted it stayed at 3%, and they were recovered to 3 km/s. The table of all epochs lists the
+offsets, and the Results tile <b>Redshift, narrow lines</b> gives the redshift of the object from the narrow lines of all epochs
+together (<code>me.redshift()</code>), with the rms of the offsets. <b>as prepared</b> fits none.</dd>
+<dt>Flux reference epoch</dt><dd>the epoch whose flux scale is 1; by default the one of highest S/N, since its uncertainty enters
+every other epoch's calibration.</dd>
+<dt>Calibration between epochs</dt><dd>one flux scale per epoch; scale and tilt; or scale, tilt and curvature
+(<code>calibration_degree</code> 0, 1, 2): see <a href="multi.html">Multi-epoch fitting</a>.</dd>
+</dl>
+<p>For a sample, <i>Model for each spectrum</i> is <i>automatic</i> (classify each and use the recommended model; a spectrum that ends
+too blue for H&beta; gets Mg&#8202;II or C&#8202;IV) or one model for all.</p>
+<h2>Uncertainties</h2>
+<div class="table-scroll"><table class="doc"><tr><th>choice</th><th>method</th><th>cost</th></tr>
+<tr><td>Fast</td><td>covariance from the Jacobian at the best fit</td><td>seconds</td></tr>
+<tr><td>Monte Carlo</td><td>100 refits of the spectrum with noise added</td><td>&times;100</td></tr>
+<tr><td>MCMC</td><td>Hamiltonian Monte Carlo posterior; corner plot</td><td>minutes</td></tr>
+<tr><td>None</td><td>best fit only</td><td>fastest</td></tr></table></div>
+<p>See <a href="uncertainties.html">Uncertainties</a> for when each is appropriate.</p>
+<h2>Advanced options</h2>
+<dl class="params">
+<dt>Scale errors</dt><dd>inflate the errors by &radic;&chi;<sup>2</sup><sub>&nu;</sub> when &chi;<sup>2</sup><sub>&nu;</sub> &gt; 1.</dd>
+<dt>Model uncertainty</dt><dd>fit the alternative decompositions and add their spread as a systematic error (<a href="compare.html">Model comparison</a>).</dd>
+<dt>Absorption troughs</dt><dd>find troughs in the residuals and refit with them (<a href="absorption.html">Absorption troughs</a>).</dd>
+<dt>Host amplitude free in each epoch</dt><dd>for spectra taken with different apertures or seeing.</dd>
+<dt>Rescale the errors of each epoch</dt><dd>by &radic;&chi;<sup>2</sup><sub>&nu;</sub> of its own fit, for epochs whose errors are under- or overestimated.</dd>
+<dt>Shared parameters by name pattern</dt><dd>for experts: patterns such as <code>narrow.*, feii.fwhm</code> that replace the table of the
+Model step (below) when the field is not empty.</dd>
+<dt>Processes</dt><dd>parallel processes for independent fits and Monte Carlo.</dd>
+</dl>
+<p>The run button is in the bar at the bottom of the page, between <b>&larr; Model</b> and <b>See the results &rarr;</b>, so it is always
+in view; it is the highlighted button until a fit of the current settings exists, then <b>See the results</b> is. When the fit is done,
+its quality and the parameters that ended at a limit are listed, with a link to the component in the Model step.</p>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 8e22dfc109bb</span></footer></main></div></body></html>

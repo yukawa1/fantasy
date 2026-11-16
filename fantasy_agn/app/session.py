@@ -19,12 +19,28 @@ import time
 import traceback
 
 import numpy as np
+import pandas as pd
 
 from .. import presets
+from .builder import BuilderMixin
 from .steps import StepsMixin
 
 STEPS = ("read", "classify", "model", "fit", "results")
 UPLOADS = os.path.join(os.path.expanduser("~"), ".fantasy_agn", "uploads")
+
+
+def autosave_folder():
+    """
+    Where the session is saved after every run: ``$FANTASY_AUTOSAVE`` (``0`` switches saving
+    off), else ``$FANTASY_DATA/sessions`` or ``~/.fantasy_agn/sessions``.
+    """
+    env = os.environ.get("FANTASY_AUTOSAVE")
+    if env is not None and env.strip().lower() in ("0", "", "no", "off", "false"):
+        return None
+    if env:
+        return os.path.expanduser(env)
+    base = os.environ.get("FANTASY_DATA") or os.path.join(os.path.expanduser("~"), ".fantasy_agn")
+    return os.path.join(base, "sessions")
 
 # Models offered in the interface: label -> (preset, options)
 MODELS = {
@@ -47,7 +63,8 @@ MODELS = {
 }
 CLASS_MODEL = {"type1": "optical", "type1_host": "optical + host", "seyfert2": "seyfert2",
                "liner": "liner", "composite": "composite", "unknown": "type2 (simple)",
-               "starforming": "starforming", "retired": "passive / retired", "passive": "passive / retired"}
+               "starforming": "starforming", "retired": "passive / retired", "passive": "passive / retired",
+               "uv_mgii": "mgii", "uv_civ": "civ"}
 MAX_OUTPUT = 6000
 
 
@@ -62,9 +79,9 @@ def model_defaults():
                 d[k] = kw.get(k, params[k].default)
         d["stratified"] = "broad_profile" in params and not kw.get("physical")
         # options the interface can switch for this preset, and their defaults
-        d["options"] = [k for k in ("broad_components", "outflow", "host", "coronal", "oi6046", "red")
+        d["options"] = [k for k in ("broad_components", "outflow", "host", "continuum", "coronal", "oi6046", "red")
                         if k in params and not (k == "host" and kw.get("physical"))]
-        d["values"] = {k: kw.get(k, params[k].default) for k in ("coronal", "oi6046", "red") if k in params}
+        d["values"] = {k: kw.get(k, params[k].default) for k in ("coronal", "oi6046", "red", "continuum") if k in params}
         d["preset"], d["kw"] = name, kw
         out[label] = d
     return out
@@ -87,6 +104,10 @@ def _templates_state():
     have = set(templates.available())
     return [{"name": n, "available": n in have, "size_mb": info["size_mb"], "cite": info["cite"]}
             for n, info in templates.TEMPLATE_SETS.items()]
+
+
+class Stopped(KeyboardInterrupt):
+    """Raised in a running cell when the run is stopped from the app."""
 
 
 class Cell:
@@ -127,7 +148,7 @@ def _is_number(v):
         return False
 
 
-class Session(StepsMixin):
+class Session(BuilderMixin, StepsMixin):
     """One analysis: a list of code cells run in a shared namespace."""
 
     def __init__(self):
@@ -135,14 +156,18 @@ class Session(StepsMixin):
         self.lock = threading.RLock()
         self._render_lock = threading.Lock()     # matplotlib drawing (requests run in threads)
         self.progress = None
+        self._saving = threading.Lock()          # one auto-save at a time
         self.reset()
         set_hook(self._on_progress)
 
     def _on_progress(self, p):
-        """Progress reports of fit_many / fit_epochs while a cell runs."""
+        """Progress reports of fit_many / fit_epochs while a cell runs (and where a stop takes effect)."""
         with self.lock:
             if self.busy:
                 self.progress = p
+            stop = self.stopping and threading.current_thread() is self._thread
+        if stop:
+            raise Stopped()
 
     def reset(self):
         import fantasy_agn
@@ -162,6 +187,9 @@ class Session(StepsMixin):
             self.recommended = None
             self.info = "Read a spectrum to start."
             self._seen = {}               # id() of spec, c, r at the last update
+            self._thread, self._in_body = None, False
+            self._rotated = False         # the first auto-save of this session keeps the last one as 'previous'
+            self.stopping = False
             self._wf_reset()
 
     # ----------------------------------------------------------- objects
@@ -228,6 +256,8 @@ class Session(StepsMixin):
                     "lines": self.line_state(),
                     "sample": self.sample_state(),
                     "wf": self.wf_state(),
+                    "stopping": self.stopping,
+                    "autosaved": self.autosaved() if len(self.cells) < 2 else None,
                     "cpus": os.cpu_count() or 1,
                     "python": platform.python_version(),
                     "version": __import__("fantasy_agn").__version__}
@@ -240,7 +270,7 @@ class Session(StepsMixin):
         from ..io import save
         keep, skipped = {}, []
         with self.lock:
-            for k, v in self.ns.items():
+            for k, v in list(self.ns.items()):
                 if k.startswith("_") or k in ("fa", "np", "__name__", "__builtins__"):
                     continue
                 try:
@@ -297,8 +327,78 @@ class Session(StepsMixin):
             self._results(self.result)
         self.info = "Project opened." + (f" Not restored: {', '.join(project['skipped'])}." if project.get("skipped") else "")
 
+    # ------------------------------------------------------------ auto-save
+    def autosave(self):
+        """
+        Save the session to :func:`autosave_folder` (``last.fantasy`` with ``last.json``); the
+        first save of a new session keeps the one before as ``previous``. Errors are ignored:
+        auto-saving must never break a run. Returns the path, or None.
+        """
+        folder = autosave_folder()
+        if folder is None or len(self.cells) < 2 or not self._saving.acquire(blocking=False):
+            return None
+        import json
+        try:
+            os.makedirs(folder, exist_ok=True)
+            data = self.save_project()
+            path = os.path.join(folder, "last.fantasy")
+            if not self._rotated:
+                for ext in (".fantasy", ".json"):
+                    src = os.path.join(folder, "last" + ext)
+                    if os.path.exists(src):
+                        os.replace(src, os.path.join(folder, "previous" + ext))
+                self._rotated = True
+            with self.lock:
+                spec = self.spec
+                meta = {"saved": time.time(), "cells": sum(1 for c in self.cells[1:] if c.n),
+                        "spectrum": spec.name if spec is not None else None,
+                        "epochs": len(self.ns.get("spectra") or []) if isinstance(self.ns.get("spectra"), list) else 0,
+                        "fitted": self.result is not None or self.multi is not None,
+                        "size": len(data), "version": __import__("fantasy_agn").__version__}
+            for name, body in (("last.fantasy", data), ("last.json", json.dumps(meta).encode())):
+                tmp = os.path.join(folder, name + ".tmp")
+                with open(tmp, "wb") as fh:
+                    fh.write(body)
+                os.replace(tmp, os.path.join(folder, name))
+            return path
+        except Exception:                        # noqa: BLE001  (disk full, an object that cannot be pickled, ...)
+            return None
+        finally:
+            self._saving.release()
+
+    @staticmethod
+    def autosaved():
+        """The auto-saved sessions: {'last': meta, 'previous': meta} (only those that exist)."""
+        import json
+        folder = autosave_folder()
+        out = {}
+        if folder is None:
+            return out
+        for which in ("last", "previous"):
+            meta, data = os.path.join(folder, which + ".json"), os.path.join(folder, which + ".fantasy")
+            if os.path.exists(meta) and os.path.exists(data):
+                try:
+                    with open(meta) as fh:
+                        out[which] = json.load(fh)
+                except Exception:                # noqa: BLE001
+                    continue
+        return out
+
+    def restore(self, which="last"):
+        """Open an auto-saved session (``'last'`` or ``'previous'``)."""
+        if which not in ("last", "previous"):
+            raise ValueError("which must be 'last' or 'previous'")
+        folder = autosave_folder()
+        path = os.path.join(folder or "", which + ".fantasy")
+        if folder is None or not os.path.exists(path):
+            raise ValueError("there is no auto-saved session")
+        with open(path, "rb") as fh:
+            self.load_project(fh.read())
+        self._rotated = False                    # the next save keeps this one as 'previous'
+        self.info = "Last session restored." if which == "last" else "Previous session restored."
+
     def script(self):
-        body = [c.code for c in self.cells[1:] if c.n]
+        body =[c.code for c in self.cells[1:] if c.n]
         return ("# FANTASY session (generated by the FANTASY app)\n"
                 "import fantasy_agn as fa\n\n" + "\n\n".join(body) + "\n")
 
@@ -310,7 +410,7 @@ class Session(StepsMixin):
             fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
         else:
             with paper_style():
-                fig.savefig(buf, format=fmt, dpi=300 if fmt == "png" else None, bbox_inches="tight")
+                fig.savefig(buf, format=fmt, dpi=max(dpi, 300) if fmt == "png" else None, bbox_inches="tight")
         return buf.getvalue()
 
     def components_csv(self, r=None):
@@ -399,7 +499,7 @@ class Session(StepsMixin):
         """Free non-linear parameters that the samples constrain (not at a limit, with a spread)."""
         if r.samples is None:
             return []
-        S, at = np.asarray(r.samples), set(r.at_limit)
+        S, at = np.asarray(r.samples), set(r.at_limit) | set(r.not_measured)
         out = []
         for i, n in enumerate(r.model.params.names):
             p = r.model.params[n]
@@ -412,22 +512,11 @@ class Session(StepsMixin):
     FIG_KINDS = ("continuum", "host", "balmer_cont", "balmer_lines", "feii", "narrow", "broad", "outflow",
                  "bowen", "other")
 
-    def custom_figure(self, opts, fmt="png", dpi=110, r=None):
-        """
-        The fit plot with options: xmin, xmax, ymin, ymax, title (notitle=1: none),
-        residuals, components, data, model, legend (0/1), group ('auto', 'sum', 'all'),
-        show_<kind> (0 hides that kind of component), color_<kind> / color_data / color_model,
-        fill_<kind> (0/1: fill under the curve), lw_<kind> (line width, points), ls_<kind>
-        ('solid', 'dashed', 'dotted', 'dashdot'),
-        label_lines (0, 1 = strongest, 'all'), label_fs, label_font, label_color, connectors
-        ('leader', 'full', 'none'), label_rot (90/0), width ('single', 'double' or inches),
-        fontsize (points).
-        """
+    def _figure_kwargs(self, opts):
+        """Keyword arguments of r.plot for the appearance options of the Results step (see custom_figure),
+        and the y range and font size applied afterwards."""
         import re
-        from matplotlib.figure import Figure
-        r = self.result if r is None else r
-        if r is None:
-            raise ValueError("fit a model first")
+        from ..plotting import WIDTHS
 
         def num(k):
             v = opts.get(k)
@@ -436,9 +525,9 @@ class Session(StepsMixin):
         def on(k, default="1"):
             return str(opts.get(k, default)) != "0"
 
-        xmin, xmax, ymin, ymax = num("xmin"), num("xmax"), num("ymin"), num("ymax")
+        xmin, xmax = num("xmin"), num("xmax")
         width = opts.get("width") or "double"
-        width = float(width) if width not in ("single", "double") else width
+        width = width if width in WIDTHS else float(width)
         group = {"auto": "auto", "sum": True, "all": False}.get(opts.get("group") or "auto", "auto")
         colors = {}
         for k in ("data", "model") + self.FIG_KINDS:
@@ -471,18 +560,49 @@ class Session(StepsMixin):
             lopt["connectors"] = opts["connectors"]
         if str(opts.get("label_rot", "")) in ("0", "90"):
             lopt["rotation"] = int(opts["label_rot"])
+        legend = {"0": False, "1": True, "above": True, "inside": "inside", "right": "right"}.get(
+            str(opts.get("legend", "1")), True)
         title = None if on("notitle", "0") else (opts.get("title") or None)
-        fig = r.plot(fig=Figure(), components=on("components"), residuals=on("residuals"),
-                     xlim=(xmin, xmax) if xmin is not None and xmax is not None else None,
-                     width=width, group=group,
-                     label_lines={"0": False, "1": True, "all": "all"}.get(labels, False),
-                     title=title, colors=colors, hide=hide, data=on("data"), model=on("model"),
-                     legend=on("legend"), label_options=lopt, styles=styles)
+        zoom = []
+        for part in re.split(r"[,;]", str(opts.get("zoom") or "")):
+            m = re.fullmatch(r"\s*(\d+(?:\.\d*)?)\s*[-–:]\s*(\d+(?:\.\d*)?)\s*", part)
+            if m and float(m.group(1)) < float(m.group(2)):
+                zoom.append((float(m.group(1)), float(m.group(2))))
+        zsub = {"continuum": ("continuum",), "continuum_feii": ("continuum", "feii"),
+                "lines": ("continuum", "host", "feii")}.get(str(opts.get("zoom_subtract") or ""), ())
+        kw = dict(components=on("components"), residuals=on("residuals"), zoom=zoom[:4] or None,
+                  zoom_subtract=zsub if zoom else (),
+                  xlim=(xmin, xmax) if xmin is not None and xmax is not None else None,
+                  width=width, group=group, label_lines={"0": False, "1": True, "all": "all"}.get(labels, False),
+                  title=title, colors=colors, hide=hide, data=on("data"), model=on("model"),
+                  legend=legend, label_options=lopt, styles=styles,
+                  style="sans-serif" if opts.get("font") == "sans-serif" else True,
+                  height={"compact": 0.8, "tall": 1.25}.get(str(opts.get("height") or ""), 1.0))
+        return kw, (num("ymin"), num("ymax")), num("fontsize")
+
+    def custom_figure(self, opts, fmt="png", dpi=110, r=None):
+        """
+        The fit plot with options: xmin, xmax, ymin, ymax, title (notitle=1: none),
+        residuals, components, data, model, legend (0, 1 = above, 'inside', 'right'), group ('auto', 'sum', 'all'),
+        show_<kind> (0 hides that kind of component), color_<kind> / color_data / color_model,
+        fill_<kind> (0/1: fill under the curve), lw_<kind> (line width, points), ls_<kind>
+        ('solid', 'dashed', 'dotted', 'dashdot'),
+        label_lines (0, 1 = strongest, 'all'), label_fs, label_font, label_color, connectors
+        ('leader', 'full', 'none'), label_rot (90/0), width ('single', 'double', a journal column such as
+        'mnras' or 'aa-double', or inches), fontsize (points), zoom ('4650-5150, 6350-6800': panels of these
+        ranges under the spectrum, at most four), zoom_subtract ('continuum', 'continuum_feii', 'lines' = continuum,
+        host and Fe II: subtracted in the zoom panels).
+        """
+        from matplotlib.figure import Figure
+        r = self.result if r is None else r
+        if r is None:
+            raise ValueError("fit a model first")
+        kw, (ymin, ymax), fs = self._figure_kwargs(opts)
+        fig = r.plot(fig=Figure(), **kw)
         ax = fig.axes[0]
         if ymin is not None or ymax is not None:
             lo, hi = ax.get_ylim()
             ax.set_ylim(ymin if ymin is not None else lo, ymax if ymax is not None else hi)
-        fs = num("fontsize")
         if fs:
             for t in fig.findobj(lambda o: hasattr(o, "set_fontsize") and o.get_gid() != "linelabel"):
                 try:
@@ -490,6 +610,38 @@ class Session(StepsMixin):
                 except Exception:                        # noqa: BLE001
                     pass
         return self._fig_bytes(fig, fmt, dpi)
+
+    def figure_code(self, opts, name="r"):
+        """Python code that draws the publication figure with these options (only what differs from the defaults)."""
+        import inspect
+        from ..plotting import plot_result
+        from ..plotting import COLORS
+        kw, (ymin, ymax), fs = self._figure_kwargs(opts)
+        # leave out what equals the defaults (the app sends every colour and style it shows)
+        kw["colors"] = {k: v for k, v in kw["colors"].items() if str(v).lower() != str(COLORS.get(k, "")).lower()}
+        lo_def = {"color": "#262626", "connectors": "leader", "rotation": 90}
+        kw["label_options"] = {k: v for k, v in kw["label_options"].items() if lo_def.get(k) != v}
+        if not kw["label_lines"]:
+            kw["label_options"] = {}
+        styles = {}
+        for k, st in kw["styles"].items():
+            st = {n: v for n, v in st.items() if not (n == "fill" and v == (k == "feii"))}
+            if st:
+                styles[k] = st
+        kw["styles"] = styles
+        defaults = {k: p.default for k, p in inspect.signature(plot_result).parameters.items()}
+        empty = lambda v: v in ((), {}, None, [])
+        args = [f"{k}={v!r}" for k, v in kw.items()
+                if not (k in defaults and (v == defaults[k] or (empty(v) and empty(defaults[k]))))]
+        head = f"    fig = {name}.plot("
+        lines = ["from fantasy_agn.plotting import paper_style", "", "with paper_style():",
+                 head + (",\n" + " " * len(head)).join(args) + ")"]
+        if ymin is not None or ymax is not None:
+            lines.append(f"    fig.axes[0].set_ylim({ymin!r}, {ymax!r})")
+        if fs:
+            lines.append(f"    # font size {fs:g} pt: set matplotlib.rcParams['font.size'] before plotting")
+        lines.append('    fig.savefig("fit.pdf")')
+        return "\n".join(lines)
 
     def tie_kinematics_code(self, comp, to):
         """Code that ties the velocity shift and width of component comp to those of component to."""
@@ -521,9 +673,40 @@ class Session(StepsMixin):
                 cell = self.cells[int(index)]
                 cell.code, cell.out, cell.n, cell.end = code, [], None, None
             cell.start = time.time()
-            self.busy, self.error, self.progress = "running", None, None
-        threading.Thread(target=self._execute, args=(cell,), daemon=True).start()
+            self.busy, self.error, self.progress, self.stopping = "running", None, None, False
+            self._in_body = True
+            self._thread = threading.Thread(target=self._run, args=(cell,), daemon=True)
+            self._thread.start()
         return cell
+
+    def stop(self):
+        """
+        Stop the running cell: the worker processes of a parallel run are ended and the cell
+        is interrupted (at the next progress report or Python step; a single long call into
+        compiled code finishes first). Returns False when nothing runs.
+        """
+        import ctypes
+        import multiprocessing
+        with self.lock:
+            if not self.busy or self.stopping:
+                return False
+            self.stopping, thread = True, self._thread
+        for p in multiprocessing.active_children():
+            p.terminate()
+        with self.lock:
+            if self._in_body and thread is not None and thread.is_alive():
+                ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread.ident), ctypes.py_object(Stopped))
+        return True
+
+    def _run(self, cell):
+        try:
+            self._execute(cell)
+        except KeyboardInterrupt:                # a stop that arrived after the cell had finished
+            with self.lock:
+                if cell.n is None:
+                    self.count += 1
+                    cell.n, cell.end = self.count, time.time()
+                cell.live, self.busy, self.progress, self.stopping = None, None, None, False
 
     def _execute(self, cell):
         printed = io.StringIO()
@@ -545,6 +728,12 @@ class Session(StepsMixin):
                 if value is not None:
                     cell.out.append((_short_repr(value), "out"))
             self._update(value)
+        except Stopped:
+            with self.lock:
+                if printed.getvalue():
+                    cell.out.append((printed.getvalue().rstrip()[:MAX_OUTPUT], "out"))
+                cell.out.append(("Stopped.", "err"))
+                self.error = "Stopped: the run was interrupted, its results are incomplete."
         except Exception as exc:
             tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
             # drop the frames of the app itself
@@ -556,10 +745,12 @@ class Session(StepsMixin):
                 self.error = f"{type(exc).__name__}: {exc}"
         finally:
             with self.lock:
+                self._in_body = False
                 self.count += 1
                 cell.n, cell.end = self.count, time.time()
                 cell.live = None
-                self.busy, self.progress = None, None
+                self.busy, self.progress, self.stopping = None, None, False
+            threading.Thread(target=self.autosave, daemon=True).start()
 
     def _show(self, fig, stem):
         with self.lock:
@@ -596,7 +787,7 @@ class Session(StepsMixin):
             self._show(c.plot_steps(fig=Figure()), f"{c.spectrum.name}_classification")
             self.class_figure = self.figure
             self.recommended = {"model": CLASS_MODEL.get(c.label, "type2"),
-                                "broad_components": 2 if c.label.startswith("type1") else 1,
+                                "broad_components": 2 if c.label.startswith("type1") or c.label == "uv_civ" else 1,
                                 "label": c.label, "uncertain": c.uncertain}
             self.info = (f"Recommended model: {self.recommended['model']}. Change it if you like, "
                          "then press Fit.")
@@ -821,6 +1012,12 @@ class Session(StepsMixin):
         kw = dict(kw)
         params = inspect.signature(getattr(presets, name)).parameters
         host = extra.pop("host", None)
+        continuum = extra.pop("continuum", None)
+        if continuum not in (None, "") and "continuum" in params:
+            if continuum not in ("powerlaw", "broken"):
+                raise ValueError(f"unknown continuum {continuum!r}: 'powerlaw' or 'broken'")
+            if continuum != kw.get("continuum", params["continuum"].default):
+                kw["continuum"] = continuum
         profile = extra.pop("broad_profile", None)
         if profile:
             if "broad_profile" not in params:
@@ -876,6 +1073,17 @@ class Session(StepsMixin):
         if made is not None:
             code += self._host_check_code(made[0], made[1], err)
         return code + "\nr.key_results()"
+
+    def split_code(self, component, lines, name):
+        """Code that moves lines of a Lines component into their own component (own shift and width)."""
+        if self.model is None:
+            raise ValueError("create a model first (step 3)")
+        name = str(name or "").strip()
+        if not name or not all(ch.isalnum() or ch == "_" for ch in name):
+            raise ValueError("component names may contain letters, digits and _ only")
+        lines = [str(x) for x in lines]
+        self.model.copy().split_lines(str(component), lines, name)        # checks it can be done
+        return f"model.split_lines({str(component)!r}, {lines!r}, {name!r})\nmodel"
 
     @staticmethod
     def remove_code(name):
@@ -1101,6 +1309,20 @@ class Session(StepsMixin):
                 pass
         threading.Thread(target=work, daemon=True).start()
 
+    def _feii_job(self, me):
+        """The Fe II flux of every epoch (with errors: seconds for many epochs), once, in the background."""
+        if self.__dict__.get("_feii_job_of") is me:
+            return
+        self._feii_job_of = me
+
+        def work():
+            try:
+                fe = [e.feii() for e in me.epochs]
+            except Exception:
+                fe = []
+            me.__dict__["_feii_lc"] = fe
+        threading.Thread(target=work, daemon=True).start()
+
     def line_state(self):
         """Lines of the current fit for the single-line view (most interesting first)."""
         r, spec = self.result, self.spec
@@ -1138,30 +1360,104 @@ class Session(StepsMixin):
         s = self.ns.get("sample")
         return s if isinstance(s, SampleResult) else None
 
-    _SAMPLE_COLS = ("name", "z", "cls", "preset", "rchi2", "n_at_limit", "broad Hb FWHM", "broad Ha FWHM",
-                    "broad MgII2798 FWHM", "broad CIV1549 FWHM", "log M_BH", "log [NII]/Ha", "log [OIII]/Hb",
-                    "BPT class", "E(B-V) gas", "n_e ([SII])", "12+log(O/H) (O3N2)", "sigma* (host)", "error")
+    # (column of the catalog, heading, decimals; None: text), in the order of the table
+    _SAMPLE_COLS = (("name", "Spectrum", None), ("z", "z", 3), ("cls", "Class", None), ("preset", "Model", None),
+                    ("rchi2", "\u03c7\u00b2\u1d63", 2), ("n_at_limit", "At limit", 0),
+                    ("broad Hb FWHM", "H\u03b2 FWHM", 0), ("broad Ha FWHM", "H\u03b1 FWHM", 0),
+                    ("broad MgII2798 FWHM", "Mg II FWHM", 0), ("broad CIV1549 FWHM", "C IV FWHM", 0),
+                    ("R_FeII", "R(Fe II)", 2), ("feii_dropped", "Fe II dropped", 0), ("log M_BH", "log M_BH", 2), ("log [NII]/Ha", "log [N II]/H\u03b1", 2),
+                    ("log [OIII]/Hb", "log [O III]/H\u03b2", 2), ("BPT class", "BPT", None),
+                    ("E(B-V) gas", "E(B\u2212V) gas", 2), ("n_e ([SII])", "n_e", 0),
+                    ("12+log(O/H) (O3N2)", "12+log(O/H)", 2), ("sigma* (host)", "\u03c3\u2605", 0))
+
+    @staticmethod
+    def _sample_failure(message, z):
+        """What a failed row means, in words: (reason, whether choosing one model for all can help)."""
+        too_blue = "templates cover" in message or ("usable pixels" in message and z is not None and z > 0.8)
+        if too_blue:
+            return "The spectrum stops before H\u03b2, and the automatic classifier needs the optical range.", True
+        return message, False
+
+    def _sample_catalogs(self, sm):
+        """The catalog lookup of this sample, or None (none yet, or made for other spectra)."""
+        cat = self.ns.get("catalogs")
+        if not (isinstance(cat, pd.DataFrame) and "name" in cat and len(cat) == len(sm.table)):
+            return None
+        if any(isinstance(b, str) and str(a) != b for a, b in zip(cat["name"], sm.table["name"])):
+            return None
+        kept = self.__dict__.get("_sample_cat")
+        if kept is None or kept[0] is not sm or kept[1] is not cat:     # once per lookup and per fit
+            from ..catalogs import with_fit_classes
+            z = sm.table["z"] if "z" in sm.table else None
+            cls = sm.table["cls"] if "cls" in sm.table else None
+            kept = self._sample_cat = (sm, cat, with_fit_classes(cat, z, cls))
+        return kept[2]
 
     def sample_state(self):
         sm = self.sample
         if sm is None:
             return None
+        cat = self._sample_catalogs(sm)
         cached = self.__dict__.get("_sample_cache")
-        if cached is not None and cached[0] is sm:
+        if cached is not None and cached[0] is sm and cached[2] is cat:
             return cached[1]
         t = sm.table
-        cols = [c for c in self._SAMPLE_COLS if c in t and t[c].notna().any()]
 
-        def fmt(v):
-            if isinstance(v, (float, np.floating)):
-                return "" if not np.isfinite(v) else f"{v:.4g}"
-            return "" if v is None else str(v)
-        rows = [[fmt(v) for v in row] for row in t[cols].itertuples(index=False)]
+        def plain(v):
+            if v is None or isinstance(v, (float, np.floating)) and not np.isfinite(v):
+                return None
+            return float(v) if isinstance(v, (int, float, np.number)) and not isinstance(v, (bool, np.bool_)) else str(v)
+        spec_cols = list(self._SAMPLE_COLS)
+        catalog = None
+        if cat is not None:
+            t = t.copy()
+            for c in ("catalog_class", "catalog_z", "wise_w1_w2", "radio_mjy"):
+                if c in cat:
+                    t[c] = cat[c].values
+            if "xray" in cat:
+                t["xray"] = ["yes" if isinstance(v, str) else None for v in cat["xray"]]
+            at = next(i for i, c in enumerate(spec_cols) if c[0] == "cls") + 1
+            spec_cols[at:at] = [("catalog_class", "Catalogs say", None)]
+            spec_cols += [("catalog_z", "Catalog z", 3), ("wise_w1_w2", "W1\u2212W2", 2), ("radio_mjy", "Radio (mJy)", 1),
+                          ("xray", "X-ray", None)]
+            catalog = {"flags": [int(v) for v in cat["n_disagreements"]],
+                       "flagged": int((cat["n_disagreements"] > 0).sum()), "stamp": id(cat)}
+        columns = [{"key": c, "label": label, "digits": digits} for c, label, digits in spec_cols
+                   if c in t and t[c].notna().any()]
+        rows = [[plain(v) for v in row] for row in t[[c["key"] for c in columns]].itertuples(index=False)]
+        status, notes, failures = [], [], {}
+        for k in range(len(t)):
+            row = t.iloc[k]
+            error = plain(row.get("error"))
+            if error is not None:
+                reason, fixable = self._sample_failure(str(error), plain(row.get("z")))
+                failures.setdefault(reason, {"reason": reason, "n": 0, "fixable": fixable})["n"] += 1
+                status.append("failed")
+                notes.append(reason)
+                continue
+            rchi2, why = plain(row.get("rchi2")), []
+            if rchi2 is not None and rchi2 > 2:
+                why.append(f"poor fit: reduced \u03c7\u00b2 = {rchi2:.1f}")
+            wide = [c for c in t.columns if c.startswith("broad ") and c.endswith(" FWHM") and (plain(row[c]) or 0) > 20000]
+            if wide:
+                why.append(f"implausible width: {wide[0]} = {plain(row[wide[0]]):.0f} km/s")
+            elif any("broad" in p and "fwhm" in p.lower() for p in str(row.get("at_limit") or "").split(", ")):
+                why.append("a broad-line width sits at the limit of the model")
+            if bool(row.get("cls_uncertain")) and plain(row.get("cls_uncertain")) is not None:
+                why.append("uncertain class")
+            status.append("check" if why else "ok")
+            if cat is not None and isinstance(cat["disagreements"].iloc[k], str):
+                why.append(cat["disagreements"].iloc[k])
+            notes.append("; ".join(why))
         has_fig = [isinstance(v, str) for v in (t["saved"] if "saved" in t else [None] * len(t))]
-        out = {"n": len(t), "failed": int(t["error"].notna().sum()) if "error" in t else 0,
+        chi2 = t["rchi2"].to_numpy(float) if "rchi2" in t else np.array([np.nan])
+        out = {"n": len(t), "failed": status.count("failed"), "check": status.count("check"), "fitted": len(t) - status.count("failed"),
                "classes": t["cls"].value_counts().to_dict() if "cls" in t else {},
-               "columns": cols, "rows": rows, "figs": has_fig, "out": sm.out, "id": id(sm)}
-        self._sample_cache = (sm, out)
+               "median_rchi2": float(np.median(chi2[np.isfinite(chi2)])) if np.isfinite(chi2).any() else None,
+               "columns": columns, "rows": rows, "status": status, "notes": notes,
+               "failures": sorted(failures.values(), key=lambda f: -f["n"]), "figs": has_fig, "out": sm.out, "id": id(sm),
+               "catalog": catalog}
+        self._sample_cache = (sm, out, cat)
         return out
 
     def sample_figure(self, k, kind="fit"):
@@ -1185,4 +1481,9 @@ class Session(StepsMixin):
         sm = self.sample
         if sm is None:
             return None
-        return sm.table.drop(columns=[c for c in ("trace", "path") if c in sm.table]).to_csv(index=False)
+        t = sm.table.drop(columns=[c for c in ("trace", "path") if c in sm.table])
+        cat = self._sample_catalogs(sm)
+        if cat is not None:
+            extra = cat.drop(columns=[c for c in cat.columns if c in t or c == "catalog_family"])
+            t = pd.concat([t.reset_index(drop=True), extra.reset_index(drop=True)], axis=1)
+        return t.to_csv(index=False)

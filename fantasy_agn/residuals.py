@@ -39,6 +39,10 @@ COMMON = {"[OII]3726", "[OII]3729", "[NeIII]3869", "[NeIII]3968", "H8", "He", "H
 DOUBLETS = [("[OIII]4959", "[OIII]5007"), ("[NII]6548", "[NII]6583"), ("[OI]6300", "[OI]6364"),
             ("[SII]6716", "[SII]6731"), ("[OII]3726", "[OII]3729"), ("[NeIII]3869", "[NeIII]3968")]
 BOWEN = {"OIII3760", "NIII4100", "NIII4640", "HeII5412"}      # only for models that have Bowen lines (TDEs)
+MAX_BROAD = 12000.0      # km/s: wider emission excesses are not a broad line
+MAX_OUTFLOW = 3000.0     # km/s: forbidden-line excesses up to this width can be an outflow
+STRONG_BROAD = {"Ha", "Hb", "Hg", "Hd", "MgII2798", "CIV1549", "CIII]1909", "Lya", "HeI5876", "HeII4686",
+                "SiIV1397", "OI8446", "Pa", "Pb", "CaII8542"}
 BROAD_CONT = 3000.0       # km/s: wider deficits are continuum mismatches, not absorption lines
 
 
@@ -58,7 +62,9 @@ def _library(medium):
     Cr II, Ti II ... lines of the FANTASY 1 lists (blends that the Fe II template describes)."""
     from .lines import line_table
     t = line_table()
-    weak = t.note.str.contains("FANTASY 1 list") & (t.type != "coronal")
+    # the high-ionisation list ([Fe V], [Fe VI], [Ar V] ...: typed forbidden or coronal) is kept
+    weak = (t.note.str.contains("FANTASY 1 list") & (t.type != "coronal")
+            & ~t.note.str.contains("coronal.csv", regex=False))
     names = [n for n in LINES if not weak.get(n, False)]
     waves = np.array([LINES[n] for n in names])
     if medium == "air":
@@ -146,6 +152,37 @@ def _sky(spec, center, lo, hi):
     return None
 
 
+def _offset(result, ln):
+    """(component, dv km/s, significance) when the line ``ln`` (with its doublet) of the model has a
+    velocity that differs from that of the other lines of its component; else None."""
+    from .linescan import _offsets
+    s = result.spectrum
+    msk = np.asarray(result.mask, bool) & np.isfinite(s.err) & (s.err > 0)
+    x, err = s.wave[msk], s.err[msk]
+    res = s.flux[msk] - np.asarray(result.model_flux(s.wave))[msk]
+    scale = max(1.0, _robust_std(res / err) ** 2)
+    for comp, role, group, main, lam, dv, sig in _offsets(result, x, res, 1 / err ** 2, scale):
+        if ln in group:
+            return comp, dv, sig
+    return None
+
+
+def _split(f, ln, result):
+    """Suggest moving ``ln`` (and its doublet) to its own component when it is offset from it."""
+    from .linescan import _split_name
+    off = _offset(result, ln)
+    if off is None or off[2] < 5 or abs(off[1]) < 10:
+        return False
+    comp, dv, sig = off
+    group = next((list(d) for d in DOUBLETS if ln in d), [ln])
+    new = _split_name(result.model, comp, ln)
+    f["suggestion"] = (f"{ln} is {'blue' if dv < 0 else 'red'}shifted by about {abs(dv):.0f} km/s against the other lines "
+                       f"of {comp!r} ({sig:.0f}σ), which share one velocity: give it its own shift and width")
+    f["action"] = {"type": "split", "component": comp, "lines": group, "name": new}
+    f["code"] = f"model.split_lines({comp!r}, {group!r}, {new!r})"
+    return True
+
+
 def _suggest(f, result, lib, model_lines):
     """Identify one feature and suggest a model change (text, action for the app, code)."""
     names, waves = lib
@@ -175,7 +212,9 @@ def _suggest(f, result, lib, model_lines):
             and (names[i] not in BOWEN or bowen)
             # forbidden lines are never that broad, unless the feature is centred on one (a wing merged
             # with neighbouring residuals)
-            and not (names[i].startswith("[") and fwhm > 2500 and abs(dv[i]) > 1500)]
+            and not (names[i].startswith("[") and fwhm > 2500 and abs(dv[i]) > 1500)
+            # nor that wide when the model lacks them (a broad excess, Fe II or continuum)
+            and not (names[i].startswith("[") and fwhm > 2 * MAX_OUTFLOW and names[i] not in model_lines)]
     common = [i for i in near if names[i] in COMMON or names[i] in BOWEN] or near
     if f["kind"] == "absorption" and fwhm > BROAD_CONT and f["hi"] - f["lo"] > 60:
         f["kind"] = "continuum"
@@ -198,6 +237,8 @@ def _suggest(f, result, lib, model_lines):
         if common and names[common[0]] in model_lines:
             ln = names[common[0]]
             f["line"], f["in_model"] = ln, True
+            if _split(f, ln, result):
+                return f
             f["suggestion"] = (f"the model over-predicts {ln} here (too strong or too broad): check its width, "
                                "ties and flux ratios")
             return f
@@ -236,9 +277,19 @@ def _suggest(f, result, lib, model_lines):
     group = next((list(d) for d in DOUBLETS if ln in d), [ln])
     f["in_model"] = bool(roles)
     safe = "".join(ch for ch in ln if ch.isalnum()).lower()
+    has_broad = any(getattr(c, "role", None) == "broad" for c in m.components)
+    # a broad component only where one can be: a permitted line, not wider than a broad line, and in a
+    # model without broad lines (narrow-line AGN) only for the strong broad lines
+    broad_ok = (not forbidden and fwhm < MAX_BROAD and (has_broad or ln in STRONG_BROAD))
+    outflow_ok = forbidden and fwhm < MAX_OUTFLOW          # a forbidden line this wide is an outflow
+    if fwhm > 1200 and not broad_ok and not outflow_ok and (not roles or (not forbidden and "broad" not in roles)):
+        f["suggestion"] = (f"emission excess near {ln} (FWHM {fwhm:.0f} km/s) that no line of this model "
+                           "explains: most likely the continuum or host shape (check them); fa.suggest_lines(r) "
+                           "tests the missing lines directly")
+        return f
     if not roles:
         role = ("outflow" if fwhm > 1000 else "narrow") if forbidden else ("broad" if fwhm > 1200 else "narrow")
-        f["suggestion"] = f"{ln} is missing from the model: add it as a {role} line (FWHM about {fwhm:.0f} km/s)"
+        f["suggestion"] = f"{ln} is missing from the model: add it as {'an' if role == 'outflow' else 'a'} {role} line (FWHM about {fwhm:.0f} km/s)"
         f["action"] = {"type": "lines", "name": f"{role}_{safe}", "lines": group, "role": role}
         f["code"] = f"model.add(fa.Lines({role + '_' + safe!r}, {group!r}, role={role!r}))"
     elif forbidden and "outflow" not in roles:
@@ -252,17 +303,20 @@ def _suggest(f, result, lib, model_lines):
                            f"shift {(c0 - LINES.get(ln, c0)) / c0 * C_KMS:+.0f} km/s): add another broad component")
         f["action"] = {"type": "lines", "name": f"broad_{safe}_wing", "lines": [ln], "role": "broad"}
         f["code"] = f"model.add(fa.Lines('broad_{safe}_wing', [{ln!r}], role='broad'))"
-    elif fwhm > 1200 and "broad" not in roles:
+    elif fwhm > 1200 and "broad" not in roles and not forbidden:
         f["suggestion"] = f"a broad {ln} is missing (FWHM {fwhm:.0f} km/s): add a broad component"
         f["action"] = {"type": "lines", "name": f"broad_{safe}", "lines": [ln], "role": "broad"}
         f["code"] = f"model.add(fa.Lines('broad_{safe}', [{ln!r}], role='broad'))"
+    elif fwhm < 1500 and _split(f, ln, result):
+        pass
     elif "outflow" not in roles:
         f["suggestion"] = (f"narrow {ln} is not matched (FWHM {fwhm:.0f} km/s): add an outflow/second "
                            "narrow component, or free its flux ratio")
         f["action"] = {"type": "lines", "name": f"outflow_{safe}", "lines": group, "role": "outflow"}
         f["code"] = f"model.add(fa.Lines('outflow_{safe}', {group!r}, role='outflow'))"
     else:
-        f["suggestion"] = f"{ln} is not matched although narrow and outflow components exist: check ties and limits"
+        if not _split(f, ln, result):
+            f["suggestion"] = f"{ln} is not matched although narrow and outflow components exist: check ties and limits"
     return f
 
 

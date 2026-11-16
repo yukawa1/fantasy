@@ -88,7 +88,25 @@ class Spectrum:
         ctx = {"medium": self.medium, "resolution": self.resolution}
         if self.resolution_curve is not None:
             ctx["resolution_curve"] = self.resolution_curve
+        grid = self.pixel_grid
+        if grid is not None:
+            ctx["pixel"] = grid
         return ctx
+
+    @property
+    def pixel_grid(self):
+        """
+        (wavelength, pixel width) of every pixel, for line profiles averaged over the pixels (as
+        the spectrograph records them) instead of taken at the pixel centres; None with
+        FANTASY_PIXEL=0 or fewer than two pixels. The width of a pixel is the smaller distance to
+        its neighbours, so gaps in the grid do not widen the pixels next to them.
+        """
+        import os
+        w = np.asarray(self.wave, float)
+        if os.environ.get("FANTASY_PIXEL", "1") == "0" or w.size < 2 or np.any(np.diff(w) <= 0):
+            return None
+        d = np.diff(w)
+        return w, np.minimum(np.concatenate([d[:1], d]), np.concatenate([d, d[-1:]]))
 
     def copy(self, **changes):
         new = Spectrum.__new__(Spectrum)
@@ -335,6 +353,30 @@ class Spectrum:
         new.meta["flux_unit_source"] = "given"
         new.meta.pop("flux_unit_unknown", None)
         return new
+
+    def with_resolution(self, fwhm=None, R=None):
+        """
+        A copy with the instrumental resolution set: ``fwhm`` in km/s (FWHM of the line-spread function),
+        or the resolving power ``R`` = lambda / FWHM, e.g. ``spec.with_resolution(R=2000)`` (150 km/s).
+        It replaces the value (and the resolution curve) of the file. Fitted line widths are then
+        intrinsic: the resolution is removed in quadrature. Text and plain FITS files carry no
+        resolution (0): the widths then include the instrumental broadening.
+        """
+        if (fwhm is None) == (R is None):
+            raise ValueError("give the resolution as fwhm=... (km/s) or R=... (lambda / FWHM)")
+        value = float(fwhm) if R is None else C_KMS / float(R)
+        if not (np.isfinite(value) and 0 <= value < 5000):
+            raise ValueError("the instrumental FWHM must be between 0 and 5000 km/s (R above 60)")
+        new = self.copy(resolution=value, resolution_curve=None)
+        new.meta["resolution_source"] = "given"
+        return new
+
+    def pixel_kms(self, wave=None):
+        """Pixel size in km/s at ``wave`` (default: the median over the spectrum)."""
+        step = np.gradient(self.wave) / self.wave * C_KMS
+        if wave is None:
+            return float(np.median(step))
+        return np.interp(wave, self.wave, step)
 
     def with_coordinates(self, ra, dec=None):
         """A copy at the given sky position (degrees, sexagesimal or SkyCoord; see :func:`parse_coordinates`)."""

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fe II templates · FANTASY documentation</title><link rel="icon" href="../assets/mark.png">
+<link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="docs.css">
+<script defer src="search-index.js"></script><script defer src="docs.js"></script></head>
+<body><a class="skip" href="#content">Skip to article</a>
+<header class="mast"><nav class="wrap" aria-label="Main navigation"><a class="brand" href="../index.html"><img src="../assets/mark.png" alt="">FANTASY</a>
+<div class="doc-mast-links"><a href="../index.html#explore">Spectrum explorer</a><a href="index.html">Documentation</a></div></nav></header>
+<div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
+<label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
+<nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html">4 · Fit</a><a href="results-step.html">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html">Components</a><a href="feii.html" aria-current="page">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html">Classification</a></section><section><h3>Figures</h3><a href="figures.html">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a></section></nav></div></details></aside>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.0</a> / Modelling</p>
+<h1>Fe II templates</h1><div class="lead">Fe&#8202;II emits thousands of blended lines. FANTASY models them as groups of lines that share a lower
+energy level: within a group the intensities follow atomic physics, between groups the strengths are free.</div>
+<p>Lines from the same lower term change together from object to object, because their strength depends on how many ions sit
+in that (metastable) level. Within a group the relative intensities are those of a population at T = 10<sup>4</sup> K
+(Kova&#269;evi&#263; et al. 2010):</p>
+<div class="eq">I<sub>ik</sub> &prop; g<sub>i</sub> f<sub>ik</sub> &lambda;<sub>ik</sub><sup>&minus;3</sup> exp(&minus;<span class="frac"><span>E<sub>k</sub></span><span>kT</span></span>)</div>
+<p>with g<sub>i</sub> the statistical weight of the lower level, f<sub>ik</sub> the oscillator strength and E<sub>k</sub> the
+upper-level energy. All lines share one shift and one FWHM (by default tied as in the presets).</p>
+<div class="table-scroll"><table class="doc"><tr><th><code>kind</code></th><th>range</th><th>groups</th><th>reference</th></tr>
+<tr><td><code>optical</code></td><td>3700&ndash;10&#8202;900 &Aring;</td><td>by lower term (F, S, G, P), I&#8202;Zw&#8202;1 lines</td><td>Kova&#269;evi&#263; et al. 2010; Shapovalova et al. 2012</td></tr>
+<tr><td><code>uv</code></td><td>2690&ndash;3005 &Aring;</td><td>multiplets UV 60&ndash;63, 78, I&#8202;Zw&#8202;1 lines</td><td>Kova&#269;evi&#263;-Doj&#269;inovi&#263; &amp; Popovi&#263; 2015</td></tr>
+<tr><td><code>uv_extended</code></td><td>2200&ndash;3500 &Aring;</td><td>by lower term from NIST data, a<sup>4</sup>D split into UV 60&ndash;63, I&#8202;Zw&#8202;1 lines</td><td>this version</td></tr></table></div>
+<pre>fa.FeII("feii_uv", kind="uv_extended", fwhm=(3000, 1000, 10000))
+fa.presets.mgii(feii="uv_extended", wave_range=(2200, 3300))
+r.feii()            # flux and EW in the standard band, R_FeII</pre>
+<div class="note">Fit the UV model over a wide window (2200&ndash;3300 &Aring;) and mask intervening absorbers: in a narrow window
+around Mg&#8202;II the pseudo-continuum is degenerate with the power law.</div>
+<h2>Weak Fe&#8202;II</h2>
+<p>The strength of every group is free and cannot be negative, so noise moves a weak or absent group only upwards: the summed
+Fe&#8202;II comes out too high, the continuum too low and the neighbouring broad line too strong. In simulations of an SDSS
+quasar at S/N 30 (<code>presets.hbeta()</code>) the Fe&#8202;II flux was 9% too high at R<sub>Fe&#8202;II</sub> = 0.25, 66% at 0.08, and
+with no Fe&#8202;II at all the fit returned R<sub>Fe&#8202;II</sub> = 0.12 and a broad H&beta; flux 12% too high. With strong
+Fe&#8202;II or high S/N the effect is below 2%.</p>
+<pre>r = fa.fit(spec, fa.presets.hbeta())
+r = fa.prune_feii(r)        # groups below 2 sigma fixed at 0, then fitted again
+r.feii_pruning              # group, amplitude, error, kept or dropped</pre>
+<p><code>fa.prune_feii</code> removes most of that bias where it is large (broad H&beta; with no Fe&#8202;II: +15% &rarr; +1%). Where
+Fe&#8202;II is moderate it drops real weak groups too: at R<sub>Fe&#8202;II</sub> = 0.25 the Fe&#8202;II flux came out 13% too low
+instead of 6% too high. It is a choice for weak Fe&#8202;II and low S/N, not a default; state it with the results.</p>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 8e22dfc109bb</span></footer></main></div></body></html>

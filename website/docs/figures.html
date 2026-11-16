@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Figures · FANTASY documentation</title><link rel="icon" href="../assets/mark.png">
+<link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="docs.css">
+<script defer src="search-index.js"></script><script defer src="docs.js"></script></head>
+<body><a class="skip" href="#content">Skip to article</a>
+<header class="mast"><nav class="wrap" aria-label="Main navigation"><a class="brand" href="../index.html"><img src="../assets/mark.png" alt="">FANTASY</a>
+<div class="doc-mast-links"><a href="../index.html#explore">Spectrum explorer</a><a href="index.html">Documentation</a></div></nav></header>
+<div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
+<label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
+<nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html">4 · Fit</a><a href="results-step.html">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html">Components</a><a href="feii.html">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html">Classification</a></section><section><h3>Figures</h3><a href="figures.html" aria-current="page">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a></section></nav></div></details></aside>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.0</a> / Figures</p>
+<h1>Figures</h1><div class="lead">Every figure is drawn in one style: quiet grey axes with inward ticks on all sides, no grid, the model in ink over grey
+data, Fe&#8202;II lightly filled, a &plusmn;1&sigma; band behind the residuals, and colours that stay distinct for colour-blind readers.</div>
+<h2>The fit</h2>
+<pre>r.plot()                                         # data, model, components, residuals
+r.plot(xlim=(4600, 5100), label_lines="all", width="single")
+r.plot(colors={"broad": "navy"}, hide=("host",), title=None)
+r.plot(styles={"feii": {"fill": False, "ls": "--"},
+               "broad": {"fill": True, "lw": 1.5},
+               "model": {"lw": 0.6}})
+r.plot(zoom=[(4650, 5150), (6350, 6800)])        # zoom panels of the H&beta; and H&alpha; regions under the spectrum
+r.plot(zoom=[(4650, 5150)], zoom_subtract=("continuum", "feii"))   # ... with the continuum and Fe II subtracted
+r.plot(width="mnras-double", legend="inside")    # a journal column; the legend where the plot is free
+r.plot(style="sans-serif", height=0.8)           # sans-serif font; a compact (0.8) or tall (1.25) figure
+r.savefig("fit.pdf")                             # PDF, EPS, SVG (editable text), PNG (300 dpi)</pre>
+<dl class="params">
+<dt><code>group</code></dt><dd><code>"auto"</code>: the sum of each kind and, when a line has several components of a kind, each of them (dashed, dotted); <code>True</code> only sums; <code>False</code> every component.</dd>
+<dt><code>styles</code></dt><dd>per kind (<code>data</code>, <code>model</code>, <code>continuum</code>, <code>host</code>, <code>feii</code>, <code>narrow</code>, <code>broad</code>, <code>outflow</code>, &hellip;):
+<code>fill</code>, <code>lw</code> (points), <code>ls</code> (<code>"-"</code>, <code>"--"</code>, <code>":"</code>, <code>"-."</code>).</dd>
+<dt><code>width</code></dt><dd><code>"single"</code> (3.5 in, one journal column), <code>"double"</code> (7.1 in), a journal column
+(<code>"mnras"</code> 84 mm, <code>"mnras-double"</code> 174 mm, <code>"aa"</code> 88 mm, <code>"aa-double"</code> 180 mm, <code>"apj"</code>, <code>"apj-double"</code>) or inches.</dd>
+<dt><code>legend</code></dt><dd><code>"above"</code> (default), <code>"inside"</code> (where it covers the fewest data and line labels; above if nowhere is free), <code>"right"</code> or <code>False</code>.</dd>
+<dt><code>zoom</code></dt><dd>wavelength ranges drawn again in a row of panels under the spectrum; the main panel marks them with a faint blue band and a letter.
+<code>zoom_subtract</code>: kinds subtracted from the data and the model in these panels (<code>"continuum"</code>, <code>"feii"</code>, <code>"host"</code>), so the lines stand alone.</dd>
+<dt><code>label_lines</code></dt><dd>name the strongest or all fitted lines; <code>label_options</code> for font, size, direction, colour, connectors.</dd>
+</dl>
+<h2>Single lines and grids</h2>
+<pre>r.plot_line("Hb")                                # the line alone, its components and their sum
+r.plot_line("Ha", others=True, velocity=False)
+r.plot_lines(["Hg", "Hb", "Ha"], residuals=True) # a grid: 1, 2, 3 in a row, 4 as 2 &times; 2</pre>
+<p>A single-line panel shows the data with everything else in the model subtracted, each component with its FWHM, their sum
+(and the summed broad profile), the FWHM, line dispersion &sigma; and flux of the line rounded to their errors, a bar between the
+half-maximum points and its residuals. A FWHM that a shoulder at half maximum makes fragile is marked; &sigma; is then the safer width.
+Wide windows are labelled in 10<sup>3</sup> km/s.</p>
+<pre>r.plot_profiles(["Hb", "Ha"])                    # broad profiles overlaid, each scaled to its peak
+fa.plotting.plot_profiles([r1, r2], "Hb", labels=["power law", "broken"])   # one line in two fits</pre>
+<p>The overlay compares the shapes of lines (is broad H&beta; wider than H&alpha;? more asymmetric?) or of one line in several fits or epochs;
+the legend gives FWHM and &sigma;, the dots the half-maximum points. In the app: Results &rarr; <b>Line profiles</b>, tick the lines and choose
+<b>Each in a panel</b> or <b>Overlaid</b>. Both figure tabs show the <b>Python code</b> of the figure, to copy into a script.</p>
+<h2>Colours</h2>
+<div class="table-scroll"><table class="doc"><tr><th>kind</th><th>colour</th></tr>
+<tr><td>data, model</td><td><span class="sw" style="background:#9b9a95"></span> grey &nbsp; <span class="sw" style="background:#0b0b0b"></span> ink</td></tr>
+<tr><td>broad lines (and their components)</td><td><span class="sw" style="background:#2a78d6"></span> blue, darker and lighter steps</td></tr>
+<tr><td>narrow lines, outflow</td><td><span class="sw" style="background:#1baf7a"></span> teal &nbsp; <span class="sw" style="background:#eda100"></span> yellow</td></tr>
+<tr><td>Fe&#8202;II, host</td><td><span class="sw" style="background:#e34948"></span> red &nbsp; <span class="sw" style="background:#008300"></span> green</td></tr>
+<tr><td>Bowen + He&#8202;II, Balmer</td><td><span class="sw" style="background:#4a3aa7"></span> violet &nbsp; <span class="sw" style="background:#86b6ef"></span> light blue, dashed</td></tr></table></div>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 8e22dfc109bb</span></footer></main></div></body></html>

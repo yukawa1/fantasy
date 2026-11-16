@@ -4,7 +4,7 @@
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1)"
+VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' fantasy_agn/__init__.py | head -n 1)"
 NAME="FANTASY-$VERSION"
 OUT="dist/$NAME"
 

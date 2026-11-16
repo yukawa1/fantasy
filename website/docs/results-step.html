@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5 · Results · FANTASY documentation</title><link rel="icon" href="../assets/mark.png">
+<link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="docs.css">
+<script defer src="search-index.js"></script><script defer src="docs.js"></script></head>
+<body><a class="skip" href="#content">Skip to article</a>
+<header class="mast"><nav class="wrap" aria-label="Main navigation"><a class="brand" href="../index.html"><img src="../assets/mark.png" alt="">FANTASY</a>
+<div class="doc-mast-links"><a href="../index.html#explore">Spectrum explorer</a><a href="index.html">Documentation</a></div></nav></header>
+<div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
+<label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
+<nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html">4 · Fit</a><a href="results-step.html" aria-current="page">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html">Components</a><a href="feii.html">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html">Classification</a></section><section><h3>Figures</h3><a href="figures.html">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a></section></nav></div></details></aside>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.0</a> / The app, step by step</p>
+<h1>5 · Results</h1><div class="lead">The summary at the top gives the fit quality and the main numbers with errors; parameters at a limit
+are flagged with a button that opens their component. A joint fit adds <b>Flux scale between epochs</b>: the median error of the
+flux scale of an epoch (<code>me.calibration_error</code>), marked when it is above 2%, since this noise enters every light curve.</div>
+<h2>Views</h2>
+<dl class="params">
+<dt>Fit</dt><dd>data, model, components and residuals (drag to zoom, double-click to reset; click the legend to hide a curve).
+Below, four tables: <i>Lines</i> (by component, with flags for undetected lines and tied widths; <i>Hide undetected</i>),
+<i>Continuum and host</i> (continuum, luminosities, host properties and the black-hole mass of every recipe that applies),
+<i>All parameters</i> (value, error, limits, status) and <i>All epochs</i>.</dd>
+<dt>Checks</dt><dd>five checks, numbered in the order to use them. Each is one line with its run button and a status
+(<i>not run</i>, <i>nothing found</i>, <i>3 features</i>, <i>2 biased</i>, ...); click its title to open or close it. A check that needs
+attention, or that is running, is open; the others are closed until you open them. The number on the <b>Checks</b> tab counts the
+checks that need attention. 1. <b>Does the model miss anything?</b>: the residual
+analysis (<code>fa.analyze_residuals</code>, threshold 3&ndash;6&sigma;) marks missing lines, wings, absorption, continuum shape and
+sky residuals, suggests a change for each, and <b>Refit with the changes</b> applies the ones you keep.
+2. <b>How robust is this fit?</b> (<code>fa.robustness(r)</code>, one spectrum): <b>Check robustness</b> fixes each free width, shift and
+ratio at values across its limits and refits everything else, from the best fit and from a fresh guess (a few hundred fits, 1&ndash;3 minutes).
+It shows your results (broad-line FWHM, &sigma;, flux and shift, R<sub>FeII</sub>, total [O III]) over all acceptable fits (&Delta;&chi;&sup2; &le; 1 and &le; 4)
+next to their error bars, and the parameters to look at: <i>weakly bounded</i>, <i>slides to its limit</i>, <i>second minimum</i>, with a small
+&Delta;&chi;&sup2; scan for each. If the scans find a better fit, <b>Fit again from the better solution</b> starts the model there.
+3. <b>Compare with another fit</b> (<code>fa.compare_fits(a, b)</code>): <b>Pin this fit</b> keeps it under a name; change the model (continuum,
+line profile, ties), fit again and <b>Compare with current</b>. It shows whether the data can tell the two fits apart (RMS difference of the
+total models in units of the error, &chi;&sup2; on the same pixels), the results of both with the change in errors, a figure with both fits,
+where the flux went between the components and both broad profiles with their half-maximum crossings (PDF), and a warning when a broad
+profile has a shoulder at half maximum, so that its FWHM is fragile and &sigma; is the safer width.
+4. <b>Is weak Fe&#8202;II inflating the fit?</b> (<code>fa.prune_feii(r)</code>, one spectrum or epochs fitted one by one, with Fe&#8202;II and errors): the table lists every
+Fe&#8202;II group with its strength, error and whether it is detected (2&sigma;). <b>Drop undetected groups</b> fixes the groups below the
+threshold (2&sigma; or 3&sigma;) at zero and fits again; the new fit becomes the result, and a table shows what changed (Fe&#8202;II flux,
+R<sub>Fe&#8202;II</sub>, the broad line, the continuum, BIC). <b>Prune again from the full fit</b> applies another threshold to the original fit;
+<b>Back to the fit with every group</b> restores it. For epochs fitted one by one the card lists every epoch with its number of groups and how many are
+below 2&sigma;; pruning runs on all epochs (<code>fits = fa.prune_feii(fits)</code>) and the light curves, lags and Main sequence tab then
+use the pruned fits. A group dropped in one epoch and kept in the next adds scatter to the Fe&#8202;II light curve. A joint fit has no
+pruning step. For a sample, tick <b>Drop undetected Fe&#8202;II groups and fit again</b> in the Fit step
+(<code>fa.fit_sample(files, prune_feii=True)</code>): the list gets a <i>Fe II dropped</i> column, and <b>before pruning Fe&#8202;II</b> on
+the main sequence diagram shows where the spectra were with every group. Why and when: <a href="feii.html">Fe&#8202;II templates</a>, <i>Weak Fe&#8202;II</i>.
+5. <b>Would this fit recover the truth?</b> (<code>fa.simulation_check(r)</code>, one spectrum): <b>Run simulations</b> takes the fitted
+model as the truth, draws 30, 60 or 120 spectra from it with the noise of the spectrum and fits each again from scratch as the spectrum
+was fitted (about a minute for 60). For every result the table gives the value in the fit, the mean of the simulations, the bias in units
+of the scatter, the scatter (the real statistical error), the error bar the fits report and how often the truth lies within it (68% for
+correct errors). <i>Biased</i>: the mean differs from the truth by more than 0.3 of the scatter and by more than chance allows. If the fit
+was pruned of Fe&#8202;II groups (check 4), every simulation is pruned too, so running it before and after shows whether pruning helped
+for this object. It tests the procedure for this model; what the model leaves out is for checks 1 and 3.</dd>
+<dt>Correlations</dt><dd>several epochs (joint or one by one). Opening the tab measures every epoch once (<code>fa.epoch_table</code>: broad flux, FWHM, &sigma;,
+shift and EW of every broad line, the continuum and log L, R<sub>Fe&#8202;II</sub>, [O&#8202;III]; all cores, about 20 s for 76 epochs). After that everything is immediate.
+<b>The map</b> shows the Spearman &rho; of every pair of quantities, with the number where p &lt; 0.05 and &ldquo;=&rdquo; where a pair is the same number twice; with many pairs some reach p &lt; 0.05 by chance.
+<b>Click a square</b> (or choose the two quantities at the top) to see that relation with its fit: slope and intrinsic scatter by maximum likelihood with errors in both quantities, the 68% range of the line
+from a bootstrap of the epochs, fluxes, widths and EWs in log10 so that the slope is a power law. <b>Hover</b> over a point for its date and values, <b>click</b> it to leave that epoch out (Restore brings them back).
+<b>Continuum earlier by</b> (observed-frame days, the rest-frame lag &times; (1 + z)) sets each line epoch against the continuum interpolated that much earlier between the epochs
+(<code>fa.correlations.shift_continuum</code>), and the map and the fit follow as you drag; without it the quantities are taken at the same epoch, which biases the intrinsic Baldwin effect when the lag is comparable to the variability.
+Look for the intrinsic Baldwin effect (EW against luminosity), the breathing of the BLR (width against luminosity) and a constant [O&#8202;III] (the flux calibration).
+PDF, PNG and SVG of the relation or of the grid of all pairs, and their Python code, use the current lag and left-out epochs.</dd>
+<dt>Publication figure</dt><dd>ranges, title, journal and width (MNRAS, A&amp;A, ApJ columns), zoom panels under the spectrum (quick H&beta;, H&alpha;,
+Mg&#8202;II buttons; the whole fit, or with the continuum, Fe&#8202;II and host subtracted), legend position (above, inside where it is free, beside), font size, line labels; for every kind of component whether it is
+drawn, its colour, fill, line width and style. PDF, PNG, EPS, SVG, and the Python code of the figure to copy. See <a href="figures.html">Figures</a>.</dd>
+<dt>Line profiles</dt><dd>tick lines (broad lines are listed first) and choose <b>Each in a panel</b> (each line alone with its components,
+FWHM, &sigma; and flux, the half-maximum points and residuals) or <b>Overlaid</b> (the profiles on one velocity axis, scaled to their peaks,
+to compare widths and shapes; with several epochs, <b>Compare: Every epoch</b> overlays the first chosen line of every epoch, in time order); a velocity range;
+PDF, PNG, EPS, SVG and the Python code.</dd>
+<dt>Posterior</dt><dd>with Monte Carlo or MCMC errors: the corner plot of chosen parameters.</dd>
+<dt>Main sequence</dt><dd>with Fe&#8202;II and broad H&beta;: R<sub>Fe&#8202;II</sub> against FWHM(H&beta;) for every epoch; <i>Zoom to the
+epochs</i> (<a href="feii-ms.html">Fe&#8202;II and the main sequence</a>).</dd>
+<dt>Classification</dt><dd>the three steps (starlight, broad H&alpha;, emission lines) and the BPT and WHAN diagrams, as figures to download.</dd>
+<dt>Light curves &amp; lags</dt><dd>(joint fit, or epochs fitted one by one through <code>fa.EpochSet(fits)</code>, which are not intercalibrated) for several epochs: light curves of fluxes and widths (CSV), and reverberation mapping: choose the
+line, the lag methods (ICCF, von Neumann, ZDCF, DRW), an MJD range and detrending, then <b>Measure lag</b>
+(<a href="reverberation.html">Reverberation mapping</a>).</dd>
+</dl>
+<h2>Downloads</h2>
+<p>The fitted lines (CSV or FITS), the model and its components (data, model, every component, host, AGN, spectrum minus host
+and, with extinction, the transmission and intrinsic components), the fit figures (PDF), the script, the notebook and the project.</p>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 8e22dfc109bb</span></footer></main></div></body></html>

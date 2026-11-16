@@ -62,9 +62,11 @@ class FitResult:
     - ``plot()``, ``summary()``, ``save(prefix)``, ``to_dataframe()``
     """
 
+    not_measured = ()                     # results saved before this was recorded
+
     def __init__(self, spectrum, model, mask, full, cov, samples, chi2, dof, nfev,
                  success, message, at_limit, error_scale, time, error_method, at_zero=(),
-                 unconstrained=()):
+                 unconstrained=(), not_measured=()):
         self.spectrum, self.model, self.mask = spectrum, model, mask
         self.full, self.cov, self.samples = full, cov, samples
         self.chi2, self.dof, self.rchi2 = chi2, dof, chi2 / dof
@@ -74,6 +76,8 @@ class FitResult:
         self.at_zero = list(at_zero)
         # amplitudes fixed at 0 because they do not affect the fitted pixels
         self.unconstrained = list(unconstrained)
+        # widths and shifts of components without flux: their values mean nothing
+        self.not_measured = list(not_measured)
         self.error_method = error_method
 
     # ------------------------------------------------------- propagation
@@ -132,8 +136,10 @@ class FitResult:
     def params(self):
         sig = self._sigma()
         rows = []
+        weak = self.unmeasured_fluxes
         for i, p in enumerate(self.model.params):
-            status = ("lower limit (inner edge not constrained)"
+            status = ("not measured" if p.name in self.not_measured or p.name in weak else
+                      "lower limit (inner edge not constrained)"
                       if p.name in self.at_limit and p.name.endswith(".span") and p.value >= p.max - 1e-6 else
                       "at limit" if p.name in self.at_limit else
                       "at bound" if p.name in self.at_zero else
@@ -145,9 +151,73 @@ class FitResult:
                 err = 0.5 * (hi - lo)
             if (status in ("at limit", "at bound") or status.startswith("lower limit")) and self.samples is None:
                 err = np.nan
+            if p.name in self.not_measured:
+                err = np.nan
             rows.append((p.name, p.value, err, p.min, p.max, p.unit, status))
         return pd.DataFrame(rows, columns=["parameter", "value", "error", "min", "max",
                                            "unit", "status"])
+
+    @property
+    def unmeasured_fluxes(self):
+        """Line fluxes with an error at least as large as the flux: the data do not measure them."""
+        sig = self._sigma()
+        return [p.name for i, p in enumerate(self.model.params)
+                if p.name.endswith(".flux") and (p.free or p.tie) and p.value > 0
+                and self._param_error(i, sig) >= p.value]
+
+    def upper_limit(self, name, level=0.95):
+        """
+        One-sided limit on a parameter from the posterior samples (``errors='mcmc'``),
+        e.g. the flux of an undetected line. It assumes the flat priors within the
+        parameter limits, so it depends on those limits.
+        """
+        if self.error_method != "mcmc":
+            raise ValueError("upper_limit needs posterior samples: fit with errors='mcmc'")
+        return float(np.percentile(self.samples[:, self._index(name)], 100 * level))
+
+    def line_limit(self, line, component=None, nsigma=3.0, level=0.95):
+        """
+        Upper limit on the flux of a line that is not detected.
+
+        With posterior samples (``errors='mcmc'``) it is the one-sided ``level`` limit of the
+        samples (:meth:`upper_limit`). Otherwise it is ``max(flux, 0) + nsigma * sigma_F``, where
+        sigma_F is the error of the flux of a line with the fitted width and shift, measured from
+        the noise under it alone (the other parameters held at their values; errors scaled as in
+        the fit): the flux a line of that shape would need to be seen at ``nsigma``.
+
+        :param line: line name, e.g. '[OIII]5007'.
+        :param component: the component (default: the first that has the line).
+        :return: dict with ``limit``, ``method`` ('mcmc' or 'noise'), ``nsigma`` or ``level``,
+            ``sigma`` (sigma_F, for the noise method) and the fitted ``flux``.
+        """
+        comps = [c for c in self._line_components() if line in c.line_names
+                 and (component is None or c.name == component)]
+        if not comps:
+            raise ValueError(f"no line {line!r}" + (f" in {component!r}" if component else ""))
+        comp = comps[0]
+        sl = dict(zip([c.name for c in self.model.components], self.model._slices()))[comp.name]
+        k = comp.line_names.index(line)
+        name = f"{comp.name}.{line}.flux"
+        flux = float(comp.line_fluxes(self.full[sl])[k])
+        if self.error_method == "mcmc" and self.samples is not None and name in self.model.params:
+            return {"limit": self.upper_limit(name, level), "method": "mcmc", "level": level, "flux": flux,
+                    "sigma": np.nan}
+        if name not in self.model.params:
+            raise ValueError(f"{name} is not a parameter of the model")
+        s, m = self.spectrum, self.mask
+        x, err = s.wave[m], s.err[m] * self.error_scale
+        i = self._index(name)
+        step = abs(self.full[i]) or 1.0           # the model is linear in a line flux: any step is exact
+        hi = self.full.copy()
+        hi[i] += step
+        dflux = float(comp.line_fluxes(hi[sl])[k]) - flux
+        if dflux <= 0:
+            raise ValueError(f"the flux of {line} does not depend on {name}")
+        g = (self.model.evaluate(x, s.context, hi) - self.model.evaluate(x, s.context, self.full)) / dflux
+        info = float(np.sum((g / err) ** 2))
+        sigma = 1.0 / np.sqrt(info) if info > 0 else np.inf
+        return {"limit": float(max(flux, 0.0) + nsigma * sigma), "method": "noise", "nsigma": float(nsigma), "flux": flux,
+                "sigma": float(sigma)}
 
     def _line_components(self):
         return [c for c in self.model.components if isinstance(c, Lines)]
@@ -192,14 +262,14 @@ class FitResult:
                     f_val, f_err = (float(v) for v in self.propagate(flux))
                 ew_val, ew_err = self.propagate(ew)
                 errs = [self._param_error(i, sig) for i in (wi, si)]
-                rows.append((comp.name, ln, lam, f_val, f_err, self.full[wi],
-                             errs[0], self.full[si], errs[1], float(ew_val), float(ew_err)))
+                rows.append((comp.name, ln, lam, f_val, f_err, self._measured(wi),
+                             errs[0], self._measured(si), errs[1], float(ew_val), float(ew_err)))
         for comp in self._feii_components():
             m = self.feii(comp.name)
             wi, si = self._index(f"{comp.name}.fwhm"), self._index(f"{comp.name}.shift")
             errs = [self._param_error(i, sig) for i in (wi, si)]
-            rows.append((comp.name, m["line"], float(np.mean(m["band"])), m["flux"], m["flux_err"], self.full[wi],
-                         errs[0], self.full[si], errs[1], m["ew"], m["ew_err"]))
+            rows.append((comp.name, m["line"], float(np.mean(m["band"])), m["flux"], m["flux_err"], self._measured(wi),
+                         errs[0], self._measured(si), errs[1], m["ew"], m["ew_err"]))
         return pd.DataFrame(rows, columns=[
             "component", "line", "wavelength", "flux", "flux_err", "fwhm", "fwhm_err",
             "shift", "shift_err", "ew", "ew_err"])
@@ -249,7 +319,12 @@ class FitResult:
                 "flux": float(val[0]), "flux_err": float(err[0]), "ew": float(val[1]), "ew_err": float(err[1]),
                 "r_feii": float(val[2]), "r_feii_err": float(err[2]), "reference": ref if broad else None}
 
+    def _measured(self, i):
+        return np.nan if self.model.params.names[i] in self.not_measured else self.full[i]
+
     def _param_error(self, i, sig):
+        if self.model.params.names[i] in self.not_measured:
+            return np.nan
         if self.samples is not None:
             lo, hi = np.percentile(self.samples[:, i], [15.865, 84.135])
             return 0.5 * (hi - lo)
@@ -315,7 +390,9 @@ class FitResult:
         Measure a line summed over components (default: every Lines component
         that contains it, e.g. broad + very broad), directly from the model
         profile. Returns a dict with flux, FWHM and line dispersion sigma
-        (km/s), centroid shift (km/s), EW (A) and their errors.
+        (km/s), centroid shift (km/s), EW (A) and their errors, and
+        ``fwhm_fragile``: True when the profile has a shoulder at half maximum,
+        so that a small change of the fit moves the FWHM a lot (prefer sigma).
         """
         lam0, v, lam, profile, comps = self._line_profile_func(line, components)
 
@@ -327,6 +404,10 @@ class FitResult:
         out = {"line": line, "components": comps}
         for k, a, e in zip(keys, val, err):
             out[k], out[k + "_err"] = float(a), float(e)
+        # a shoulder at half maximum: a small change of the profile moves the FWHM a lot (sigma is then safer)
+        from .fitcompare import fwhm_fragile
+        prof = profile(self.full)
+        out["fwhm_fragile"] = bool(np.all(np.isfinite(prof)) and prof.max() > 0 and fwhm_fragile(v, prof)[0])
         return out
 
     def key_results(self):
@@ -607,6 +688,39 @@ class FitResult:
             out["warning"] = "; ".join(warnings)
         return out
 
+    def undersampled(self, min_pixels=1.2):
+        """
+        Line components whose lines are narrower than the data can sample: the observed FWHM (the fitted
+        width and the instrumental resolution in quadrature) is below ``min_pixels`` pixels. Profiles are
+        averaged over the pixels, so the flux of such a line is kept, but a width below about a pixel
+        barely changes the data (it is poorly measured) and the line can fit single noisy pixels.
+        This happens when the instrumental resolution is unknown (``spectrum.resolution`` = 0) and a narrow
+        width ends at its lower limit. Returns a list of dicts: parameter, fwhm (the observed one, km/s),
+        pixel (km/s), pixels (their ratio), resolution_known.
+        """
+        from .components import instrumental_fwhm
+        s = self.spectrum
+        x = s.wave[self.mask]
+        out = []
+        for comp in self._line_components():
+            sl = dict(zip([c.name for c in self.model.components], self.model._slices()))[comp.name]
+            fluxes = comp.line_fluxes(self.full[sl])
+            groups = {}
+            for k, ln in enumerate(comp.line_names):
+                kin = "" if f"{comp.name}.fwhm" in self.model.params else f"{ln}."
+                name = f"{comp.name}.{kin}fwhm"
+                lam = comp._wave[k]
+                if fluxes[k] == 0 or not (x[0] <= lam <= x[-1]) or name in self.not_measured:
+                    continue
+                inst = float(instrumental_fwhm(np.array([lam]), s.context)[0])
+                total = float(np.hypot(self.full[self._index(name)], inst))
+                pixel = float(s.pixel_kms(lam))
+                if total < min_pixels * pixel and (name not in groups or total / pixel < groups[name]["pixels"]):
+                    groups[name] = {"parameter": name, "fwhm": total, "pixel": pixel, "pixels": total / pixel,
+                                    "resolution_known": bool(inst > 0)}
+            out.extend(groups.values())
+        return out
+
     @property
     def n_free(self):
         """Number of free parameters (excluding fixed, tied and auto-fixed ones)."""
@@ -646,6 +760,14 @@ class FitResult:
                        f"{'converged' if info['converged'] else 'NOT converged'}")
         if self.at_limit:
             msg.append(f"  WARNING: at their limits (consider widening): {', '.join(self.at_limit)}")
+        weak = self.unmeasured_fluxes
+        if weak:
+            msg.append(f"  WARNING: not measured (error larger than the flux): {', '.join(weak)}")
+        for u in self.undersampled():
+            msg.append(f"  WARNING: {u['parameter']}: the lines are {u['pixels']:.1f} pixels wide (FWHM {u['fwhm']:.0f} km/s, "
+                       f"pixel {u['pixel']:.0f} km/s), too narrow to be sampled: their fluxes are unreliable"
+                       + ("" if u["resolution_known"] else "; the instrumental resolution is unknown: set it with "
+                          "spec.with_resolution(...) or raise the lower limit of the width"))
         negative = self.negative_host_fraction()
         if negative > 0.1:
             msg.append(f"  WARNING: the host galaxy is negative over {negative:.0%} of the fitted "
@@ -667,6 +789,8 @@ class FitResult:
             msg.append(f"  outside the fitted range, fixed at 0: {', '.join(self.unconstrained)}")
         if self.at_zero and not short:
             msg.append(f"  not detected (amplitude at its bound): {', '.join(self.at_zero)}")
+        if self.not_measured and not short:
+            msg.append(f"  not measured (no flux in the component): {', '.join(self.not_measured)}")
         if short:
             return "\n".join(msg)
         with pd.option_context("display.width", 140, "display.max_rows", 200,
@@ -734,6 +858,15 @@ class FitResult:
         """Several lines side by side (default: those with several components)."""
         from .plotting import plot_lines
         return plot_lines(self, lines, **kw)
+
+    def plot_profiles(self, lines=None, **kw):
+        """
+        Broad profiles of several lines overlaid, each scaled to its peak, e.g.
+        ``r.plot_profiles(["Hb", "Ha"])``: are the lines equally wide, is one more asymmetric?
+        See :func:`fantasy_agn.plotting.plot_profiles` (also for one line in several fits).
+        """
+        from .plotting import plot_profiles
+        return plot_profiles(self, lines, **kw)
 
     def fitted_lines(self):
         """The lines that ``plot_line`` can show, most interesting first (a DataFrame)."""

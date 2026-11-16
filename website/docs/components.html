@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Components · FANTASY documentation</title><link rel="icon" href="../assets/mark.png">
+<link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="docs.css">
+<script defer src="search-index.js"></script><script defer src="docs.js"></script></head>
+<body><a class="skip" href="#content">Skip to article</a>
+<header class="mast"><nav class="wrap" aria-label="Main navigation"><a class="brand" href="../index.html"><img src="../assets/mark.png" alt="">FANTASY</a>
+<div class="doc-mast-links"><a href="../index.html#explore">Spectrum explorer</a><a href="index.html">Documentation</a></div></nav></header>
+<div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
+<label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
+<nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html">4 · Fit</a><a href="results-step.html">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html" aria-current="page">Components</a><a href="feii.html">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html">Classification</a></section><section><h3>Figures</h3><a href="figures.html">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a></section></nav></div></details></aside>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.0</a> / Modelling</p>
+<h1>Components</h1><div class="lead">Every component returns its flux on the wavelength grid together with exact derivatives with respect to its
+parameters. Amplitudes (fluxes) enter linearly; widths, shifts and shapes are nonlinear.</div>
+<h2>Emission lines: <code>fa.Lines</code></h2>
+<p>A group of lines with shared kinematics (or one shift and width per line with <code>tie_kinematics=False</code>).
+Parameters: the integrated flux of each line <code>&lt;name&gt;.&lt;line&gt;.flux</code>, the velocity shift
+<code>&lt;name&gt;.shift</code> and FWHM <code>&lt;name&gt;.fwhm</code> (km/s). The line centre and Gaussian width are</p>
+<div class="eq">&lambda;<sub>c</sub> = &lambda;<sub>0</sub>(1 + <span class="frac"><span>v</span><span>c</span></span>),
+&nbsp;&nbsp; &sigma;<sub>&lambda;</sub> = &lambda;<sub>c</sub>&nbsp;<span class="frac"><span>&radic;(FWHM<sup>2</sup>/8 ln 2 + &sigma;<sub>inst</sub><sup>2</sup>)</span><span>c</span></span></div>
+<p>so fitted widths are intrinsic: the instrumental resolution &sigma;<sub>inst</sub> of the spectrum is added in quadrature
+(exactly for Gaussian, Lorentzian and Voigt profiles). Every profile integrates to one, so the flux parameter is the line flux.</p>
+<div class="table-scroll"><table class="doc"><tr><th>profile</th><th>parameters</th><th>shape</th></tr>
+<tr><td>gaussian</td><td>shift, fwhm</td><td>&prop; exp[&minus;(&lambda;&minus;&lambda;<sub>c</sub>)<sup>2</sup>/2&sigma;<sub>&lambda;</sub><sup>2</sup>]</td></tr>
+<tr><td>lorentzian</td><td>shift, fwhm</td><td>&prop; [1 + (2(&lambda;&minus;&lambda;<sub>c</sub>)/&Gamma;)<sup>2</sup>]<sup>&minus;1</sup>, wings &prop; &Delta;&lambda;<sup>&minus;2</sup></td></tr>
+<tr><td>voigt</td><td>shift, fwhm, fwhm_l</td><td>Gaussian &otimes; Lorentzian (Faddeeva function)</td></tr>
+<tr><td>gauss-hermite</td><td>shift, fwhm, h3, h4</td><td>Gaussian &times; [1 + h<sub>3</sub>H<sub>3</sub>(y) + h<sub>4</sub>H<sub>4</sub>(y)] (van der Marel &amp; Franx 1993): skew and peakedness</td></tr>
+<tr><td>stratified</td><td>shift, fwhm, span, gamma</td><td>a virialised BLR summed over radius (<a href="stratified.html">Stratified BLR</a>)</td></tr></table></div>
+<p>Options: fixed ratios <code>ratios={"[OIII]4959": ("[OIII]5007", 1/2.98)}</code>, upper limits
+<code>max_ratios={"[NII]6583": ("Ha", 3)}</code>, <code>absorption=True</code> for absorption lines, custom lines as
+<code>("name", vacuum_wavelength)</code>. The library of lines is in <i>Reference &rarr; Line list</i>; the FANTASY 1 lists are sets
+(<code>fa.line_set("coronal")</code>, <code>fa.LINE_SETS</code>) and a CSV list of your own is read by <code>fa.read_line_list(path)</code>.</p>
+<h2>Continua</h2>
+<div class="table-scroll"><table class="doc"><tr><th>component</th><th>model</th><th>parameters</th></tr>
+<tr><td><code>PowerLaw</code></td><td>f = A (&lambda;/&lambda;<sub>p</sub>)<sup>&alpha;</sup></td><td>amp, index</td></tr>
+<tr><td><code>BrokenPowerLaw</code></td><td>&alpha;<sub>blue</sub> below the break, &alpha;<sub>red</sub> above; optionally fitted break</td><td>amp, index_blue, index_red</td></tr>
+<tr><td><code>Polynomial</code></td><td>&Sigma; a<sub>k</sub> [(&lambda;&minus;&lambda;<sub>p</sub>)/s]<sup>k</sup></td><td>linear coefficients</td></tr>
+<tr><td><code>Blackbody</code></td><td>f = A B<sub>&lambda;</sub>(&lambda;, T) / B<sub>&lambda;</sub>(&lambda;<sub>p</sub>, T)</td><td>amp, temperature</td></tr>
+<tr><td><code>BalmerContinuum</code></td><td>see below</td><td>amp; T, &tau;, fwhm fixed by default</td></tr></table></div>
+<p>The Balmer continuum (Grandi 1982; Dietrich et al. 2002) is an optically thick Planck function below the edge
+&lambda;<sub>BE</sub> = 3646 &Aring;, smeared by the gas velocities (Gaussian of FWHM 5000 km/s, as QSFit):</p>
+<div class="eq">F<sub>BaC</sub>(&lambda;) = A&nbsp;<span class="frac"><span>B<sub>&lambda;</sub>(&lambda;, T)</span><span>B<sub>&lambda;</sub>(&lambda;<sub>BE</sub>, T)</span></span>
+<span class="frac"><span>1 &minus; e<sup>&minus;&tau;(&lambda;/&lambda;<sub>BE</sub>)<sup>3</sup></sup></span><span>1 &minus; e<sup>&minus;&tau;</sup></span></span>,
+&nbsp; &lambda; &le; &lambda;<sub>BE</sub></div>
+<h2>Templates</h2>
+<dl class="params">
+<dt><code>FeII</code></dt><dd>Fe&#8202;II lines in multiplet groups with fixed relative intensities, a free amplitude per group and one shift and FWHM
+(<a href="feii.html">Fe&#8202;II templates</a>).</dd>
+<dt><code>HighOrderBalmer</code></dt><dd>H&epsilon; and above blending into the Balmer edge, fixed relative intensities, one amplitude.</dd>
+<dt><code>StellarPopulation</code></dt><dd>the host as a non-negative sum of stellar population templates (E-MILES default; BC03, FSPS, XSL)
+convolved to a stellar velocity v<sub>&#9733;</sub> and dispersion &sigma;<sub>&#9733;</sub>, optionally with a dust screen.</dd>
+<dt><code>HostGalaxy</code></dt><dd>the host as a combination of the SDSS galaxy eigenspectra of Yip et al. (2004).</dd>
+</dl>
+<h2>Multiplicative components</h2>
+<div class="table-scroll"><table class="doc"><tr><th>component</th><th>multiplies</th><th>by</th></tr>
+<tr><td><code>Extinction</code></td><td>every component but the host</td><td>10<sup>&minus;0.4 E(B&minus;V) k(&lambda;)</sup>, F99 or Calzetti</td></tr>
+<tr><td><code>Absorption</code></td><td>every component</td><td>exp[&minus;&Sigma;<sub>k</sub> &tau;<sub>k</sub>(&lambda;)], Gaussian troughs in velocity</td></tr>
+<tr><td><code>Calibration</code></td><td>the whole model</td><td>1 + &Sigma;<sub>k</sub> c<sub>k</sub>P<sub>k</sub>(u), Legendre polynomials (as pPXF <code>mdegree</code>)</td></tr></table></div>
+<p>With <code>Extinction</code>, fitted fluxes and luminosities are the intrinsic (dereddened) values, with the extinction
+uncertainty in their errors; plots show the observed components.</p>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 8e22dfc109bb</span></footer></main></div></body></html>

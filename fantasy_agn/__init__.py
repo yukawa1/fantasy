@@ -22,8 +22,9 @@ from .host import StellarPopulation
 from .components import (Absorption, Blackbody, Calibration, BalmerContinuum, BrokenPowerLaw, Component, Extinction, FeII,
                          HighOrderBalmer, HostGalaxy, Lines, Polynomial, PowerLaw)
 from .extinction import fitzpatrick99
-from .classify import Classification, classify
+from .classify import Classification, classify, classify_fit
 from .compare import Comparison, compare
+from .confidence import ModelConfidence, candidate_ties, model_confidence
 from .fitting import fit, fit_many, guess
 
 
@@ -39,13 +40,24 @@ from .result import FitResult
 from .spectrum import Spectrum, read
 from .io import save, load
 from .absorbers import fit_absorbed
-from .refine import refine
+from .refine import prune_feii, refine
+from .simcheck import SimulationCheck, simulation_check
+from .jointcheck import CalibrationCheck, JointSimulationCheck, calibration_check
+from .redshift import RedshiftResult, find_redshift
+from .predictive import PredictiveCheck, calibrate, link_test, predictive_check, profile_likelihood
+from .robustness import Robustness, robustness
+from .fitcompare import FitComparison, compare_fits
+from .correlations import epoch_correlations, epoch_table
+from .catalogs import lookup_catalogs
+from .multiepoch import EpochSet
 from .residuals import analyze_residuals
+from .linescan import suggest_lines
 from .sample import fit_sample, SampleResult
 
 __all__ = [
-    "read", "Spectrum", "Model", "save", "load", "fit_absorbed", "refine", "analyze_residuals", "fit_sample", "SampleResult", "fit", "fit_many", "guess", "fit_epochs", "compare", "Comparison",
-    "classify", "Classification",
+    "read", "Spectrum", "Model", "save", "load", "fit_absorbed", "refine", "prune_feii", "simulation_check", "SimulationCheck", "calibration_check", "CalibrationCheck", "JointSimulationCheck", "find_redshift", "RedshiftResult", "analyze_residuals", "suggest_lines", "lookup_catalogs", "fit_sample", "SampleResult", "fit", "fit_many", "guess", "fit_epochs", "compare", "Comparison", "model_confidence", "ModelConfidence", "candidate_ties",
+    "predictive_check", "PredictiveCheck", "link_test", "profile_likelihood", "calibrate", "robustness", "Robustness", "compare_fits", "FitComparison", "epoch_table", "epoch_correlations", "EpochSet",
+    "classify", "classify_fit", "Classification",
     "presets", "app",
     "FitResult", "MultiEpochResult", "Lines", "FeII", "HighOrderBalmer", "PowerLaw",
     "BrokenPowerLaw", "Polynomial", "BalmerContinuum", "HostGalaxy", "StellarPopulation",

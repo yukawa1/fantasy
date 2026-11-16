@@ -1,13 +1,16 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "fantasy_agn"
-version = "2.0.0"
+dynamic = ["version"]          # from fantasy_agn.__version__: one place to change it
 description = "FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis: fast multi-component fitting of AGN spectra with reliable uncertainties, single- and multi-epoch."
 readme = "README.md"
-authors = [{ name = "Nemanja Rakić", email = "rakinemanja@gmail.com" }]
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{ name = "Nemanja Rakić", email = "rakinemanja@gmail.com" }, { name = "Dragana Ilić" },
+           { name = "Luka Č. Popović" }]
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.21",
@@ -36,6 +39,9 @@ fantasy-app = "fantasy_agn.app:main"
 
 [tool.setuptools]
 packages = ["fantasy_agn", "fantasy_agn.app"]
+
+[tool.setuptools.dynamic]
+version = { attr = "fantasy_agn.__version__" }
 
 [tool.setuptools.package-data]
 fantasy_agn = ["data/*.csv", "data/*.fits", "data/examples/*.fits"]

@@ -37,14 +37,19 @@ if ! command -v uv >/dev/null 2>&1; then
   esac
 fi
 
-CONSTRAINTS=""
+# Resolve a caller-supplied relative wheel before changing folders for uv.
+case "$SOURCE" in
+  /*) ;;
+  *) [ ! -f "$SOURCE" ] || SOURCE="$PWD/$SOURCE" ;;
+esac
+set -- "$SOURCE"
 if [ -f "$HERE/constraints.txt" ]; then
-  CONSTRAINTS="--constraints $HERE/constraints.txt"      # the package versions FANTASY was tested with
+  # Older uv versions split even a quoted constraints path on spaces.
+  set -- --constraints ./constraints.txt "$@"
 fi
 
 echo "Installing FANTASY from $(basename "$SOURCE") (Python $PYTHON_VERSION) ..."
-# shellcheck disable=SC2086
-uv tool install --force --reinstall-package fantasy_agn --python "$PYTHON_VERSION" $CONSTRAINTS "$SOURCE"   # never a cached older build
+(cd "$HERE" && uv tool install --force --reinstall-package fantasy_agn --python "$PYTHON_VERSION" "$@")
 BIN="$(uv tool dir --bin 2>/dev/null || echo "$HOME/.local/bin")"
 PATH="$BIN:$PATH"
 [ -n "$FANTASY_NO_PATH" ] || uv tool update-shell >/dev/null 2>&1 || true   # tool folder on the PATH of new terminals

@@ -62,6 +62,9 @@ def iccf(t1, f1, t2, f2, lags):
     """
     t1, f1, t2, f2 = (np.asarray(a, float) for a in (t1, f1, t2, f2))
     lags = np.asarray(lags, float)
+    # np.interp needs increasing times and gives nonsense without a warning otherwise (epochs need not be in time order)
+    o1, o2 = np.argsort(t1, kind="stable"), np.argsort(t2, kind="stable")
+    t1, f1, t2, f2 = t1[o1], f1[o1], t2[o2], f2[o2]
     # interpolate 2 at t1 + lag (all lags at once)
     x = t1[:, None] + lags[None, :]
     v1 = (x >= t2.min()) & (x <= t2.max())
@@ -91,6 +94,13 @@ def _centroid(lags, r, frac=0.8):
     return float(np.sum(w * lags[lo:hi + 1]) / np.sum(w)), float(lags[k]), float(rmax)
 
 
+def _in_time_order(t1, f1, e1, t2, f2, e2):
+    """Both light curves sorted by time, so that a lag and its Monte Carlo errors do not depend on the order of the epochs."""
+    t1, f1, e1, t2, f2, e2 = (np.asarray(a, float) for a in (t1, f1, e1, t2, f2, e2))
+    o1, o2 = np.argsort(t1, kind="stable"), np.argsort(t2, kind="stable")
+    return t1[o1], f1[o1], e1[o1], t2[o2], f2[o2], e2[o2]
+
+
 def ccf_lag(t1, f1, e1, t2, f2, e2, lag_range=None, dt=None, n_mc=1000, frac=0.8, alias=True, seed=0):
     """
     Lag of light curve 2 behind 1 with the ICCF and FR/RSS errors.
@@ -102,6 +112,7 @@ def ccf_lag(t1, f1, e1, t2, f2, e2, lag_range=None, dt=None, n_mc=1000, frac=0.8
     :return: dict with tau_cen and its -/+ errors, tau_peak, r_max, the CCF
         (lags, r) and the centroid samples.
     """
+    t1, f1, e1, t2, f2, e2 = _in_time_order(t1, f1, e1, t2, f2, e2)
     t1, f1, e1, t2, f2, e2 = (np.asarray(a, float) for a in (t1, f1, e1, t2, f2, e2))
     ok1, ok2 = np.isfinite(f1) & np.isfinite(t1), np.isfinite(f2) & np.isfinite(t2)
     t1, f1, e1, t2, f2, e2 = t1[ok1], f1[ok1], e1[ok1], t2[ok2], f2[ok2], e2[ok2]
@@ -135,7 +146,7 @@ def ccf_lag(t1, f1, e1, t2, f2, e2, lag_range=None, dt=None, n_mc=1000, frac=0.8
     return {"method": "ICCF", "tau_cen": s["tau"], "tau_err_lo": s["lo"], "tau_err_hi": s["hi"],
             "tau_cen_ccf": tau_cen, "tau_peak": tau_peak, "r_max": rmax, "lags": lags, "r": r,
             "peak_bounds": s["peak"], "frac_rej": s["frac_rej"],
-            "samples": s["samples"], "n_mc": int(cents.size)}
+            "samples": s["samples"], "samples_all": s["samples_all"], "n_mc": int(cents.size)}
 
 
 # ------------------------------------------------- seasonal aliases
@@ -250,7 +261,7 @@ def vn_lag(t1, f1, e1, t2, f2, e2, lag_range, dt=1.0, n_mc=300, alias=True, seed
     s = _summarise(mins, lags, weight)
     return {"method": "von Neumann", "tau_cen": s["tau"], "tau_err_lo": s["lo"], "tau_err_hi": s["hi"],
             "tau_peak": float(lags[np.argmin(curve)]), "peak_bounds": s["peak"], "frac_rej": s["frac_rej"],
-            "lags": lags, "statistic": curve, "samples": s["samples"], "n_mc": len(mins)}
+            "lags": lags, "statistic": curve, "samples": s["samples"], "samples_all": s["samples_all"], "n_mc": len(mins)}
 
 
 # ---------------------------------------------------------------------- ZDCF
@@ -309,11 +320,11 @@ def zdcf_lag(t1, f1, e1, t2, f2, e2, lag_range, n_mc=100, minpts=0, frac=0.8, al
     s = _summarise(cents, lags, weight)
     return {"method": "ZDCF", "tau_cen": s["tau"], "tau_err_lo": s["lo"], "tau_err_hi": s["hi"],
             "tau_peak": peak, "tau_cen_data": cen, "r_max": rmax, "peak_bounds": s["peak"],
-            "frac_rej": s["frac_rej"], "zdcf": z, "samples": s["samples"], "n_mc": len(cents)}
+            "frac_rej": s["frac_rej"], "zdcf": z, "samples": s["samples"], "samples_all": s["samples_all"], "n_mc": len(cents)}
 
 
 def _clean(t1, f1, e1, t2, f2, e2):
-    t1, f1, e1, t2, f2, e2 = (np.asarray(a, float) for a in (t1, f1, e1, t2, f2, e2))
+    t1, f1, e1, t2, f2, e2 = _in_time_order(t1, f1, e1, t2, f2, e2)
     ok1, ok2 = np.isfinite(f1) & np.isfinite(t1), np.isfinite(f2) & np.isfinite(t2)
     e1, e2 = np.where(np.isfinite(e1), e1, 0.0), np.where(np.isfinite(e2), e2, 0.0)
     return t1[ok1], f1[ok1], e1[ok1], t2[ok2], f2[ok2], e2[ok2]
@@ -838,6 +849,25 @@ def rms_spectrum(epochs, line, window=None, n_boot=200, seed=0):
 
 
 # ---------------------------------------------------------------- result
+def lag_significance(lag):
+    """
+    How clearly a lag differs from zero: (p, sigma). ``p`` is the fraction of the lag distribution
+    (all Monte Carlo or posterior samples, aliases included) on the side of zero where the lag is,
+    ``sigma`` the one-sided Gaussian equivalent (2 sigma: 97.7% of the distribution on that side).
+    When every sample is on that side, sigma is the lower limit the number of samples allows (its
+    value is then marked by ``p`` = 1). (nan, nan) without samples.
+    """
+    from scipy import stats
+    s = np.asarray(lag.get("samples_all", lag.get("samples", [])), float)
+    s = s[np.isfinite(s)]
+    tau = lag.get("tau_cen", np.nan)
+    if s.size < 10 or not np.isfinite(tau):
+        return np.nan, np.nan
+    p = float(np.mean(s > 0) if tau >= 0 else np.mean(s < 0))
+    p_eff = min(p, 1 - 1.0 / s.size)
+    return p, float(stats.norm.ppf(p_eff)) if p_eff > 0 else -np.inf
+
+
 class Reverberation:
     """Lag, rms widths and reverberation mass of one broad line (see the module documentation)."""
 
@@ -859,6 +889,13 @@ class Reverberation:
             if abs(d) > 2 * e:
                 self.warnings.append(f"the {v.get('method', k)} lag ({v['tau_cen']:.1f} d) differs from the "
                                      f"{lag.get('method', 'adopted')} lag ({lag['tau_cen']:.1f} d) by more than 2 sigma")
+        p, sig = lag_significance(lag)
+        if np.isfinite(sig) and sig < 2:
+            self.warnings.append(f"the lag is not significant: {100 * p:.0f}% of its distribution is on the "
+                                 f"{'positive' if lag['tau_cen'] >= 0 else 'negative'} side of zero (about {sig:.1f} sigma)")
+        rmax = lag.get("r_max", np.nan)
+        if np.isfinite(rmax) and rmax < 0.5:
+            self.warnings.append(f"the light curves are weakly correlated (r_max = {rmax:.2f}): the lag is not reliable")
         for k, v in lags.items():
             if v.get("frac_rej", 0) > 0.3:
                 self.warnings.append(f"{v.get('method', k)}: {100 * v['frac_rej']:.0f}% of the lag distribution "
@@ -872,10 +909,10 @@ class Reverberation:
         """Lag of every method (observed and rest frame) with the primary-peak bounds."""
         sc = 1 / (1 + self.z) if self.z else 1.0
         rows = [(v.get("method", k), v["tau_cen"] * sc, v["tau_err_lo"] * sc, v["tau_err_hi"] * sc,
-                 v["tau_cen"], v.get("r_max", np.nan), v.get("frac_rej", np.nan), v is self.lag)
+                 v["tau_cen"], v.get("r_max", np.nan), v.get("frac_rej", np.nan), *lag_significance(v), v is self.lag)
                 for k, v in self.methods.items()]
         return pd.DataFrame(rows, columns=["method", "lag_rest", "err_lo", "err_hi", "lag_obs", "r_max",
-                                           "frac_outside_peak", "adopted"])
+                                           "frac_outside_peak", "p_side", "significance", "adopted"])
 
     @property
     def log_mbh(self):
@@ -899,6 +936,9 @@ class Reverberation:
                 ("lag (observed)", self.lag["tau_cen"],
                  f"-{self.lag['tau_err_lo']:.2g} +{self.lag['tau_err_hi']:.2g}", "days"),
                 *([("lag method", np.nan, name, "")] if name else []),
+                *([("lag significance", lag_significance(self.lag)[1],
+                    f"{100 * lag_significance(self.lag)[0]:.0f}% on its side of 0", "sigma")]
+                  if np.isfinite(lag_significance(self.lag)[1]) else []),
                 *other,
                 *([("ICCF r_max", self.methods["iccf"]["r_max"], "", "")] if "iccf" in self.methods else
                   [("r_max", self.lag["r_max"], "", "")] if np.isfinite(self.lag.get("r_max", np.nan)) else []),

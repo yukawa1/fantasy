@@ -237,12 +237,46 @@ def info():
                                                  if mod == "sfdmap2" else "")))
     data = os.environ.get("FANTASY_DATA") or os.path.join(os.path.expanduser("~"), ".fantasy_agn")
     rows.append(("data folder", data))
+    from . import update
+    u = update.check()
+    rows.append(("latest on PyPI", "not checked" if not u["checked"] else "unknown (offline)" if u["latest"] is None
+                 else f"{u['latest']}" + ("  (newer: fantasy update)" if u["newer"] else "")))
     for name, meta in templates.TEMPLATE_SETS.items():
         rows.append((f"templates {name}", "installed" if _templates_ready(name)
                      else f"not downloaded ({meta['size_mb']} MB, on first use)"))
     w = max(len(a) for a, _ in rows)
     for a, b in rows:
         print(f"{a:<{w}}  {b}")
+
+
+# ------------------------------------------------------------------- update
+def update_cmd(check_only=False, yes=False):
+    from . import update
+    u = update.check(force=True)
+    if not u["checked"]:
+        print("The update check is off (FANTASY_NO_UPDATE_CHECK).")
+        return 0
+    if u["latest"] is None:
+        print(f"FANTASY {u['current']}: PyPI could not be reached ({update.PYPI_URL}).")
+        return 1
+    if not u["newer"]:
+        print(f"FANTASY {u['current']} is the latest version.")
+        return 0
+    print(f"FANTASY {u['latest']} is published (you have {u['current']}). What's new: {u['changelog']}")
+    if check_only or not u["can_install"]:
+        print(f"Update with:  {u['command']}")
+        return 0
+    if not yes:
+        try:
+            if input(f"Install it now with  {u['command']}  ? [y/N] ").strip().lower() not in ("y", "yes"):
+                return 0
+        except EOFError:
+            return 0
+    ok, out = update.install(u["latest"])
+    print(out)
+    print(f"FANTASY {u['latest']} is installed; it is used from the next start." if ok
+          else "The update did not install: run the command above yourself.")
+    return 0 if ok else 1
 
 
 # ----------------------------------------------------------------- examples
@@ -287,6 +321,9 @@ def main(argv=None):
     a.add_argument("--port", type=int, default=8780)
     a.add_argument("--no-browser", action="store_true", help="do not open a browser window")
     sub.add_parser("info", help="versions, processor cores, templates, data folder")
+    u = sub.add_parser("update", help="install the latest FANTASY from PyPI (or only check with --check)")
+    u.add_argument("--check", action="store_true", help="only say whether a new version is published")
+    u.add_argument("--yes", "-y", action="store_true", help="install without asking")
     e = sub.add_parser("examples", help="copy the example spectra and a first script to a folder")
     e.add_argument("folder", nargs="?", default="fantasy-examples")
     sub.add_parser("python", add_help=False,
@@ -308,6 +345,8 @@ def main(argv=None):
     if args.command == "examples":
         examples(args.folder)
         return 0
+    if args.command == "update":
+        return update_cmd(check_only=args.check, yes=args.yes)
     ap.print_help()
     return 0
 

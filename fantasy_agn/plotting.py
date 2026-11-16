@@ -20,7 +20,7 @@ from matplotlib.ticker import MaxNLocator
 
 C_KMS = 299792.458
 
-__all__ = ("plot_result", "plot_light_curves", "plot_spectrum", "plot_baldwin", "plot_main_sequence", "fit_line",
+__all__ = ("plot_result", "plot_profiles", "plot_correlations", "plot_relation", "plot_light_curves", "plot_spectrum", "plot_baldwin", "plot_main_sequence", "fit_line",
            "new_figure", "paper_style", "pretty_line", "flux_label", "savefig")
 
 # Text and chart inks: primary and secondary text, muted axes, recessive grid, the plot surface.
@@ -71,6 +71,7 @@ PAPER_RC = {
     "savefig.facecolor": SURFACE,
     "pdf.fonttype": 42,
     "ps.fonttype": 42,
+    "svg.fonttype": "none",         # SVG text stays text (editable in Inkscape or Illustrator)
     "savefig.dpi": 300,
     "savefig.bbox": "tight",
     "savefig.pad_inches": 0.03,
@@ -97,7 +98,9 @@ COLORS = {
 }
 # several broad components: steps of the broad blue
 BROAD_SHADES = ("#2a78d6", "#104281", "#6da7ec", "#1c5cab", "#9ec5f4")
-WIDTHS = {"single": 3.5, "double": 7.1}
+WIDTHS = {"single": 3.5, "double": 7.1,
+          # journal column widths (inches): MNRAS 84 / 174 mm, A&A 88 / 180 mm, ApJ 3.5 / 7.1 in
+          "mnras": 3.31, "mnras-double": 6.85, "aa": 3.46, "aa-double": 7.09, "apj": 3.5, "apj-double": 7.1}
 
 _GREEK = {"Lya": "Ly$\\alpha$", "Lyb": "Ly$\\beta$", "Ha": "H$\\alpha$", "Hb": "H$\\beta$", "Hg": "H$\\gamma$",
           "Hd": "H$\\delta$", "He": "H$\\epsilon$"}
@@ -127,14 +130,20 @@ def _residual_axes(rax, xlim):
     rax.axhline(0, color=INK, lw=0.6, zorder=1)
 
 
+SANS_RC = {"font.family": "sans-serif", "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans"],
+           "mathtext.fontset": "dejavusans"}
+
+
 @contextmanager
 def paper_style(enabled=True):
-    """Temporarily apply the journal style (used around figure creation and saving)."""
+    """Temporarily apply the journal style (used around figure creation and saving). ``enabled`` may also
+    name the font: 'serif' (the default, STIX / Times) or 'sans-serif' (Helvetica / Arial)."""
     if not enabled:
         yield
         return
     import matplotlib
-    with matplotlib.rc_context(PAPER_RC):
+    rc = dict(PAPER_RC, **(SANS_RC if enabled == "sans-serif" else {}))
+    with matplotlib.rc_context(rc):
         yield
 
 
@@ -343,7 +352,7 @@ def _label_lines(ax, result, view, model, xlim, max_labels=12, which="strongest"
                 peaks[ln] = (lam_obs, max(peaks.get(ln, (0, 0))[1], float(prof[near].max())))
     if lines is not None:
         from .lines import line_wavelength
-        peaks = {ln: peaks.get(ln, (line_wavelength(ln) / (1.00028 if s.medium != "vacuum" else 1), 1.0))
+        peaks = {ln: peaks.get(ln, (_rest_wave(result, ln) / (1.00028 if s.medium != "vacuum" else 1), 1.0))
                  for ln in lines}
         peaks = {ln: v for ln, v in peaks.items() if xlim[0] < v[0] < xlim[1]}
     if not peaks:
@@ -430,7 +439,8 @@ def _label_lines(ax, result, view, model, xlim, max_labels=12, which="strongest"
 # -------------------------------------------------------------------- plots
 def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig=None,
                 width="double", group="auto", label_lines=False, title=None, style=True,
-                colors=None, hide=(), data=True, model=True, legend=True, label_options=None, styles=None):
+                colors=None, hide=(), data=True, model=True, legend=True, label_options=None, styles=None,
+                zoom=None, zoom_subtract=(), height=1.0):
     """
     Data, model, components and residuals.
 
@@ -441,7 +451,8 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
         separately.
     :param label_lines: annotate the strongest lines with their names.
     :param title: figure title (default none, as is usual in papers).
-    :param style: apply the journal style.
+    :param style: apply the journal style: True or 'serif', 'sans-serif' (Helvetica / Arial), False (none).
+    :param height: the figure height relative to the default for its width (e.g. 0.8 compact, 1.25 tall).
     :param colors: colours by kind, overriding ``COLORS``: 'data', 'model', 'continuum',
         'host', 'feii', 'balmer_cont', 'balmer_lines', 'narrow', 'broad', 'outflow',
         'bowen', 'other', e.g. ``{"broad": "navy", "model": "red"}``.
@@ -450,7 +461,15 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
         ``fill`` (fill under the curve; default only Fe II), ``lw`` (line width, points) and ``ls``
         (matplotlib line style, e.g. '-', '--', ':', '-.'), e.g. ``{"feii": {"fill": False},
         "broad": {"lw": 1.5, "fill": True}, "model": {"ls": "--"}}``.
-    :param data, model, legend: draw the data, the total model, the legend.
+    :param data, model: draw the data, the total model.
+    :param legend: True or 'above' (above the axes), 'inside' (upper right in the panel), 'right' (beside
+        the panel) or False.
+    :param width: also a journal column: 'mnras', 'mnras-double', 'aa', 'aa-double', 'apj', 'apj-double'.
+    :param zoom: wavelength ranges drawn again in a row of panels under the spectrum, e.g.
+        ``[(4700, 5100), (6400, 6800)]`` for the H-beta and H-alpha regions (the main panel marks them).
+    :param zoom_subtract: kinds of components subtracted from the data and the model in the zoom panels, so that
+        the lines stand alone, e.g. ``"continuum"`` or ``("continuum", "host", "feii")``; continuum includes the
+        Balmer continuum and the high-order Balmer lines.
     :param label_options: options of the line labels (see ``_label_lines``):
         which ('strongest' or 'all'), lines (names), fontsize, font (family),
         color, connectors ('leader', 'full', 'none'), rotation (90 or 0).
@@ -466,14 +485,27 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
             xlim = (s.wave[sel].min(), s.wave[sel].max())
         view = (s.wave >= xlim[0]) & (s.wave <= xlim[1])
         narrow = _figsize(width, 1)[0] < 5
-        aspect = (0.95 if narrow else 0.62) if residuals else (0.75 if narrow else 0.48)
+        aspect = ((0.95 if narrow else 0.62) if residuals else (0.75 if narrow else 0.48)) * float(height)
+        zoom = [tuple(map(float, z)) for z in (zoom or [])]
+        zaxes = []
         if ax is None:
-            fig = new_figure(fig, _figsize(width, aspect))
-            if residuals:
-                ax, rax = fig.subplots(2, 1, sharex=True,
-                                       gridspec_kw={"height_ratios": [3.2, 1], "hspace": 0.06})
+            if zoom:
+                aspect += 0.62 if narrow else 0.3
+                fig = new_figure(fig, _figsize(width, aspect))
+                outer = fig.add_gridspec(2, 1, height_ratios=[(4.2 if residuals else 3.2), 2.2], hspace=0.32)
+                top = outer[0].subgridspec(2 if residuals else 1, 1, height_ratios=[3.2, 1] if residuals else [1],
+                                           hspace=0.06)
+                ax = fig.add_subplot(top[0])
+                rax = fig.add_subplot(top[1], sharex=ax) if residuals else None
+                row = outer[1].subgridspec(1, len(zoom), wspace=0.28 if not narrow else 0.4)
+                zaxes = [fig.add_subplot(row[k]) for k in range(len(zoom))]
             else:
-                ax, rax = fig.subplots(), None
+                fig = new_figure(fig, _figsize(width, aspect))
+                if residuals:
+                    ax, rax = fig.subplots(2, 1, sharex=True,
+                                           gridspec_kw={"height_ratios": [3.2, 1], "hspace": 0.06})
+                else:
+                    ax, rax = fig.subplots(), None
         else:
             fig, rax = ax.figure, None
 
@@ -523,11 +555,22 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
         handles, labels = ax.get_legend_handles_labels()
         # The legend sits above the axes; a title goes on top of it (as the
         # legend title) so the two cannot overlap.
-        if legend and labels:
+        where = "above" if legend is True else legend
+        inside = None
+        if where == "above" and labels:
             ax.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0),
                       ncol=min(len(labels), 2 if narrow else 4),
                       columnspacing=1.2, borderaxespad=0.3, title=title or None,
                       title_fontsize=matplotlib.rcParams["axes.titlesize"])
+        elif where == "right" and labels:
+            ax.legend(handles, labels, loc="upper left", bbox_to_anchor=(1.01, 1.0), ncol=1, borderaxespad=0.0,
+                      handlelength=1.6)
+            if title:
+                ax.set_title(title)
+        elif where == "inside" and labels:
+            inside = (handles, labels, 1 if narrow else 2)      # placed after the line labels, clear of them
+            if title:
+                ax.set_title(title)
         elif title:
             ax.set_title(title)
 
@@ -550,7 +593,132 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
             if label_lines == "all":
                 lopt.setdefault("which", "all")
             _label_lines(ax, result, view, model_flux, xlim, extra_axes=(rax,) if rax is not None else (), **lopt)
+        if inside:
+            _place_legend(ax, *inside)
+        from matplotlib.transforms import blended_transform_factory
+        for k, (zax, (z0, z1)) in enumerate(zip(zaxes, zoom)):
+            _zoom_panel(zax, result, (z0, z1), col, hide, group, sty, data, model, model_flux, zoom_subtract)
+            # each zoomed range: a faint blue band (grey means "not fitted") and its letter
+            letter = "abcdefgh"[k % 8]
+            for a in (ax, rax) if rax is not None else (ax,):
+                a.axvspan(z0, z1, color="#2a78d6", alpha=0.06, lw=0, zorder=0)
+            lab_ax = rax if rax is not None else ax
+            tr = blended_transform_factory(lab_ax.transData, lab_ax.transAxes)
+            lab_ax.text(z0, 0.93, f" ({letter})", transform=tr, ha="left", va="top", fontsize=7, color=INK2, zorder=6)
+            zax.text(0.03, 0.95, f"({letter})", transform=zax.transAxes, ha="left", va="top", fontsize=8, color=INK2)
+        if zaxes:
+            sub = _subtract_kinds(zoom_subtract)
+            names = {"continuum": "continuum", "host": "host", "feii": "Fe$\\,$II"}
+            told = [names[k] for k in ("continuum", "host", "feii") if k in sub]
+            zaxes[0].set_ylabel(flux_label(s).split(" (")[0] + (" $-$ " + " $-$ ".join(told) if told else ""))
     return fig
+
+
+def _subtract_kinds(subtract):
+    """The kinds of components a zoom panel subtracts ('continuum' brings the Balmer continuum and lines along)."""
+    if not subtract:
+        return set()
+    kinds = {subtract} if isinstance(subtract, str) else set(subtract)
+    if "continuum" in kinds:
+        kinds |= {"balmer_cont", "balmer_lines"}
+    return kinds
+
+
+def _zoom_panel(ax, result, xlim, col, hide, group, sty, data, model, model_flux, subtract=()):
+    """One wavelength range of the fit again: data, model and components, in the main panel's colours,
+    optionally with some kinds of components (the continuum, Fe II, the host) subtracted."""
+    from .fitcompare import _groups
+    s = result.spectrum
+    view = (s.wave >= xlim[0]) & (s.wave <= xlim[1])
+    if view.sum() < 3:
+        ax.text(0.5, 0.5, "outside the spectrum", transform=ax.transAxes, ha="center", va="center", color=MUTED)
+        return
+    wave = s.wave[view]
+    sel = result.mask[view]
+    kinds = _subtract_kinds(subtract)
+    base = np.zeros(wave.size)
+    if kinds:
+        for key, (_, f) in _groups(result, wave).items():
+            if key in kinds:
+                base = base + f
+    model_flux = np.array(model_flux, float)
+    model_flux[view] = model_flux[view] - base
+    if data:
+        ax.plot(wave, np.where(sel, s.flux[view] - base, np.nan), color=col["data"], lw=0.6, drawstyle="steps-mid",
+                zorder=2)
+    if kinds:
+        ax.axhline(0, color=MUTED, lw=0.5, zorder=1)
+    seen = set()
+    for kind, label, flux, ls in _curves(result, group):
+        if kind in hide or kind in kinds or not np.any(np.abs(flux[view]) > 0):
+            continue
+        st = sty.get(kind, {})
+        main = kind not in seen
+        seen.add(kind)
+        c = col.get(kind, col["other"])
+        if main and st.get("fill"):
+            ax.fill_between(wave, 0, flux[view], color=c, alpha=0.13, lw=0, zorder=2.5)
+        thin = ls not in ("-",) and kind in ("broad", "outflow", "narrow")
+        ax.plot(wave, flux[view], color=c, lw=(0.7 if thin else 1.0) * st.get("lw", 1.0),
+                ls=st.get("ls", ls) if main else ls, zorder=3)
+    if model:
+        ax.plot(wave, model_flux[view], color=col["model"], lw=sty.get("model", {}).get("lw", 0.9), zorder=4)
+    good = sel & np.isfinite(s.flux[view])
+    shown = s.flux[view] - base
+    hi = (max(float(np.nanpercentile(shown[good], 99.5)), float(np.nanmax(model_flux[view][good])))
+          if good.any() else 1.0)                    # the model peaks (narrow lines) always fit
+    lo = min(0.0, float(np.nanpercentile(shown[good], 0.5))) if good.any() else 0
+    lo -= 0.04 * (hi - lo) if kinds else 0.0
+    ax.set_xlim(*xlim)
+    ax.set_ylim(lo, hi * 1.08)
+    ax.set_xlabel(_wave_label(s))
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+
+
+def _place_legend(ax, handles, labels, ncol, fontsize=7):
+    """A legend inside the axes where it covers the fewest data points and line labels (above, if none is free)."""
+    fig = ax.figure
+    if not hasattr(fig.canvas, "get_renderer"):       # a bare Figure (the app): give it a canvas to measure with
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        FigureCanvasAgg(fig)
+    renderer = fig.canvas.get_renderer()
+    pts = []
+    for ln in ax.get_lines():
+        xy = np.asarray(ln.get_xydata(), float)
+        xy = xy[np.isfinite(xy).all(axis=1)]
+        if len(xy):
+            pts.append(ax.transData.transform(xy[:: max(1, len(xy) // 2000)]))
+    pts = np.vstack(pts) if pts else np.empty((0, 2))
+    texts = [t.get_window_extent(renderer) for t in ax.texts if t.get_visible() and t.get_text()]
+    best, score = None, np.inf
+    for loc, nc in [(loc, nc) for nc in sorted({ncol, ncol + 1, ncol + 2}) for loc in
+                    ("upper right", "upper left", "upper center", "center right", "lower right", "center left",
+                     "lower left", "center", "lower center")]:
+        leg = ax.legend(handles, labels, loc=loc, ncol=nc, fontsize=fontsize, columnspacing=1.0, handlelength=1.6)
+        bb = leg.get_window_extent(renderer)
+        inside = ((pts[:, 0] > bb.x0) & (pts[:, 0] < bb.x1) & (pts[:, 1] > bb.y0) & (pts[:, 1] < bb.y1)).sum()
+        overlap = sum(max(0, min(bb.x1, b.x1) - max(bb.x0, b.x0)) * max(0, min(bb.y1, b.y1) - max(bb.y0, b.y0))
+                      for b in texts)
+        s = inside + overlap / 2.0                # a label hidden by the legend is worse than a few data points
+        if s < score:
+            best, score = (loc, nc), s
+        leg.remove()
+    if score > 15:                          # nowhere free inside (a crowded figure): above the axes instead
+        ax.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=min(len(labels), ncol + 2),
+                  columnspacing=1.2, borderaxespad=0.3)
+        return
+    leg = ax.legend(handles, labels, loc=best[0], ncol=best[1], fontsize=fontsize, columnspacing=1.0, handlelength=1.6)
+    # still touching the data at an upper position: raise the top of the axis a little until it is clear
+    if best[0].startswith("upper"):
+        lines = [np.asarray(ln.get_xydata(), float) for ln in ax.get_lines()]
+        xy = np.vstack([a[np.isfinite(a).all(axis=1)] for a in lines if len(a)]) if lines else np.empty((0, 2))
+        for _ in range(8):
+            bb = leg.get_window_extent(renderer)
+            p = ax.transData.transform(xy)
+            if not ((p[:, 0] > bb.x0) & (p[:, 0] < bb.x1) & (p[:, 1] > bb.y0) & (p[:, 1] < bb.y1)).any():
+                break
+            lo, hi = ax.get_ylim()
+            ax.set_ylim(lo, hi + 0.05 * (hi - lo))
 
 
 # --------------------------------------------------------- single lines
@@ -578,7 +746,7 @@ def fitted_lines(result):
         if not isinstance(comp, Lines):
             continue
         for ln in comp.line_names:
-            lam = line_wavelength(ln)
+            lam = _rest_wave(result, ln)
             if not (lo < lam < hi):
                 continue
             d = found.setdefault(ln, {"line": ln, "wavelength": float(lam), "components": [], "roles": []})
@@ -591,6 +759,18 @@ def fitted_lines(result):
     main = _MAIN_LINES if has_broad else _MAIN_NARROW
     rank = lambda d: (-len(d["components"]), main.index(d["line"]) if d["line"] in main else 99, -d["flux"])
     return sorted((d for d in found.values() if d["flux"] > 0), key=rank)
+
+
+def _rest_wave(result, line):
+    """Rest wavelength of a line: from the line list, or from the model for a line defined by (name, wavelength)."""
+    from .lines import line_wavelength
+    try:
+        return float(line_wavelength(line))
+    except KeyError:
+        for comp in result._line_components():
+            if line in comp.line_names:
+                return float(comp._wave[comp.line_names.index(line)])
+        raise
 
 
 def main_line(result):
@@ -626,8 +806,18 @@ def _transmission(result, wave):
     return T
 
 
+def _line_info(result, line, sep="\n"):
+    """FWHM, sigma and flux of a line (its broad components summed when it has any), rounded to their errors."""
+    comps = [c for c in result._line_components() if line in c.line_names]
+    broad = [c.name for c in comps if c.role == "broad"]
+    m = result.measure(line, broad or None)
+    frag = " (fragile)" if m.get("fwhm_fragile") else ""
+    return (f"FWHM {_pm(m['fwhm'], m['fwhm_err'], 'km/s')}{frag}{sep}$\\sigma$ {_pm(m['sigma'], m['sigma_err'], 'km/s')}"
+            f"{sep}flux {_pm(m['flux'], m['flux_err'])}")
+
+
 def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, residuals=True,
-              others=False, info=True, width="single", title=None, style=True, rax=None):
+              others=False, info=True, width="single", title=None, style=True, rax=None, mark_fwhm=True):
     """
     One emission line alone: the data with everything else in the model
     subtracted (continuum, host, FeII and all other lines), each component
@@ -640,8 +830,10 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
     :param velocity: velocity axis (km/s from the rest wavelength); False: wavelength.
     :param others: also draw the other lines in the window (dotted), which stay
         subtracted from the data.
-    :param info: write the FWHM and flux of the line (summed over its
-        broad components, or over all components) in the panel.
+    :param info: write the FWHM, line dispersion sigma and flux of the line (summed over its
+        broad components, or over all components) in the panel; a FWHM that a shoulder at half
+        maximum makes fragile is marked.
+    :param mark_fwhm: mark the half-maximum points of the broad profile (its FWHM) with a bar.
     :param rax: with ``ax``, the axes for the residuals (as in a grid of lines).
     """
     from .components import _in_medium
@@ -651,7 +843,7 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
         line = line or main_line(result)
         if line is None:
             raise ValueError("this fit has no emission lines")
-        lam0 = float(_in_medium(np.array([line_wavelength(line)]), s.context)[0])
+        lam0 = float(_in_medium(np.array([_rest_wave(result, line)]), s.context)[0])
         comps = [c for c in result._line_components() if line in c.line_names]
         if not comps:
             raise ValueError(f"{line!r} is not in the model; fitted lines: "
@@ -708,6 +900,9 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
             ax.plot(x_fine, parts[comp.name], color=(BROAD_SHADES[(k - 1) % len(BROAD_SHADES)] if role == "broad"
                                                      else COLORS[role]), lw=1.0,
                     ls=_LINESTYLES[(k - 1) % len(_LINESTYLES)], label=label + extra, zorder=3)
+        if len(broad) > 1:                             # the broad profile that the FWHM and sigma describe
+            ax.plot(x_fine, sum(parts[c] for c in broad), color=COLORS["broad"], lw=1.4, alpha=0.45,
+                    label="Broad sum", zorder=3.5, solid_capstyle="round")
         if len(comps) > 1:
             ax.plot(x_fine, sum(parts.values()), color=COLORS["model"], lw=0.9, label="Sum", zorder=4)
         T_fine = _transmission(result, lam_fine)
@@ -719,7 +914,7 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
             for d in fitted_lines(result):
                 if d["line"] == line or d["line"] in seen:
                     continue
-                v_other = (line_wavelength(d["line"]) / line_wavelength(line) - 1) * C_KMS
+                v_other = (_rest_wave(result, d["line"]) / _rest_wave(result, line) - 1) * C_KMS
                 if abs(v_other) < window:
                     seen.add(d["line"])
                     prof = sum(_line_parts(result, d["line"], lam_fine).values())
@@ -728,7 +923,7 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
         top = max(float(np.nanpercentile(isolated[good], 99.5)) if good.any() else 1.0,
                   float(np.max(sum(parts.values()))))
         bottom = min(0.0, float(np.nanpercentile(isolated[good], 0.5)) if good.any() else 0.0)
-        ax.set_ylim(bottom - 0.05 * top, 1.25 * top)
+        ax.set_ylim(bottom - 0.05 * top, (1.5 if info else 1.15) * top)   # room for the text above the peak
         ax.set_xlim(x_data[view].min(), x_data[view].max())
         ax.set_ylabel(flux_label(s).replace(" (", "\n(", 1) if narrow_panel else flux_label(s))
         handles, labels = ax.get_legend_handles_labels()
@@ -738,13 +933,23 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
         head = pretty_line(line)
         ax.text(0.03, 0.95, head, transform=ax.transAxes, ha="left", va="top", fontsize=10)
         if info:
-            kind = "broad" if broad else "total"
-            txt = (f"{kind} FWHM {meas['fwhm']:.0f} $\\pm$ {meas['fwhm_err']:.0f} km/s\n"
-                   f"flux {_short(meas['flux'])} $\\pm$ {_short(meas['flux_err'])}")
-            ax.text(0.03, 0.83, txt, transform=ax.transAxes, ha="left", va="top", fontsize=7)
+            # of the broad profile when there is one (the summed broad components), else of the whole line
+            ax.text(0.03, 0.85, _line_info(result, line), transform=ax.transAxes, ha="left", va="top", fontsize=7,
+                    color=INK2, linespacing=1.35)
+        if mark_fwhm and broad:
+            from .fitcompare import half_max_crossings
+            bsum = sum(parts[c] for c in broad)
+            if np.max(bsum) > 0:
+                vl, vr = half_max_crossings(v_fine, bsum)
+                half = 0.5 * np.max(bsum)
+                xl, xr = (vl, vr) if velocity else (lam0 * (1 + vl / C_KMS), lam0 * (1 + vr / C_KMS))
+                ax.plot([xl, xr], [half, half], color=INK2, lw=0.7, zorder=5, solid_capstyle="butt")
+                ax.plot([xl, xr], [half, half], ls="none", marker="|", ms=5, mew=0.9, color=INK2, zorder=5)
         if title:
             ax.set_title(title)
-        xlabel = "Velocity (km$\\,$s$^{-1}$)" if velocity else _wave_label(s)
+        xlabel = _velocity_axis(rax if rax is not None else ax, window) if velocity else _wave_label(s)
+        if velocity and rax is not None:
+            _velocity_axis(ax, window)
         if rax is not None:
             r = np.where(sel, (s.flux - model) / s.err, np.nan)
             _residual_axes(rax, (x_data[view].min(), x_data[view].max()))
@@ -761,6 +966,35 @@ def plot_line(result, line=None, ax=None, fig=None, window=None, velocity=True, 
     return fig
 
 
+def _pm(v, e, unit=""):
+    """'9340 $\\pm$ 510' or '(1.46 $\\pm$ 0.09)$\\times10^{4}$': the value rounded to two significant digits of its error."""
+    if not np.isfinite(v):
+        return "–"
+    if not (np.isfinite(e) and e > 0):
+        out = _short(v)
+    else:
+        p = int(np.floor(np.log10(e))) - 1                    # last digit kept
+        exp = int(np.floor(np.log10(abs(v)))) if v else 0
+        if abs(exp) >= 4:
+            d = max(0, exp - p)
+            out = f"({v / 10 ** exp:.{d}f} $\\pm$ {e / 10 ** exp:.{d}f})$\\times10^{{{exp}}}$"
+        else:
+            d = max(0, -p)
+            vr, er = round(v, -p), round(e, -p)
+            out = f"{vr:.{d}f} $\\pm$ {er:.{d}f}"
+    return out + (f" {unit}" if unit else "")
+
+
+def _velocity_axis(ax, window, which="x"):
+    """km/s on the axis, labelled in 10^3 km/s when the range is wide (fewer, shorter tick labels)."""
+    from matplotlib.ticker import FuncFormatter
+    axis = ax.xaxis if which == "x" else ax.yaxis
+    if window >= 4000:
+        axis.set_major_formatter(FuncFormatter(lambda x, _: f"{x / 1000:g}".replace("-", "\u2212")))
+        return "Velocity (10$^3$ km$\\,$s$^{-1}$)"
+    return "Velocity (km$\\,$s$^{-1}$)"
+
+
 def _short(v):
     """A number in three significant digits, without an exponent where it can do without (1.57e4 -> 15700)."""
     if not np.isfinite(v):
@@ -775,7 +1009,7 @@ def line_grid_shape(n):
 
 
 def plot_lines(result, lines=None, fig=None, ncols=None, window=None, velocity=True, width="double",
-               style=True, residuals=False, info=True, others=False):
+               style=True, residuals=False, info=True, others=False, mark_fwhm=True, legend=True, sharey=False):
     """
     Several lines in a grid (see :func:`plot_line`), one panel per line, in
     the order given. Default: the lines with several components, main lines
@@ -786,6 +1020,9 @@ def plot_lines(result, lines=None, fig=None, ncols=None, window=None, velocity=T
     :param residuals: a residual panel under each line.
     :param info: write the FWHM and flux in each panel.
     :param others: draw the other lines in each window (dotted).
+    :param mark_fwhm: mark the half-maximum points of each broad profile.
+    :param legend: one legend above the grid.
+    :param sharey: the same flux scale in every panel (to compare the strengths of the lines).
     """
     with paper_style(style):
         if lines is None:
@@ -800,10 +1037,14 @@ def plot_lines(result, lines=None, fig=None, ncols=None, window=None, velocity=T
         if ncols == 1:                         # one panel: the width of a single journal column at most
             w = min(w, WIDTHS["single"] * 1.3)
         panel = w / ncols * (0.82 if residuals else 0.72)
-        fig = new_figure(fig, (w, panel * nrows + 0.35))
-        grid = fig.add_gridspec(nrows, ncols, hspace=0.32 if residuals else 0.25, wspace=0.34 if ncols > 2 else 0.26,
-                                top=0.97, bottom=0.06)
-        handles = {}
+        # FWHM, sigma and flux go above each panel: one line in a single column, two in two, three in three
+        info_lines = (1 if ncols == 1 else 2 if ncols == 2 else 3) if info else 0
+        title_in = (info_lines * 8.5 + 6) / 72 if info else 0.0
+        height = panel * nrows + 0.35 + title_in * nrows
+        fig = new_figure(fig, (w, height))
+        grid = fig.add_gridspec(nrows, ncols, hspace=(0.32 if residuals else 0.25) + title_in / panel,
+                                wspace=0.34 if ncols > 2 else 0.26, top=1 - title_in / height - 0.01, bottom=0.06)
+        handles, bottom_axes, main_axes = {}, {}, []
         for k, ln in enumerate(lines):
             cell = grid[k // ncols, k % ncols]
             if residuals:
@@ -813,24 +1054,253 @@ def plot_lines(result, lines=None, fig=None, ncols=None, window=None, velocity=T
             else:
                 ax, rax = fig.add_subplot(cell), None
             plot_line(result, ln, ax=ax, rax=rax, window=window, velocity=velocity, residuals=residuals,
-                      info=info, others=others, style=False)
+                      info=False, others=others, style=False, mark_fwhm=mark_fwhm)
+            if info:                           # above the panel, where it cannot cover the line
+                parts = _line_info(result, ln, sep="\n").split("\n")
+                txt = ("  ·  ".join(parts) if info_lines == 1 else
+                       "  ·  ".join(parts[:2]) + "\n" + parts[2] if info_lines == 2 else "\n".join(parts))
+                ax.set_title(txt, fontsize=6.5, color=INK2, loc="left", linespacing=1.3, pad=3)
             # one legend for the figure (below), one flux label (left); room above the line for its text
             for h, lab in zip(*ax.get_legend_handles_labels()):
                 handles.setdefault(re.sub(r"\s*\(.*\)$", "", lab), h)
             if ax.get_legend():
                 ax.get_legend().remove()
-            lo, hi = ax.get_ylim()
-            ax.set_ylim(lo, lo + (hi - lo) * ((1.22 if ncols < 3 else 1.4) if info else 1.0))
             ax.set_ylabel("")
             if rax is not None:
                 rax.set_ylabel("$\\Delta/\\sigma$" if k % ncols == 0 else "")
-            if k < n - ncols:                  # x labels only on the bottom row
-                (rax if rax is not None else ax).set_xlabel("")
+            bottom_axes[k] = rax if rax is not None else ax
+            main_axes.append(ax)
+        # x labels only on the bottom row, unless a panel's axis differs from the one below it (km/s, 10^3 km/s)
+        for k, a in bottom_axes.items():
+            below = bottom_axes.get(k + ncols)
+            if below is not None and a.get_xlabel() == below.get_xlabel():
+                a.set_xlabel("")
+        if sharey:
+            mains = main_axes
+            lo = min(a.get_ylim()[0] for a in mains)
+            hi = max(a.get_ylim()[1] for a in mains)
+            for a in mains:
+                a.set_ylim(lo, hi)
         fig.supylabel(flux_label(result.spectrum), fontsize=matplotlib.rcParams["axes.labelsize"],
                       color=matplotlib.rcParams["axes.labelcolor"])
-        fig.legend(list(handles.values()), list(handles), loc="lower center", bbox_to_anchor=(0.5, 1.0),
-                   ncol=min(len(handles), 6), frameon=False)
+        nh = len(handles)
+        if legend:
+            fig.legend(list(handles.values()), list(handles), loc="lower center", bbox_to_anchor=(0.5, 1.0),
+                       ncol=nh if nh <= 6 else int(np.ceil(nh / 2)), frameon=False)
     return fig
+
+
+PROFILE_COLORS = ("#2a78d6", "#e34948", "#1baf7a", "#eda100", "#4a3aa7", "#52514e")   # fixed order, never cycled
+
+
+def plot_profiles(results, lines=None, labels=None, which="broad", normalize=True, window=15000.0, data=True,
+                  mark_fwhm=True, ax=None, fig=None, width="single", style=True, legend=True):
+    """
+    Line profiles overlaid on one velocity axis, each scaled to its peak: several lines of one fit
+    (e.g. broad Hb against broad Ha, or Mg II) or one line in several fits (epochs, models). The
+    model profile of the chosen components is drawn with the data of that line (everything else in
+    the model subtracted) behind it; the legend gives FWHM and sigma, and the half-maximum points
+    are marked.
+
+    :param results: a FitResult or a list of them.
+    :param lines: line names (default: the main broad line); with several results, one line.
+    :param labels: legend names of the curves (default: the line names, or 'fit 1', 'fit 2', ...).
+    :param which: 'broad' (the broad components of the line, summed) or 'all' (every component).
+    :param normalize: scale each profile and its data to the peak of the profile.
+    :param window: half-width of the velocity axis (km/s).
+    :param data: draw the data of each line behind its profile.
+
+    More than six curves (e.g. many epochs, in time order) are coloured along a sequential ramp.
+    """
+    from .components import _in_medium
+    from .fitcompare import half_max_crossings
+    from .lines import line_wavelength
+    results = list(results) if isinstance(results, (list, tuple)) else [results]
+    if lines is None:
+        lines = [main_line(results[0])]
+    lines = [lines] if isinstance(lines, str) else list(lines)
+    if len(results) > 1 and len(lines) > 1:
+        raise ValueError("give several lines of one fit, or one line of several fits")
+    pairs = [(r, ln) for r in results for ln in lines]
+    if labels is None:
+        labels = [pretty_line(ln) for ln in lines] if len(results) == 1 else [f"fit {k + 1}" for k in range(len(results))]
+    if len(labels) != len(pairs):
+        raise ValueError(f"{len(pairs)} curves but {len(labels)} labels")
+    with paper_style(style):
+        own_figure = ax is None
+        if own_figure:
+            ax = new_figure(fig, _figsize(width, 0.78 if _figsize(width, 1)[0] < 5 else 0.5)).subplots()
+        v = np.linspace(-window, window, 3001)
+        many = len(pairs) > len(PROFILE_COLORS)
+        if many:                                   # epochs: a sequential ramp in time order, not cycled hues
+            ramp = matplotlib.colormaps["viridis"](np.linspace(0.05, 0.9, len(pairs)))
+        for k, ((r, ln), lab) in enumerate(zip(pairs, labels)):
+            s = r.spectrum
+            lam0 = float(_in_medium(np.array([_rest_wave(r, ln)]), s.context)[0])
+            comps = [c for c in r._line_components() if ln in c.line_names]
+            use = [c.name for c in comps if c.role == "broad"] if which == "broad" else [c.name for c in comps]
+            if not use:
+                raise ValueError(f"{ln}: no {'broad ' if which == 'broad' else ''}components in the fit")
+            parts = _line_parts(r, ln, lam0 * (1 + v / C_KMS))
+            prof = sum(parts[n] for n in use)
+            scale = 1.0 / np.max(prof) if normalize and np.max(prof) > 0 else 1.0
+            color = ramp[k] if many else PROFILE_COLORS[k]
+            m = r.measure(ln, use)
+            frag = " (fragile)" if m.get("fwhm_fragile") else ""
+            name = (f"{lab}: FWHM {m['fwhm']:.0f} km/s" if many else
+                    f"{lab}: FWHM{frag} {_pm(m['fwhm'], m['fwhm_err'])}, $\\sigma$ {_pm(m['sigma'], m['sigma_err'])} km/s")
+            if data:
+                vd = (s.wave / lam0 - 1) * C_KMS
+                sel = r.mask & (np.abs(vd) <= window)
+                # the data with everything in the model subtracted except the chosen components of this line
+                own = sum(_line_parts(r, ln, s.wave)[n] for n in use) * _transmission(r, s.wave)
+                iso = s.flux - (r.model_flux() - own)
+                ax.plot(vd[sel], iso[sel] * scale, color=color, lw=0.5, alpha=0.35, drawstyle="steps-mid", zorder=2)
+            ax.plot(v, prof * scale, color=color, lw=1.4, ls=_LINESTYLES[0], label=name, zorder=3)
+            if mark_fwhm and np.max(prof) > 0:
+                vl, vr = half_max_crossings(v, prof)
+                ax.plot([vl, vr], [0.5 * np.max(prof) * scale] * 2, ls="none", marker="o", ms=3.5, color=color,
+                        zorder=4)
+        if normalize:
+            ax.axhline(0.5, color=MUTED, lw=0.5, ls=":", zorder=1)
+            ax.set_ylabel("Flux / peak")
+            ax.set_ylim(-0.08, 1.1 + 0.11 * (int(np.ceil(len(pairs) / 2)) if many else len(pairs)))  # room for the legend
+        else:
+            ax.set_ylabel(flux_label(results[0].spectrum))
+        ax.axhline(0, color=MUTED, lw=0.6, zorder=1)
+        ax.axvline(0, color=GRID, lw=0.6, zorder=0)
+        ax.set_xlim(-window, window)
+        ax.set_xlabel(_velocity_axis(ax, window))
+        if legend:
+            ax.legend(loc="upper left", fontsize=6 if many else 7, ncol=2 if many else 1, handlelength=1.6,
+                      borderaxespad=0.4, columnspacing=1.0)
+        if own_figure:
+            ax.figure.tight_layout(pad=0.3)
+    return ax.figure
+
+
+def plot_correlations(table, columns=None, width="double", style=True, fig=None, alpha=0.05):
+    """
+    Corner plot of quantities over the epochs of one object (an epoch table, see :func:`fantasy_agn.epoch_table`):
+    on the diagonal each quantity against time, below it every pair with error bars, the points coloured by date
+    (dark early, light late) and the Spearman rho and p in the corner; pairs with p < ``alpha`` get a bold label.
+
+    :param columns: quantities to show (default: the luminosity and the flux, FWHM, sigma and EW of the main broad line).
+    """
+    from .correlations import QUANTITY_LABELS, default_columns, epoch_correlations
+    cols = list(columns or default_columns(table))
+    n = len(cols)
+    if n < 2:
+        raise ValueError("choose at least two quantities")
+    corr = {(d["x"], d["y"]): d for d in epoch_correlations(table, cols).to_dict("records")}
+    mjd = table["mjd"].to_numpy(float) if "mjd" in table else np.arange(len(table), dtype=float)
+    t = mjd if np.isfinite(mjd).all() else np.arange(len(table), dtype=float)
+    span = np.ptp(t) or 1.0
+    colors = matplotlib.colormaps["viridis"](0.05 + 0.85 * (t - t.min()) / span)
+    with paper_style(style):
+        w = _figsize(width, 1)[0]
+        fig = new_figure(fig, (w, w * (0.98 if n > 2 else 0.9)))
+        grid = fig.add_gridspec(n, n, hspace=0.08, wspace=0.08)
+        axes = {}
+        for i, yc in enumerate(cols):
+            for j, xc in enumerate(cols):
+                if j > i:
+                    continue
+                ax = fig.add_subplot(grid[i, j])
+                axes[(i, j)] = ax
+                x, sx = table[xc].to_numpy(float), table.get(xc + "_err", pd_nan(table)).to_numpy(float)
+                if i == j:                     # the quantity against time
+                    ax.errorbar(t, x, yerr=sx, fmt="none", ecolor=MUTED, elinewidth=0.6, zorder=1)
+                    ax.scatter(t, x, c=colors, s=14, zorder=2, edgecolors="white", linewidths=0.4)
+                    ax.plot(t[np.argsort(t)], x[np.argsort(t)], color=GRID, lw=0.7, zorder=0)
+                    ax.set_title(QUANTITY_LABELS(xc), fontsize=7, color=INK2, pad=3)
+                    ax.tick_params(labelleft=False, labelbottom=i == n - 1, labelsize=6)
+                    if i == n - 1:
+                        ax.set_xlabel("MJD" if np.isfinite(mjd).all() else "epoch", fontsize=7)
+                    continue
+                y, sy = table[yc].to_numpy(float), table.get(yc + "_err", pd_nan(table)).to_numpy(float)
+                ax.errorbar(x, y, xerr=sx, yerr=sy, fmt="none", ecolor=MUTED, elinewidth=0.6, zorder=1)
+                ax.scatter(x, y, c=colors, s=14, zorder=2, edgecolors="white", linewidths=0.4)
+                d = corr.get((xc, yc)) or corr.get((yc, xc)) or {}
+                rho, pv = d.get("rho", np.nan), d.get("p", np.nan)
+                if np.isfinite(rho):
+                    strong = pv < alpha
+                    ptxt = "p < 10$^{-10}$" if pv < 1e-10 else f"p = {pv:.2g}"
+                    ax.text(0.04, 0.95, f"$\\rho$ = {rho:+.2f}\n{ptxt}", transform=ax.transAxes, ha="left",
+                            va="top", fontsize=6, color=INK if strong else INK2, fontweight="bold" if strong else "normal",
+                            zorder=5, bbox=dict(facecolor=SURFACE, alpha=0.8, edgecolor="none", pad=1.2))
+                ax.tick_params(labelsize=6, labelleft=j == 0, labelbottom=i == n - 1)
+                if j == 0:
+                    ax.set_ylabel(QUANTITY_LABELS(yc), fontsize=7)
+                if i == n - 1:
+                    ax.set_xlabel(QUANTITY_LABELS(xc), fontsize=7)
+        # axes follow the points, not their error bars (one poorly measured epoch must not squash the rest)
+        def lims(v):
+            v = v[np.isfinite(v)]
+            if not v.size:
+                return None
+            lo, hi = float(v.min()), float(v.max())
+            pad = 0.08 * (hi - lo) if hi > lo else 0.05 * (abs(hi) or 1.0)
+            return lo - pad, hi + pad
+        for (i, j), ax in axes.items():
+            xc, yc = cols[j], cols[i]
+            lx = lims(t) if i == j else lims(table[xc].to_numpy(float))
+            ly = lims(table[xc].to_numpy(float)) if i == j else lims(table[yc].to_numpy(float))
+            if lx:
+                ax.set_xlim(*lx)
+            if ly:
+                ax.set_ylim(*ly)
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=3))
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=3))
+    return fig
+
+
+def plot_relation(table, x, y, log="auto", fit=True, width="single", style=True, fig=None, n_boot=500):
+    """
+    One pair of quantities over the epochs (see :func:`fantasy_agn.epoch_table`): the points coloured by date with
+    their errors and, with ``fit``, the maximum-likelihood line with intrinsic scatter and its 68% band
+    (:func:`fantasy_agn.correlations.fit_relation`); the slope, scatter and Spearman rho are written in the panel.
+    Returns (figure, fit dict or None).
+    """
+    from .correlations import QUANTITY_LABELS, fit_relation, relation_data
+    vx, ex, vy, ey, lx, ly, ok = relation_data(table, x, y, log)
+    mjd = table["mjd"].to_numpy(float)[ok] if "mjd" in table else np.arange(ok.sum(), dtype=float)
+    tt = mjd if np.isfinite(mjd).all() else np.arange(vx.size, dtype=float)
+    colors = matplotlib.colormaps["viridis"](0.05 + 0.85 * (tt - tt.min()) / (np.ptp(tt) or 1.0))
+    res = fit_relation(table, x, y, log, n_boot=n_boot) if fit and vx.size >= 3 else None
+    with paper_style(style):
+        ax = new_figure(fig, _figsize(width, 0.82 if _figsize(width, 1)[0] < 5 else 0.55)).subplots()
+        ax.errorbar(vx, vy, xerr=ex, yerr=ey, fmt="none", ecolor=MUTED, elinewidth=0.6, zorder=1)
+        ax.scatter(vx, vy, c=colors, s=18, zorder=2, edgecolors="white", linewidths=0.4)
+        if res is not None:
+            xs = np.linspace(vx.min(), vx.max(), 200)
+            lines = res["boot"][:, 0][:, None] + res["boot"][:, 1][:, None] * (xs - res["x0"])
+            lo, hi = np.percentile(lines, [16, 84], axis=0)
+            ax.fill_between(xs, lo, hi, color=COLORS["broad"], alpha=0.15, lw=0, zorder=0)
+            ax.plot(xs, res["a"] + res["b"] * (xs - res["x0"]), color=COLORS["broad"], lw=1.2, zorder=3)
+            ptxt = "p < 10$^{-10}$" if res["spearman_p"] < 1e-10 else f"p = {res['spearman_p']:.2g}"
+            scat = "scatter $\\approx$ 0" if res["scatter"] < 1e-4 else f"scatter {_pm(res['scatter'], res['scatter_err'])}"
+            # in the corner the relation leaves free: lower left for a falling one, upper left for a rising one
+            top = res["b"] >= 0
+            ax.text(0.03, 0.96 if top else 0.04, f"slope {_pm(res['b'], res['b_err'])}\n{scat}"
+                    f"\n$\\rho$ = {res['spearman_rho']:+.2f}, {ptxt}, N = {res['n']}", transform=ax.transAxes,
+                    ha="left", va="top" if top else "bottom", fontsize=7, color=INK2, linespacing=1.35,
+                    bbox=dict(facecolor=SURFACE, alpha=0.85, edgecolor="none", pad=1.5), zorder=6)
+        name = lambda c, lg: ("log " if lg else "") + QUANTITY_LABELS(c)
+        ax.set_xlabel(name(x, lx))
+        ax.set_ylabel(name(y, ly))
+        if vx.size:                       # the range follows the points: one huge error bar must not flatten the rest
+            for v, limit in ((vx, ax.set_xlim), (vy, ax.set_ylim)):
+                d = np.ptp(v) or abs(v[0]) or 1.0
+                limit(v.min() - 0.08 * d, v.max() + 0.08 * d)
+        ax.figure.tight_layout(pad=0.3)
+    return ax.figure, res
+
+
+def pd_nan(table):
+    """A column of NaN as long as the table (for quantities without errors)."""
+    import pandas as pd
+    return pd.Series(np.full(len(table), np.nan), index=table.index)
 
 
 def plot_spectrum(spectrum, ax=None, fig=None, width="double", style=True, **kw):

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>First fit · FANTASY documentation</title><link rel="icon" href="../assets/mark.png">
+<link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="docs.css">
+<script defer src="search-index.js"></script><script defer src="docs.js"></script></head>
+<body><a class="skip" href="#content">Skip to article</a>
+<header class="mast"><nav class="wrap" aria-label="Main navigation"><a class="brand" href="../index.html"><img src="../assets/mark.png" alt="">FANTASY</a>
+<div class="doc-mast-links"><a href="../index.html#explore">Spectrum explorer</a><a href="index.html">Documentation</a></div></nav></header>
+<div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
+<label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
+<nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html" aria-current="page">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html">4 · Fit</a><a href="results-step.html">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html">Components</a><a href="feii.html">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html">Classification</a></section><section><h3>Figures</h3><a href="figures.html">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a></section></nav></div></details></aside>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.0</a> / Getting started</p>
+<h1>First fit</h1><p class="lead">Fit your first Hβ spectrum, then use the guides to prepare your own data, choose components and check your measurements.</p>
+<div class="links"><a href="install.html">Install and launch →</a><a href="start.html">Use the browser app →</a><a href="api-fitting.html">Python API →</a></div>
+<section id="app-walkthrough"><h2>Watch a first fit in the app</h2>
+<p>Follow a bundled SDSS quasar from the file chooser to its broad Hβ width and flux. To use the same spectrum, run <code>fantasy examples fantasy-examples</code>, then <code>fantasy app</code>.</p>
+<video id="first-fit-video" controls playsinline preload="none" width="1440" height="960" style="width:100%;height:auto;aspect-ratio:3/2" poster="../assets/first-fit-poster.jpg" aria-label="Your first Hβ fit in the FANTASY app">
+<source src="../assets/first-fit.mp4" type="video/mp4"><track kind="captions" srclang="en" label="English" src="../assets/first-fit.en.vtt">
+<a href="../assets/first-fit.mp4">Download the walkthrough</a></video>
+<p>1 min 41 s · English narration and captions · <a href="../assets/first-fit.mp4" download>Download MP4</a></p>
+<details><summary>Chapters and written walkthrough</summary><ol><li><a href="../assets/first-fit.mp4#t=0.000" data-seek="0.000">0:00 · Read</a> — Choose Single spectrum. Under Files, load spec-1059-52618-0453.fits and confirm the redshift in the loaded table.</li>
+<li><a href="../assets/first-fit.mp4#t=14.250" data-seek="14.250">0:14 · Prepare</a> — Keep the redshift, flux unit and resolution from the file. Move to rest frame. This offline example uses no Galactic extinction correction.</li>
+<li><a href="../assets/first-fit.mp4#t=31.000" data-seek="31.000">0:31 · Model</a> — Choose hbeta with two broad components. Inspect the initial guess and the continuum, Fe II, narrow-line and broad-line components.</li>
+<li><a href="../assets/first-fit.mp4#t=43.708" data-seek="43.708">0:43 · Fit</a> — Open Set up fit. Select Fast for covariance errors, run the fit and open the results.</li>
+<li><a href="../assets/first-fit.mp4#t=53.000" data-seek="53.000">0:53 · Results</a> — Read the combined broad Hβ profile. This run gives FWHM 4,552 ± 69 km/s and flux (3.94 ± 0.13) × 10⁻¹⁴ erg s⁻¹ cm⁻².</li>
+<li><a href="../assets/first-fit.mp4#t=70.208" data-seek="70.208">1:10 · Checks</a> — Inspect the parameter-at-limit warning. In Checks, expand “Does the model miss anything?” and run Analyse residuals. This fit flags one feature for inspection.</li>
+<li><a href="../assets/first-fit.mp4#t=86.333" data-seek="86.333">1:26 · Export</a> — Use Download → Fitted lines for the CSV table. The top-right menu offers Download script (.py) to reproduce the session.</li></ol></details>
+<script defer src="../assets/walkthrough.js"></script></section>
+<h2 id="first-fit">Measure broad Hβ in Python</h2>
+<p>After <a href="install.html">installing this source version</a>, run this example with the bundled SDSS quasar. The FITS file supplies the redshift. This offline example uses the recorded flux. For extinction-corrected fluxes, apply <code>Spectrum.deredden()</code> in the observed frame before <code>to_rest_frame()</code>. The Hβ preset fits the local continuum, Fe II and the line components together.</p>
+<pre><code>import fantasy_agn as fa
+
+spectrum = fa.read(fa.examples.path(&quot;type1&quot;)).to_rest_frame()
+model = fa.presets.hbeta(broad_components=2, feii=True)
+result = fa.fit(spectrum, model)
+hb = result.measure(&quot;Hb&quot;, [&quot;broad&quot;, &quot;broad2&quot;])
+print(hb[&quot;fwhm&quot;], hb[&quot;fwhm_err&quot;])  # km/s
+print(hb[&quot;flux&quot;], hb[&quot;flux_err&quot;])  # in the spectrum&#x27;s integrated flux units
+result.plot()</code></pre>
+<p>Passing both broad component names excludes narrow Hβ from the flux and width. Check <code>hb["fwhm_fragile"]</code> for a shoulder near half maximum. For a galaxy with visible stellar absorption, enable the host in the model, for example <code>fa.presets.hbeta(host="pca")</code>. The <a href="measurements.html">measurement guide</a> explains line width, dispersion and equivalent width.</p>
+<h2>Work with the current fitting tools</h2><dl>
+<dt><a href="api-reading-data.html#fa-find-redshift">Find an unknown redshift</a></dt><dd>Scan the observed spectrum before moving to rest frame. Inspect the alternative redshifts and the lines expected at each one.</dd>
+<dt><a href="api-fitting.html#fa-prune-feii">Test weak Fe II multiplets</a></dt><dd>Compare the original fit with the refit after pruning. Weak groups can bias the blend in either direction depending on which groups the data constrain.</dd>
+<dt><a href="api-fit-checks.html">Check your fit</a></dt><dd>Inspect residuals, simulate spectra to test coverage, and compare broad-line measurements across alternative fits.</dd>
+<dt><a href="api-epochs-and-reverberation.html">Work with repeated observations</a></dt><dd>Inspect the relative flux scales and wavelength offsets from a joint fit, build light curves and estimate reverberation lags.</dd></dl>
+<h2>About this edition</h2><p>These pages use the app guides, line list, function signatures and docstrings from the FANTASY 2.0.0 working tree. To use this edition, install from the matching checkout or tester bundle. The public repository can be at a different revision.</p>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 8e22dfc109bb</span></footer></main></div></body></html>
