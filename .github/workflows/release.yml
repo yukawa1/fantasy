@@ -79,4 +79,7 @@ jobs:
       - name: GitHub release with the files
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "FANTASY ${GITHUB_REF_NAME#v}" --notes "Changes: https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md · Install or update: pip install -U fantasy_agn"
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "FANTASY ${GITHUB_REF_NAME#v}" \
+            --notes "Changes: https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md · Install or update: pip install -U fantasy_agn"
