@@ -11,7 +11,7 @@ from fantasy_agn.wavelengths import air_to_vac, vac_to_air
 
 os.environ.setdefault("FANTASY_AUTOSAVE", "0")       # the app tests must not write to ~/.fantasy_agn/sessions
 HERE = os.path.dirname(__file__)
-EXAMPLES = os.path.join(HERE, "..", "examples")
+EXAMPLES = os.path.join(HERE, "data")             # test spectra (classes/: downloaded, not in git)
 
 
 needs_templates = pytest.mark.skipif(not {"emiles", "galaxev"} <= set(fa.templates.available()),
@@ -990,7 +990,7 @@ SDSS_CLASSES = {"spec-0630-52050-0245.fits": "starforming", "spec-2139-53878-033
 @needs_templates
 @pytest.mark.parametrize("fname, label", SDSS_CLASSES.items())
 def test_classify_sdss(fname, label):
-    path = os.path.join(os.path.dirname(__file__), "..", "examples", "classes", fname)
+    path = os.path.join(EXAMPLES, "classes", fname)
     if not os.path.exists(path):
         pytest.skip("SDSS class examples not downloaded")
     assert fa.classify(fa.read(path).to_rest_frame()).label == label

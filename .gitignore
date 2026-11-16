@@ -8,12 +8,10 @@ dist/
 *.egg-info/
 .pytest_cache/
 .DS_Store
-examples/sdss_rm/
 .claude/
-examples/desi/
-examples/classes/
-examples/video/data.npz
-examples/video/info.json
+# downloaded data, not part of the repository
+examples/
+tests/data/classes/
 
 # Local assistant and editor files (not part of FANTASY)
 CLAUDE.md

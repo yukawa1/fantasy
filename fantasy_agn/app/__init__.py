@@ -37,8 +37,8 @@ def run(port=8780, open_browser=True):
     print(f"FANTASY app running at {url}  (Ctrl+C to stop)", flush=True)
     if sys.version_info[:2] != RECOMMENDED_PYTHON:
         print(f"note: the app is tested with Python {RECOMMENDED_PYTHON[0]}.{RECOMMENDED_PYTHON[1]}, "
-              f"this is {sys.version.split()[0]}; launch/fantasy-app.sh (or .bat) sets up the "
-              "recommended environment with uv.", flush=True)
+              f"this is {sys.version.split()[0]}; uv tool install --python 3.12 fantasy_agn sets up "
+              "the recommended environment.", flush=True)
     if open_browser:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
     try:

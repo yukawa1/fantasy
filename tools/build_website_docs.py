@@ -63,7 +63,7 @@ def home():
 <dt><a href="api-fitting.html#fa-prune-feii">Test weak Fe II multiplets</a></dt><dd>Compare the original fit with the refit after pruning. Weak groups can bias the blend in either direction depending on which groups the data constrain.</dd>
 <dt><a href="api-fit-checks.html">Check your fit</a></dt><dd>Inspect residuals, simulate spectra to test coverage, and compare broad-line measurements across alternative fits.</dd>
 <dt><a href="api-epochs-and-reverberation.html">Work with repeated observations</a></dt><dd>Inspect the relative flux scales and wavelength offsets from a joint fit, build light curves and estimate reverberation lags.</dd></dl>
-<h2>About this edition</h2><p>These pages use the app guides, line list, function signatures and docstrings from the FANTASY {fa.__version__} working tree. To use this edition, install from the matching checkout or tester bundle. The public repository can be at a different revision.</p>'''
+<h2>About this edition</h2><p>These pages use the app guides, line list, function signatures and docstrings from the FANTASY {fa.__version__} working tree. Install the matching version with pip install fantasy_agn=={fa.__version__}.</p>'''
 
 def route(page):
     return page['id'] + '.html'

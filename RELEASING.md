@@ -53,9 +53,3 @@ uvx twine upload dist/*          # asks for a PyPI API token (pypi.org › Accou
 To rehearse first, upload to TestPyPI (`uvx twine upload --repository testpypi dist/*`, with a
 test.pypi.org token) and install from there:
 `pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ fantasy_agn`.
-
-## The tester bundle
-
-`sh install/make_bundle.sh` still builds `FANTASY-<version>.zip` (wheel, pinned dependency versions,
-installers) for people without Python. Installs made with it update through the app or
-`fantasy update` like any other.

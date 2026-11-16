@@ -98,28 +98,24 @@ interchangeable:</p>
 """),
 
 ("install", "Getting started", "Installing and starting", r"""
-<div class="lead">The launchers run the app with Python 3.12 and the tested package versions in an environment of
-their own, made by <a href="https://docs.astral.sh/uv/">uv</a> on first start.</div>
-<h2>From the tester bundle</h2>
-<p>Extract the FANTASY ZIP first. On macOS double-click <code>Install FANTASY.command</code>. On Linux run
-<code>sh install.sh</code> from the extracted folder. On Windows double-click <code>install.bat</code>.
-After the installer finishes, start the browser app with <code>fantasy app</code>.</p>
+<div class="lead">FANTASY is a Python package on PyPI; the app comes with it. Python 3.10 or newer;
+the app is tested with Python 3.12.</div>
+<h2>With pip</h2>
+<pre>pip install fantasy_agn
+fantasy test                  # check the installation
+fantasy app                   # the app in the browser (or fantasy-app, or fa.app() in Python)
+# Optional support for local SFD98 dust maps:
+pip install "fantasy_agn[dust]"</pre>
+<h2>With uv, in an environment of its own</h2>
+<pre>uv tool install --python 3.12 fantasy_agn
+fantasy app</pre>
+<p>The first start after installing takes up to a minute while Python prepares the libraries; later
+starts take a few seconds. New versions are announced in the app's header, with an Install button.</p>
 <h2>From a source checkout</h2>
-<p>In the directory containing <code>uv.lock</code>, run:</p>
+<p>In the directory containing <code>uv.lock</code> (the tested package versions):</p>
 <pre>uv sync --locked --python 3.12
 uv run fantasy test
 uv run fantasy app</pre>
-<p>Alternatively, use the launcher for your system:</p>
-<pre>launch/FANTASY.command        # macOS: double-click
-launch/fantasy-app.sh         # Linux / macOS
-launch\fantasy-app.bat        # Windows
-fantasy-app                   # FANTASY installed with pip: the same app
-python -c "import fantasy_agn as fa; fa.app()"</pre>
-<p>As a package in your own environment (Python &ge; 3.10):</p>
-<pre>python -m pip install .             # run in the FANTASY source directory
-fantasy test
-# Optional support for local SFD98 dust maps:
-python -m pip install ".[dust]"</pre>
 <div class="note"><b>Where things are kept.</b> Downloaded spectra and stellar templates, saved models
 (<code>~/.fantasy_agn/models</code>) and uploads live under <code>~/.fantasy_agn</code>. Stellar template sets
 (13&ndash;94 MB) are downloaded once, the first time a model uses them; <code>FANTASY_NO_DOWNLOAD=1</code>

@@ -45,18 +45,7 @@ or, in an environment of its own made by [uv](https://docs.astral.sh/uv/):
 an Install button; in a terminal, `fantasy update` (or `pip install -U fantasy_agn`). The check asks
 PyPI once a day and sends nothing but the package name; `FANTASY_NO_UPDATE_CHECK=1` turns it off.
 
-**Without Python** (testers): unzip `FANTASY-2.0.0.zip` (built with `sh install/make_bundle.sh`)
-and run the installer:
-
-| system | install |
-|---|---|
-| macOS | double-click `Install FANTASY.command` |
-| Linux | `sh install.sh` |
-| Windows | double-click `install.bat` |
-
-The installer uses [uv](https://docs.astral.sh/uv/) (and offers to install it). It installs
-FANTASY with Python 3.12 and the tested package versions in an environment of its own, adds
-the `fantasy` command, and runs the self-test. Then:
+Then:
 
 ```console
 fantasy app              # the FANTASY app in the browser
@@ -67,21 +56,12 @@ fantasy python           # Python with FANTASY installed
 fantasy update           # install a newer version (--check: only check)
 ```
 
-Without the bundle, uv can install it from a wheel or from git:
+**From a clone of the repository**, with the tested package versions (`uv.lock`):
 
 ```console
-uv tool install --python 3.12 fantasy_agn-2.0.0-py3-none-any.whl
-uv tool install --python 3.12 "git+https://github.com/yukawa1/fantasy@v2"
+uv sync --locked --python 3.12
+uv run fantasy app
 ```
-
-**From a clone of the repository**, the launchers start the app directly with the locked
-versions (`uv.lock`):
-
-| system | start the app |
-|---|---|
-| macOS | double-click `launch/FANTASY.command` (or run `launch/fantasy-app.sh`) |
-| Linux | `launch/fantasy-app.sh` |
-| Windows | double-click `launch\fantasy-app.bat` |
 
 ## Quick start
 
@@ -261,7 +241,7 @@ res.plot_light_curves()
 ### The app (no programming needed)
 
 ```console
-fantasy-app          # or a launcher in launch/, or fa.app() from Python
+fantasy app          # or fantasy-app, or fa.app() from Python
 ```
 
 The app opens in your browser and runs only on your computer. Follow the steps
