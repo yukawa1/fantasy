@@ -15,7 +15,23 @@ Quick start::
 The application ``fantasy-app`` (or ``fa.app()``) opens a point-and-click
 interface in the browser.
 """
-__version__ = "2.0.1"
+__version__ = "2.0.2"
+
+
+def _first_start_notice():
+    """Say so on the first start after installing: Python then compiles the libraries (up to a minute)."""
+    import importlib.util
+    import os
+    import sys
+    here = os.path.dirname(__file__)
+    probe = importlib.util.cache_from_source(os.path.join(here, "fitting.py"))
+    if os.path.exists(probe) or not os.access(here, os.W_OK) or sys.dont_write_bytecode:
+        return
+    print("FANTASY: first start after installing. Python is preparing the libraries once; "
+          "this takes up to a minute...", file=sys.stderr, flush=True)
+
+
+_first_start_notice()
 
 from . import desi, examples, ml, ozdes, presets, rm, sdss, templates
 from .host import StellarPopulation

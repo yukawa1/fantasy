@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.2
+
+### Fixed
+- Updates: for up to about 25 minutes after a release, **Install** in the app and `fantasy update` could
+  fail with "No matching distribution", because pip reused its cached copy of PyPI's index. The update
+  now asks PyPI afresh (`pip --no-cache-dir`, `uv --refresh-package fantasy_agn`), and the version check
+  asks PyPI not to answer from its cache. The installer's output is shown without colour codes, with a
+  hint to try again when PyPI has not listed the release yet.
+- First start: after installing with `uv pip install` (which, unlike pip, does not precompile), the first
+  `fantasy app` took about a minute with no output while Python compiled the libraries. It now says
+  so at once: "first start after installing ... takes up to a minute". Later starts take a few seconds.
+
 ## 2.0.1
 
 ### Fixed

@@ -38,7 +38,8 @@ fantasy app                  # the FANTASY app in the browser
 ```
 
 or, in an environment of its own made by [uv](https://docs.astral.sh/uv/):
-`uv tool install --python 3.12 fantasy_agn`.
+`uv tool install --python 3.12 fantasy_agn`. The first start after installing takes up to a minute
+(Python prepares the libraries once); later starts take a few seconds.
 
 **Updates**: the app shows **New: FANTASY x.y.z** in its header when a new version is published, with
 an Install button; in a terminal, `fantasy update` (or `pip install -U fantasy_agn`). The check asks

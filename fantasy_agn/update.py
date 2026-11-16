@@ -65,7 +65,8 @@ def latest_version(timeout=4.0, force=False):
             pass
     try:
         req = urllib.request.Request(PYPI_URL, headers={"User-Agent": "fantasy-agn update check",
-                                                        "Accept": "application/json"})
+                                                        "Accept": "application/json",
+                                                        "Cache-Control": "no-cache"})   # fresh after a release
         with _net.urlopen(req, timeout=timeout) as r:
             latest = json.load(r)["info"]["version"]
     except Exception:
@@ -107,14 +108,16 @@ def update_command(version=None, kind=None):
         if uv is None:
             return None
         py = f"{sys.version_info.major}.{sys.version_info.minor}"
-        return [uv, "tool", "install", "--force", "--python", py, spec]
+        return [uv, "tool", "install", "--force", "--refresh-package", "fantasy_agn", "--python", py, spec]
     if kind == "pip":
         try:
             import pip  # noqa: F401
-            return [sys.executable, "-m", "pip", "install", "--upgrade", spec]
+            # without the cache pip asks PyPI afresh: its cached index can miss a release for 10 minutes
+            return [sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", spec]
         except ImportError:                      # an environment made by uv has no pip
             uv = _uv()
-            return None if uv is None else [uv, "pip", "install", "--python", sys.executable, "--upgrade", spec]
+            return None if uv is None else [uv, "pip", "install", "--python", sys.executable, "--upgrade",
+                                            "--refresh-package", "fantasy_agn", spec]
     return None
 
 
@@ -153,8 +156,12 @@ def install(version=None, timeout=600):
         return False, ("This copy runs from a source checkout: update it with git pull."
                        if install_kind() == "source" else "uv was not found: run the FANTASY installer again.")
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                           env=dict(os.environ, NO_COLOR="1", PIP_NO_COLOR="1"))
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"{_shell(cmd)}\n{exc}"
-    out = (p.stdout + p.stderr).strip()
+    out = re.sub(r"\x1b\[[0-9;]*m", "", p.stdout + p.stderr).strip()      # no colour codes
+    if p.returncode != 0 and "No matching distribution" in out:
+        out += ("\n\nPyPI can take a few minutes to list a new release everywhere: "
+                "try again in a few minutes.")
     return p.returncode == 0, f"$ {_shell(cmd)}\n{out[-3000:]}"

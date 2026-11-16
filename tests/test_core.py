@@ -4217,6 +4217,15 @@ def test_update_check_and_install(monkeypatch, tmp_path, capsys):
     ok, out = update.install("9.9.0")
     assert ok and ran[0][-1] == "fantasy_agn==9.9.0" and "Successfully installed" in out
     assert update.install(fa.__version__) == (True, f"FANTASY {fa.__version__} is already the latest version.")
+    # caches bypassed (a cached index misses a fresh release), colour codes removed, a hint when not listed yet
+    assert {"--no-cache-dir", "--refresh-package"} & set(update.update_command("9.9.0", "pip"))   # pip, or uv without pip
+    assert "--refresh-package" in update.update_command("9.9.0", "uv-tool")
+    monkeypatch.setattr(update.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(
+        cmd, 1, "", "\x1b[31mERROR: No matching distribution found for fantasy_agn==9.9.0\x1b[0m"))
+    ok, out = update.install("9.9.0")
+    assert not ok and "\x1b" not in out and "try again in a few minutes" in out
+    monkeypatch.setattr(update.subprocess, "run",
+                        lambda cmd, **kw: ran.append(cmd) or subprocess.CompletedProcess(cmd, 0, "Successfully installed", ""))
     # the CLI
     assert cli.main(["update", "--check"]) == 0
     assert "9.9.0 is published" in capsys.readouterr().out
