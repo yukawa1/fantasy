@@ -7,7 +7,7 @@ Install Fantasy using pip
 
    ::
 
-     pip install fantasy_agn
+     pip install "fantasy_agn<2"
 
 
 However it is advisable to create new enviroment. For conda users `follow the instructions here <https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html>`_.

@@ -11,6 +11,13 @@ FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis
 
 *Nemanja Rakić, Dragana Ilić and Luka Č. Popović*
 
+.. note::
+
+   These are the docs of **FANTASY 1.x**, kept for reproducibility and no longer developed.
+   FANTASY 2 (a rewrite without Sherpa, with a desktop app) is documented at
+   https://fantasy-agn.readthedocs.io/en/stable/. Install 1.x with ``pip install "fantasy_agn<2"``.
+
+
 With the growing number of spectral surveys and monitoring campaigns (e.g. reverberation mapping) of active galactic nuclei (AGN), there is an indispensable need for increasingly innovative and independent tools for AGN spectra analysis and measurement of spectral parameters. Especially in the case of AGN, whose UV, optical, and NIR spectra can be very complex with numerous blended and satellite emission lines (e.g., contamination of strong Fe II emission to the Hβ line), there is a strong desire for complex and flexible spectral fitting tools that would enable the reliable extraction of spectral parameters, such as the flux of pure AGN continuum or emission line fluxes and widths of heavily blended lines.
 
 We present here the open-source code FANTASY - Fully Automated pythoN tool for AGN Spectra analYsis, a Python-based code for simultaneous multi-component fitting of AGN spectra, optimized for the optical rest-frame band (3600-8000 Å), but also applicable to the UV range (2000-3600 Å) and NIR range (8000-11000 Å). The code fits simultaneously the underlying broken power-law continuum and sets of defined emission line lists. There is an option to import and fit together the Fe II model, to fully account for the rich emission of complex Fe II ion which can produce thousands of line transitions, both in the range of Hg and Hb, but also Ha line (Ilic et al., 2022). The model is based on the atomic parameters of Fe II and builds upon the models presented in Kovacevic et al. (2010), Shapovalova et al. (2012), and assumes that different Fe II lines are grouped according to the same lower energy level in the transition with line ratios connected through the line transition oscillatory strengths.

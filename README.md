@@ -1,3 +1,10 @@
+> **This is FANTASY 1.x, kept for reproducibility and no longer developed.**
+> FANTASY 2 is a rewrite without Sherpa, faster and easier to install, with a desktop app:
+> see the [main branch](https://github.com/yukawa1/fantasy) and the
+> [documentation](https://fantasy-agn.readthedocs.io/en/stable/). Moving 1.x scripts to 2:
+> [CHANGELOG](https://github.com/yukawa1/fantasy/blob/main/CHANGELOG.md).
+> 1.x gets only critical fixes. Install it with `pip install "fantasy_agn<2"`
+> (it needs Python 3.10 to 3.12).
 
 ![Fantasy](docs/Fantasy.jpg)
 *Nemanja Rakić, Dragana Ilić and Luka Č. Popović*
@@ -20,6 +27,6 @@ It is an open source, easy to use code, available for installation through pip i
 
 For installation:
 ```console
-foo@bar:~$ pip install fantasy_agn
+foo@bar:~$ pip install "fantasy_agn<2"
 ```
-For complete documentation with examples of usage please cosult [read the docs](https://fantasy-agn.readthedocs.io/en/latest/)
+For complete documentation with examples of usage please cosult [read the docs](https://fantasy-agn.readthedocs.io/en/1.x/)
