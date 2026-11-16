@@ -273,8 +273,11 @@ table, or the whole session as a Python script.
 
 ## Upgrading from 1.x
 
-Version 2 no longer uses Sherpa. See [CHANGELOG.md](https://github.com/yukawa1/fantasy/blob/main/CHANGELOG.md) for how to move
-1.x scripts over. The 1.x tutorials are in the 1.x releases (`pip install "fantasy_agn<2"`).
+Version 2 no longer uses Sherpa. See [CHANGELOG.md](https://github.com/yukawa1/fantasy/blob/main/CHANGELOG.md#moving-a-1x-script) for how to move
+1.x scripts over. Version 1 stays available for reproducing earlier work, with critical fixes
+only: `pip install "fantasy_agn<2"` (Python 3.10 to 3.12), code on the
+[1.x branch](https://github.com/yukawa1/fantasy/tree/1.x), tutorials in the
+[1.x documentation](https://fantasy-agn.readthedocs.io/en/1.x/).
 
 ## Citation
 
