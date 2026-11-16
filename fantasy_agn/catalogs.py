@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 
+from . import _net
 from . import progress
 
 __all__ = ("lookup_catalogs", "with_fit_classes", "sky_image")
@@ -81,7 +82,7 @@ def _fetch(service, params, timeout):
         req = urllib.request.Request(urls[i], data=data, headers={"User-Agent": _USER_AGENT})
         wait = min(timeout, MIRROR_WAIT) if len(urls) > 1 and i == first else timeout    # a mirror is left to try
         try:
-            with urllib.request.urlopen(req, timeout=wait) as reply:
+            with _net.urlopen(req, timeout=wait) as reply:
                 body = reply.read()
         except (urllib.error.URLError, http.client.HTTPException, OSError) as exc:
             error = exc
@@ -154,7 +155,7 @@ def _query_ned_activity(k, name, timeout):
     from astropy.io.votable import parse
     url = _NED_API + "OverviewOfObject?" + urllib.parse.urlencode({"TARGET": name})
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as reply:
+    with _net.urlopen(req, timeout=timeout) as reply:
         body = reply.read()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -174,7 +175,7 @@ def _query_wise(k, o, radius, timeout):
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     for attempt in range(2):         # the service sometimes answers with an error page once
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as reply:
+            with _net.urlopen(req, timeout=timeout) as reply:
                 body = reply.read()
             if body[:1] != b"<":
                 break
@@ -532,7 +533,7 @@ def _image_ok(body):
 
 def _get(url, timeout):
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as reply:
+    with _net.urlopen(req, timeout=timeout) as reply:
         return reply.read()
 
 

@@ -10,6 +10,8 @@ import os
 import urllib.error
 import urllib.request
 
+from . import _net
+
 __all__ = ("fetch", "url")
 
 SAS = "https://data.sdss.org/sas/dr17"
@@ -38,7 +40,7 @@ def fetch(plate, mjd, fiber, folder=None, timeout=120):
         os.makedirs(folder, exist_ok=True)
         for run2d in RUN2D:
             try:
-                with urllib.request.urlopen(url(plate, mjd, fiber, run2d), timeout=timeout) as resp:
+                with _net.urlopen(url(plate, mjd, fiber, run2d), timeout=timeout) as resp:
                     data = resp.read()
             except urllib.error.HTTPError as exc:
                 if exc.code == 404:

@@ -7,6 +7,8 @@ import os
 import numpy as np
 from scipy.interpolate import CubicSpline
 
+from . import _net
+
 __all__ = ("fitzpatrick99", "deredden", "ebv_sfd", "ebv_irsa", "galactic_ebv", "SF11")
 
 
@@ -87,14 +89,13 @@ def ebv_irsa(ra, dec, timeout=20):
     (NASA/IPAC, needs internet). Returns (SFD, Schlafly & Finkbeiner 2011).
     """
     import urllib.parse
-    import urllib.request
     import xml.etree.ElementTree as ET
     key = (round(float(ra), 4), round(float(dec), 4))     # ~0.4 arcsec; the map pixels are 2.4'
     if key in _IRSA_CACHE:
         return _IRSA_CACHE[key]
     query = urllib.parse.urlencode({"locstr": f"{float(ra):.6f} {float(dec):.6f} equ j2000",
                                     "regSize": "2.0"})
-    with urllib.request.urlopen(f"{IRSA_DUST}?{query}", timeout=timeout) as resp:
+    with _net.urlopen(f"{IRSA_DUST}?{query}", timeout=timeout) as resp:
         root = ET.fromstring(resp.read())
     if root.attrib.get("status", "ok") != "ok":
         raise RuntimeError(f"IRSA dust service: {root.findtext('.//message') or 'error'}")

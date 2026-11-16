@@ -39,6 +39,8 @@ import urllib.request
 import numpy as np
 from astropy.io import fits
 
+from . import _net
+
 __all__ = ("read_epochs", "search", "download", "SSA_URL")
 
 SSA_URL = "https://datacentral.org.au/vo/ssa/query"
@@ -66,7 +68,7 @@ def _get(url, timeout, tries=4):
     import urllib.error
     for k in range(tries):
         try:
-            with urllib.request.urlopen(url, timeout=timeout) as resp:
+            with _net.urlopen(url, timeout=timeout) as resp:
                 return resp.read()
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
             code = getattr(exc, "code", None)

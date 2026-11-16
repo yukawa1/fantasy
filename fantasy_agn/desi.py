@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 from astropy.io import fits
 
+from . import _net
 from .spectrum import Spectrum
 
 __all__ = ("read", "read_all", "targets", "from_sparcl", "fetch", "find", "is_desi")
@@ -253,7 +254,7 @@ def _post(endpoint, payload, timeout=300):
     import urllib.request
     req = urllib.request.Request(f"{SPARCL_API}/{endpoint}", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with _net.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
 
 

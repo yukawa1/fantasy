@@ -15,7 +15,7 @@ Quick start::
 The application ``fantasy-app`` (or ``fa.app()``) opens a point-and-click
 interface in the browser.
 """
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 from . import desi, examples, ml, ozdes, presets, rm, sdss, templates
 from .host import StellarPopulation

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.1
+
+### Fixed
+- Online services on macOS: Python rejected the certificate of IRSA's servers (signed by a 2022 root
+  that Python's certificate file lacks), so the Galactic E(B-V) lookup in **Prepare** and the WISE
+  match in **Look up** failed with `CERTIFICATE_VERIFY_FAILED`. A refused certificate is now tried
+  again with the roots the operating system trusts (and certifi's, when installed); certificates are
+  still verified. This covers every download (IRSA, SDSS, DESI, OzDES, catalogs, stellar templates,
+  the update check).
+- App: an error in the browser console on the Model page before any model comparison was run.
+
 ## 2.0.0
 
 A complete rewrite. Sherpa is gone; fitting uses NumPy/SciPy with exact analytic

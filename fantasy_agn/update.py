@@ -21,6 +21,7 @@ import sys
 import time
 import urllib.request
 
+from . import _net
 from . import __version__
 
 __all__ = ("check", "install", "newer")
@@ -65,7 +66,7 @@ def latest_version(timeout=4.0, force=False):
     try:
         req = urllib.request.Request(PYPI_URL, headers={"User-Agent": "fantasy-agn update check",
                                                         "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _net.urlopen(req, timeout=timeout) as r:
             latest = json.load(r)["info"]["version"]
     except Exception:
         return None

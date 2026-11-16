@@ -19,6 +19,8 @@ import urllib.request
 
 import numpy as np
 
+from . import _net
+
 __all__ = ("TEMPLATE_SETS", "ALIASES", "canonical", "download", "load", "cache_dir", "available")
 
 _BASE = "https://raw.githubusercontent.com/micappe/ppxf_data/main/"
@@ -79,7 +81,7 @@ def download(name="emiles", force=False):
           flush=True)
     tmp = path + ".part"
     try:
-        urllib.request.urlretrieve(url, tmp)
+        _net.download(url, tmp)
         with np.load(tmp) as d:                 # a complete, readable file
             missing = {"lam", "templates", "ages", "metals"} - set(d.files)
         if missing:

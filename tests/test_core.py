@@ -4244,3 +4244,53 @@ def test_update_check_and_install(monkeypatch, tmp_path, capsys):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_https_falls_back_to_system_certificates(monkeypatch, tmp_path):
+    # a server whose root Python's certificate file lacks (IRSA on macOS): tried again with the system's roots
+    import io
+    import ssl
+    import urllib.error
+    import urllib.request
+    from fantasy_agn import _net
+    refused = urllib.error.URLError(ssl.SSLCertVerificationError(1, "unable to get local issuer certificate"))
+    sentinel = ssl.create_default_context()
+    monkeypatch.setattr(_net, "fallback_context", lambda: sentinel)
+    seen = []
+
+    def fake_urlopen(url, timeout=None, context=None):
+        seen.append(context)
+        if context is None:
+            raise refused
+        return io.BytesIO(b"ok")
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert _net.urlopen("https://example.org", timeout=5).read() == b"ok" and seen == [None, sentinel]
+    # other failures are not retried
+    seen.clear()
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda url, timeout=None, context=None: seen.append(context) or (_ for _ in ()).throw(
+                            urllib.error.URLError(OSError("offline"))))
+    with pytest.raises(urllib.error.URLError, match="offline"):
+        _net.urlopen("https://example.org")
+    assert seen == [None]
+    # downloads (the stellar templates) too
+    monkeypatch.setattr(urllib.request, "urlretrieve", lambda url, path: (_ for _ in ()).throw(refused))
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    _net.download("https://example.org/file", str(tmp_path / "f"))
+    assert (tmp_path / "f").read_bytes() == b"ok"
+    # the services go through it
+    from fantasy_agn import extinction
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout=None, context=None: (
+        (_ for _ in ()).throw(refused) if context is None else io.BytesIO(
+            b'<results status="ok"><result><statistics><refPixelValueSFD>0.0306 (mag)</refPixelValueSFD>'
+            b'<refPixelValueSandF>0.0263 (mag)</refPixelValueSandF></statistics></result></results>')))
+    extinction._IRSA_CACHE.clear()
+    try:
+        sfd, sf = extinction.ebv_irsa(117.2942, 28.70405)
+        assert sfd == pytest.approx(0.0306) and sf == pytest.approx(0.0263)
+    finally:
+        extinction._IRSA_CACHE.clear()
+    # the real fallback context still verifies certificates
+    monkeypatch.undo()
+    ctx = _net.fallback_context()
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname

@@ -485,7 +485,7 @@ class BuilderMixin:
         g = self.__dict__.get("_gallery")
         if g is None or self.spec is None or g["spec"] is not self.spec:
             c = getattr(self, "classification", None)
-            return {"cands": [], "running": False, "label": c.label if c is not None else None}
+            return {"cands": [], "running": False, "pending": [], "label": c.label if c is not None else None}
         return {k: v for k, v in g.items() if k != "spec"}
 
     def gallery_run(self, preset=None, kw=None):
