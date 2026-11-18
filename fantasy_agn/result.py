@@ -4,7 +4,8 @@ import json
 import numpy as np
 import pandas as pd
 
-from .components import C_KMS, Lines
+from .components import C_KMS, Lines, instrumental_fwhm
+from .wavelengths import _sampling_gaps, air_to_vac
 
 __all__ = ("FitResult",)
 
@@ -44,8 +45,9 @@ BH_RECIPES = {
     },
 }
 # Fe II bands (rest, vacuum): optical 4434-4684 A air (Boroson & Green 1992; R_FeII = F(FeII)/F(Hb broad)),
-# UV 2200-3090 A (Tsuzuki et al. 2006).
-FEII_BANDS = {"optical": (4435.2, 4685.3), "uv": (2200.0, 3090.0)}
+# Local Mg II preset window and the full UV comparison band (Tsuzuki et al. 2006).
+FEII_BANDS = {"optical": (4435.2, 4685.3), "uv": (2650.0, 3050.0), "uv_extended": (2200.0, 3090.0)}
+FEII_TEMPLATE_RANGES = {"optical": (3700.0, 10900.0), "uv": (2650.0, 3050.0), "uv_extended": (2200.0, 3500.0)}
 
 
 class FitResult:
@@ -240,14 +242,15 @@ class FitResult:
         rows = []
         for comp in self._line_components():
             sl = dict(zip([c.name for c in self.model.components], self.model._slices()))[comp.name]
+            local = self._line_parameters(comp, sl)
             for k, ln in enumerate(comp.line_names):
                 kin = "" if f"{comp.name}.fwhm" in self.model.params else f"{ln}."
                 wi = self._index(f"{comp.name}.{kin}fwhm")
                 si = self._index(f"{comp.name}.{kin}shift")
                 lam = comp._wave[k]
 
-                def flux(full, k=k, comp=comp, sl=sl):
-                    return comp.line_fluxes(full[sl])[k]
+                def flux(full, k=k, comp=comp, local=local):
+                    return comp.line_fluxes(local(full))[k]
 
                 def ew(full, flux=flux, si=si, lam=lam):
                     centre = lam * (1 + full[si] / C_KMS)
@@ -257,13 +260,16 @@ class FitResult:
                 name = f"{comp.name}.{ln}.flux"
                 if name in self.model.params:     # a flux parameter: its own error/status
                     fi = self._index(name)
-                    f_val, f_err = self.full[fi], self._param_error(fi, sig)
+                    f_val, f_err = flux(self.full), self._param_error(fi, sig)
                 else:                             # mixed (max_ratios): propagate
                     f_val, f_err = (float(v) for v in self.propagate(flux))
                 ew_val, ew_err = self.propagate(ew)
-                errs = [self._param_error(i, sig) for i in (wi, si)]
-                rows.append((comp.name, ln, lam, f_val, f_err, self._measured(wi),
-                             errs[0], self._measured(si), errs[1], float(ew_val), float(ew_err)))
+                covered = self._line_covered(comp, k, sl)
+                if not covered:
+                    f_val = f_err = ew_val = ew_err = np.nan
+                kin = ([self._measured(wi), self._param_error(wi, sig), self._measured(si), self._param_error(si, sig)]
+                       if covered and f_val != 0 else [np.nan] * 4)
+                rows.append((comp.name, ln, lam, f_val, f_err, *kin, float(ew_val), float(ew_err)))
         for comp in self._feii_components():
             m = self.feii(comp.name)
             wi, si = self._index(f"{comp.name}.fwhm"), self._index(f"{comp.name}.shift")
@@ -278,13 +284,54 @@ class FitResult:
         from .components import FeII
         return [c for c in self.model.components if isinstance(c, FeII)]
 
+    def _band_coverage(self, lo, hi):
+        """Fraction of a vacuum band occupied by fitted pixels, excluding gaps and masks."""
+        w = self.spectrum.wave
+        if self.spectrum.medium == "air":
+            w = air_to_vac(w)
+        if len(w) < 2:
+            return 0.0
+        d = np.diff(w)
+        left, right = np.r_[d[0], d] / 2, np.r_[d, d[-1]] / 2
+        if d.size > 1:
+            # Extrapolate each segment's terminal pixel using its neighbouring spacing.
+            # For an isolated endpoint, the next sampled segment supplies that spacing.
+            gaps, before, after = _sampling_gaps(d)
+            right[gaps] = before / 2
+            left[gaps + 1] = after / 2
+            left[0], right[-1] = right[0], left[-1]
+        overlap = np.minimum(hi, w + right) - np.maximum(lo, w - left)
+        return float(np.clip(np.maximum(overlap[self.mask], 0).sum() / (hi - lo), 0, 1))
+
+    def _feii_band(self, comp, band=None):
+        kind = getattr(comp, "feii_kind", None)
+        if kind is None:  # fitted components saved before feii_kind was recorded
+            kind = "uv_extended" if min(comp._wave) < 2500 else "uv" if min(comp._wave) < 3500 else "optical"
+        default = FEII_BANDS[kind]
+        lo, hi = default if band is None else map(float, band)
+        if not np.isfinite([lo, hi]).all() or not 0 < lo < hi:
+            raise ValueError("an Fe II band needs two increasing positive wavelengths")
+        optical = kind == "optical" and (lo, hi) == default
+        name = "FeII4434-4684" if optical else f"FeII{lo:g}-{hi:g}"
+        ref = "Hb" if kind == "optical" else "MgII2798"
+        start, end = FEII_TEMPLATE_RANGES[kind]
+        supported = start <= lo and hi <= end
+        coverage = self._band_coverage(lo, hi)
+        return {"line": name, "band": (lo, hi), "reference": ref, "ratio_label": "R_FeII" if optical else f"{name}/{ref}",
+                "coverage": coverage, "covered": coverage >= 0.95, "template_supported": supported}
+
     def feii(self, component=None, band=None):
         """
-        Fe II emission of an FeII template component (default: the first one) in a
-        band: flux, EW (against the AGN continuum) and, when the model has broad
-        H-beta (optical) or broad Mg II (UV), R_FeII = F(FeII) / F(broad line),
-        with errors. The default band is 4434-4684 A for the optical template
-        (Boroson & Green 1992) and 2200-3090 A for the UV one (Tsuzuki et al. 2006).
+        Fe II band flux, equivalent width and flux ratio to the total broad reference line.
+        The optical default is 4434–4684 Å (air) divided by H-beta. The local UV template
+        uses 2650–3050 Å and the extended UV template uses 2200–3090 Å, both divided by Mg II.
+        Supply a rest-vacuum wavelength pair as ``band`` for a custom integral.
+
+        ``coverage`` is the fraction of the band covered by fitted pixels. Flux, EW and
+        ratio are NaN below 95% coverage or outside the template's supported interval
+        (3700–10900 Å optical, 2650–3050 Å local UV, 2200–3500 Å extended UV).
+        A missing or undetected broad reference
+        leaves the ratio undefined. ``ratio_label`` identifies the quantity in exports.
         """
         comps = self._feii_components()
         if component is not None:
@@ -292,32 +339,31 @@ class FitResult:
         if not comps:
             raise ValueError("the model has no FeII component" + (f" named {component!r}" if component else ""))
         comp = comps[0]
-        kind = "uv" if np.min(comp._wave) < 3500 else "optical"
-        lo, hi = band if band is not None else FEII_BANDS[kind]
-        x = np.linspace(lo, hi, 2001)
-        dx = x[1] - x[0]
-        ctx = {"medium": "vacuum", "resolution": 0.0}
-        sl = dict(zip([c.name for c in self.model.components], self.model._slices()))[comp.name]
-        ref = "Hb" if kind == "optical" else "MgII2798"
+        meta = self._feii_band(comp, band)
+        lo, hi = meta["band"]
+        ref = meta["reference"]
         broad = [c.name for c in self._line_components() if c.role == "broad" and ref in c.line_names]
-        prof = self._line_profile_func(ref, broad) if broad else None
+        ref_flux = self._line_flux_func(ref, broad) if broad else None
+        if meta["covered"] and meta["template_supported"]:
+            from scipy.integrate import trapezoid
+            x = np.linspace(lo, hi, 2001)
+            ctx = {"medium": "vacuum", "resolution": 0.0}
+            sl = dict(zip([c.name for c in self.model.components], self.model._slices()))[comp.name]
 
-        def stats(full):
-            f = comp.evaluate(x, full[sl], ctx)[0]
-            cont = self._agn_continuum(x, full)
-            flux = f.sum() * dx
-            ew = np.sum(np.where(cont > 0, f / np.where(cont > 0, cont, 1), np.nan)) * dx
-            r = np.nan
-            if prof is not None:
-                fb = prof[3](full).sum() * (prof[2][1] - prof[2][0])
-                r = flux / fb if fb > 0 else np.nan
-            return np.array([flux, ew, r])
+            def stats(full):
+                f = comp.value(x, full[sl], ctx)
+                cont = self._agn_continuum(x, full)
+                flux = trapezoid(f, x)
+                ew = trapezoid(f / cont, x) if (cont > 0).all() else np.nan
+                fb = ref_flux(full) if ref_flux else np.nan
+                return np.array([flux, ew, flux / fb if fb > 0 else np.nan])
 
-        val, err = self.propagate(stats, depends=self._depends([comp.name] + broad))
-        name = f"FeII{lo:.0f}-{hi:.0f}" if band is not None else ("FeII4434-4684" if kind == "optical" else "FeII2200-3090")
-        return {"component": comp.name, "line": name, "band": (float(lo), float(hi)),
-                "flux": float(val[0]), "flux_err": float(err[0]), "ew": float(val[1]), "ew_err": float(err[1]),
-                "r_feii": float(val[2]), "r_feii_err": float(err[2]), "reference": ref if broad else None}
+            val, err = self.propagate(stats, depends=self._depends([comp.name] + broad))
+        else:
+            val = err = np.full(3, np.nan)
+        return {**meta, "component": comp.name, "flux": float(val[0]), "flux_err": float(err[0]),
+                "ew": float(val[1]), "ew_err": float(err[1]), "r_feii": float(val[2]),
+                "r_feii_err": float(err[2]) if np.isfinite(val[2]) else np.nan}
 
     def _measured(self, i):
         return np.nan if self.model.params.names[i] in self.not_measured else self.full[i]
@@ -332,23 +378,110 @@ class FitResult:
         return np.nan if name in self.at_limit or name in self.at_zero else sig[i]
 
     # ---------------------------------------------------------- measuring
+    def _line_covered(self, comp, k, sl):
+        """At least one fitted pixel samples the shifted line within one observed FWHM."""
+        local = self.full[sl]
+        if self.unconstrained:
+            # An excess and a ratio reference may each supply part of the flux.
+            # A dead input at zero leaves the other, measured inputs usable.
+            measured_input = False
+            for j in np.flatnonzero(comp._weights(local)[k]):
+                p = comp.params[j]
+                while p.tie is not None and p.name not in self.unconstrained:
+                    p = self.model.params[p.tie[0]]
+                if p.name not in self.unconstrained:
+                    measured_input = True
+                elif local[j] != 0:
+                    return False
+            if not measured_input:
+                return False
+        _, kin = comp._split(local)
+        group = comp._kin_index[k]
+        centre = comp._wave[k] * (1 + kin[0][group] / C_KMS)
+        width = kin[1][group]
+        if comp.profile == "voigt":
+            width = 0.5346 * kin[2][group] + np.hypot(width, np.sqrt(0.2166) * kin[2][group])
+        inst = instrumental_fwhm(comp._wave[k:k+1], self.spectrum.context)[0]
+        span = centre * np.hypot(width, inst) / C_KMS
+        return span > 0 and self._band_coverage(centre - span, centre + span) > 0
+
+    def _line_parameters(self, comp, sl):
+        """Evaluate a line with zero-bound amplitudes snapped, including affine ties.
+
+        Joint fits can leave round-off above the active bound. Keep the position of
+        the fit untouched, and preserve amplitudes changed in MC draws or propagation.
+        """
+        from .fitting import _at_limit
+        indices, offsets = [], []
+        flagged = set(self.at_zero)
+        if flagged:
+            for j, p in enumerate(comp.params[:comp._n_amp]):
+                root, factor, offset = p, 1., 0.
+                while root.tie is not None:
+                    target, scale, shift = root.tie
+                    offset += factor * shift
+                    factor *= scale
+                    root = self.model.params[target]
+                if root.name not in flagged:
+                    continue
+                value = self.full[self._index(root.name)]
+                lower, upper = root.min, root.max
+                bound = lower if abs(value - lower) < abs(upper - value) else upper
+                if bound == 0 and _at_limit(value, lower, upper):
+                    indices.append(j)
+                    offsets.append(offset)
+        if not indices:
+            return lambda full: full[sl]
+        indices, offsets = np.asarray(indices), np.asarray(offsets)
+        fitted = self.full[sl][indices]
+
+        def parameters(full):
+            local = full[sl].copy()
+            unchanged = local[indices] == fitted
+            local[indices[unchanged]] = offsets[unchanged]
+            return local
+        return parameters
+
+    def _line_flux_func(self, line, components):
+        """Physical integrated amplitudes of a line, including all ratio and excess parameterizations."""
+        covered = []
+        for c, sl in zip(self.model.components, self.model._slices()):
+            if not isinstance(c, Lines) or line not in c.line_names or (components is not None and c.name not in components):
+                continue
+            k = c.line_names.index(line)
+            params = self._line_parameters(c, sl)
+            if self._line_covered(c, k, sl):
+                covered.append((c, params, k))
+            elif c.line_fluxes(params(self.full))[k] != 0:
+                # A positive contribution extrapolated from another line cannot be reported as measured.
+                return lambda full: np.nan
+        if not covered:
+            return lambda full: np.nan
+
+        def flux(full):
+            return sum(c.line_fluxes(params(full))[k] for c, params, k in covered)
+        return flux
+
     def _line_profile_func(self, line, components):
         comps = self._line_components()
         if components is None:
             components = [c.name for c in comps if line in c.line_names]
-        if not components:
-            raise ValueError(f"no Lines component contains {line!r}")
-        sel = [c for c in comps if c.name in components]
+        sel = [c for c in comps if c.name in components and line in c.line_names]
+        if not sel:
+            raise ValueError(f"no selected Lines component contains {line!r}")
+        components = [c.name for c in sel]
         lam0 = sel[0]._wave[sel[0].line_names.index(line)]
         v = np.linspace(-40000, 40000, 16001)
         lam = lam0 * (1 + v / C_KMS)
         ctx = {"medium": "vacuum", "resolution": 0.0}
         slices = dict(zip([c.name for c in self.model.components], self.model._slices()))
 
+        params = [(c, self._line_parameters(c, slices[c.name])) for c in sel]
+
         def profile(full):
             total = np.zeros_like(lam)
-            for c in sel:
-                total += c.line_profile(lam, full[slices[c.name]], ctx, line)
+            for c, local in params:
+                total += c.line_profile(lam, local(full), ctx, line)
             return total
 
         return lam0, v, lam, profile, components
@@ -361,54 +494,107 @@ class FitResult:
                 out.extend(range(sl.start, sl.stop))
         return out
 
-    def _profile_stats(self, prof, lam0, v, lam, full):
-        """flux, FWHM, sigma, centroid shift and EW of a profile on velocity grid v."""
-        if not np.all(np.isfinite(prof)):        # e.g. a width stepped past its limit
+    def _profile_stats(self, prof, lam0, v, full, flux, damped, moment_window):
+        """Total flux and EW, intrinsic FWHM, windowed dispersion and centroid shift."""
+        if not np.isfinite(flux):
             return np.full(5, np.nan)
-        flux = prof.sum() * (lam[1] - lam[0])
-        peak = np.argmax(prof)
-        half = prof[peak] / 2
-        above = np.nonzero(prof >= half)[0]
+        if flux == 0 or not np.isfinite(prof).all():
+            cont = self._agn_continuum(lam0, full)[0]
+            return np.array([flux, np.nan, np.nan, np.nan, 0.0 if flux == 0 and cont > 0 else np.nan])
+        # A pure absorption line has a negative integrated flux and a positive width.
+        shape = prof * np.sign(flux)
+        half = shape.max() / 2
+        above = np.flatnonzero(shape >= half)
+        if half <= 0 or not above.size:
+            return np.array([flux, np.nan, np.nan, np.nan, np.nan])
         i0, i1 = above[0], above[-1]
-        # Interpolate the outermost half-maximum crossings.
-        vl = np.interp(half, [prof[i0 - 1], prof[i0]], [v[i0 - 1], v[i0]]) if i0 > 0 else v[0]
-        vr = (np.interp(half, [prof[i1 + 1], prof[i1]], [v[i1 + 1], v[i1]])
-              if i1 < v.size - 1 else v[-1])
-        total = prof.sum()
-        w = prof / total if total > 0 else prof
-        centroid = float(np.sum(w * v))
-        sigma = float(np.sqrt(np.sum(w * (v - centroid) ** 2)))
-        # Widths are velocities relative to the line centroid (as for the
-        # fitted FWHM parameters), not to the rest wavelength.
-        stretch = 1 + centroid / C_KMS
-        cont = self._agn_continuum(lam0 * stretch, full)[0]
-        ew = flux / cont if cont > 0 else np.nan
-        return np.array([flux, (vr - vl) / stretch, sigma / stretch, centroid, ew])
+        width = np.nan
+        if i0 > 0 and i1 < len(v) - 1:
+            vl = np.interp(half, shape[i0-1:i0+1], v[i0-1:i0+1])
+            vr = np.interp(half, shape[i1:i1+2][::-1], v[i1:i1+2][::-1])
+            width = vr - vl
 
-    def measure(self, line, components=None):
-        """
-        Measure a line summed over components (default: every Lines component
-        that contains it, e.g. broad + very broad), directly from the model
-        profile. Returns a dict with flux, FWHM and line dispersion sigma
-        (km/s), centroid shift (km/s), EW (A) and their errors, and
-        ``fwhm_fragile``: True when the profile has a shoulder at half maximum,
-        so that a small change of the fit moves the FWHM a lot (prefer sigma).
-        """
+        def moments(u, y):
+            from scipy.integrate import trapezoid
+            area = trapezoid(y, u)
+            if area <= 0:
+                return np.nan, np.nan
+            mean = trapezoid(u * y, u) / area
+            var = trapezoid((u - mean) ** 2 * y, u) / area
+            return mean, np.sqrt(var) if var >= 0 else np.nan
+
+        # Preserve the same FWHM and EW when a different moment aperture is requested.
+        centre, sigma = moments(v, shape)
+        stretch = 1 + centre / C_KMS
+        cont = self._agn_continuum(lam0 * stretch, full)[0]
+        if moment_window is not None:
+            lo, hi = moment_window
+            inside = (v > lo) & (v < hi)
+            u = np.r_[lo, v[inside], hi]
+            centre, sigma = moments(u, np.interp(u, v, shape))
+        elif damped:
+            sigma = np.nan
+        return np.array([flux, width / stretch, sigma / (1 + centre / C_KMS), centre,
+                         flux / cont if cont > 0 else np.nan])
+
+    def _line_measurement(self, line, components, moment_window=None):
         lam0, v, lam, profile, comps = self._line_profile_func(line, components)
+        flux = self._line_flux_func(line, comps)
+        damped = False
+        for c, sl in zip(self.model.components, self.model._slices()):
+            if c.name in comps and c.profile in ("lorentzian", "voigt"):
+                k = c.line_names.index(line)
+                local = self._line_parameters(c, sl)(self.full)
+                _, kin = c._split(local)
+                if c.line_fluxes(local)[k] != 0 and kin[-1][c._kin_index[k]] > 0:
+                    damped = True
 
         def stats(full):
-            return self._profile_stats(profile(full), lam0, v, lam, full)
+            return self._profile_stats(profile(full), lam0, v, full, flux(full), damped, moment_window)
+        return stats, comps, damped, v, profile
 
+    def measure(self, line, components=None, moment_window=None):
+        """
+        Measure the intrinsic summed profile of the selected Lines components.
+        Flux is the sum of normalized, integrated model line amplitudes. FWHM, shift
+        and dispersion are in km/s; EW is relative to the AGN continuum in Å.
+        A covered zero-flux line has undefined kinematics; a line without fitted
+        pixels within one observed FWHM of its centre also has undefined flux and EW.
+
+        The centroid shift is the first moment within ``moment_window`` in km/s
+        relative to the rest wavelength (default −40000 to +40000). Dispersion
+        uses the same aperture. A contributing Lorentzian or Voigt damping wing
+        has no finite intrinsic dispersion, so sigma is NaN unless you explicitly
+        give a finite ``(vmin, vmax)`` within that range. Flux and FWHM are independent
+        of that choice. ``fwhm_fragile`` marks a shoulder at half-maximum.
+        """
+        if moment_window is not None:
+            lo, hi = map(float, moment_window)
+            if not -40000 <= lo < hi <= 40000:
+                raise ValueError("moment_window must have increasing limits between -40000 and 40000 km/s")
+            moment_window = (lo, hi)
+        stats, comps, damped, v, profile = self._line_measurement(line, components, moment_window)
         val, err = self.propagate(stats, depends=self._depends(comps))
         keys = ["flux", "fwhm", "sigma", "shift", "ew"]
-        out = {"line": line, "components": comps}
+        out = {"line": line, "components": comps, "moment_window": moment_window or (float(v[0]), float(v[-1])),
+               "damping_wings": damped}
         for k, a, e in zip(keys, val, err):
-            out[k], out[k + "_err"] = float(a), float(e)
-        # a shoulder at half maximum: a small change of the profile moves the FWHM a lot (sigma is then safer)
+            out[k], out[k + "_err"] = float(a), float(e) if np.isfinite(a) else np.nan
         from .fitcompare import fwhm_fragile
-        prof = profile(self.full)
-        out["fwhm_fragile"] = bool(np.all(np.isfinite(prof)) and prof.max() > 0 and fwhm_fragile(v, prof)[0])
+        out["fwhm_fragile"] = bool(np.isfinite(out["fwhm"]) and fwhm_fragile(v, profile(self.full) * np.sign(val[0]))[0])
         return out
+
+    def _primary_broad_line(self, preferred=("Hb", "Ha", "MgII2798", "CIV1549")):
+        """First covered broad emission line with positive flux and a measurable profile FWHM."""
+        broad = [c for c in self._line_components() if c.role == "broad"]
+        for line in preferred:
+            names = [c.name for c in broad if line in c.line_names]
+            if names:
+                stats, _, _, _, _ = self._line_measurement(line, names)
+                flux, fwhm = stats(self.full)[:2]
+                if flux > 0 and np.isfinite(fwhm) and fwhm > 0:
+                    return line
+        return None
 
     def key_results(self):
         """
@@ -420,8 +606,7 @@ class FitResult:
         """
         rows = []
         broad = [c for c in self._line_components() if c.role == "broad"]
-        line = next((ln for ln in ("Hb", "Ha", "MgII2798", "CIV1549")
-                     if any(ln in c.line_names for c in broad)), None)
+        line = self._primary_broad_line()
         if line:
             m = self.measure(line, [c.name for c in broad if line in c.line_names])
             rows += [(f"broad {line} FWHM", m["fwhm"], m["fwhm_err"], "km/s"),
@@ -431,29 +616,31 @@ class FitResult:
                     continue
                 try:
                     bh = self.bh_mass(ln)
+                    if not np.isfinite(bh["log_mbh"]):
+                        continue
                     rows.append(("log M_BH" if ln == line else f"log M_BH ({ln})", bh["log_mbh"], bh["log_mbh_err"], "dex"))
                 except Exception:
                     pass
             dec = self.balmer_decrement()
-            if dec:
+            if dec and np.isfinite(dec[0]):
                 rows.append(("broad Ha/Hb", dec[0], dec[1], ""))
-            if self._feii_components() and line in ("Hb", "MgII2798"):
-                try:
-                    fe = self.feii()
-                    if np.isfinite(fe["r_feii"]):
-                        rows.append(("R_FeII", fe["r_feii"], fe["r_feii_err"], ""))
-                except Exception:
-                    pass
+            for comp in self._feii_components():
+                meta = self._feii_band(comp)
+                if any(meta["reference"] in c.line_names for c in broad):
+                    fe = self.feii(comp.name)
+                    rows.append((fe["ratio_label"], fe["r_feii"], fe["r_feii_err"], ""))
         else:
-            t = self.lines[self.lines.component.isin(["narrow", "narrow_hi", "outflow"])]
-            if "[OIII]5007" in set(t.line):
-                from .diagnostics import _flux_function
-                idx = _flux_function(self, outflow=True).get("[OIII]5007", [])
-                f, e = self.propagate(lambda full: float(np.sum(full[idx])))
-                core = t[t.component.isin(["narrow", "narrow_hi"]) & (t.line == "[OIII]5007")]
-                n = core.iloc[0]
-                rows += [("[OIII]5007 flux", float(f), float(e), ""),
-                         ("[OIII]5007 FWHM (narrow)", n.fwhm, n.fwhm_err, "km/s")]
+            from .diagnostics import _flux_function
+            oiii = _flux_function(self, outflow=True).get("[OIII]5007")
+            if oiii is not None:
+                f, e = self.propagate(oiii)
+                if np.isfinite(f):
+                    rows.append(("[OIII]5007 flux", float(f), float(e), ""))
+                core = [c.name for c in self._line_components() if c.role == "narrow" and "[OIII]5007" in c.line_names]
+                if core:
+                    m = self.measure("[OIII]5007", core)
+                    if np.isfinite(m["fwhm"]):
+                        rows.append(("[OIII]5007 FWHM (narrow)", m["fwhm"], m["fwhm_err"], "km/s"))
             try:
                 d = self.diagnostics().set_index("quantity")
             except Exception:
@@ -488,16 +675,15 @@ class FitResult:
                       if c.role == "broad" and ln in c.line_names] for ln in ("Ha", "Hb")}
         if not comps["Ha"] or not comps["Hb"]:
             return None
-        fa = self._line_profile_func("Ha", comps["Ha"])
-        fb = self._line_profile_func("Hb", comps["Hb"])
+        fa = self._line_flux_func("Ha", comps["Ha"])
+        fb = self._line_flux_func("Hb", comps["Hb"])
 
         def ratio(full):
-            pa, pb = fa[3](full).sum(), fb[3](full).sum()
-            dla, dlb = fa[2][1] - fa[2][0], fb[2][1] - fb[2][0]
-            return pa * dla / (pb * dlb) if pb > 0 else np.nan
+            pa, pb = fa(full), fb(full)
+            return pa / pb if pa > 0 and pb > 0 else np.nan
 
         val, err = self.propagate(ratio, depends=self._depends(comps["Ha"] + comps["Hb"]))
-        return float(val), float(err)
+        return float(val), float(err) if np.isfinite(val) else np.nan
 
     def continuum(self, at=5100.0):
         """AGN continuum flux density at a rest wavelength, with error."""
@@ -543,7 +729,9 @@ class FitResult:
         - CIV1549: ``'vp06'`` (default) or ``'shen24'``, with L1350.
 
         The error is statistical only; ``systematic_dex`` is the intrinsic
-        scatter of the recipe (0.3-0.6 dex).
+        scatter of the recipe (0.3-0.6 dex). A zero or uncovered broad line returns NaN.
+        Dispersion-based recipes also return NaN for a line with damping wings; an
+        aperture-dependent dispersion is not calibrated for these recipes.
         """
         line = {"MgII": "MgII2798", "CIV": "CIV1549", "Halpha": "Ha", "Hbeta": "Hb"}.get(line, line)
         if line not in BH_RECIPES:
@@ -556,18 +744,22 @@ class FitResult:
         if components is None:
             components = [c.name for c in self._line_components()
                           if line in c.line_names and c.role == "broad"]
-        lam0, v, lam, profile, comps = self._line_profile_func(line, components)
+        stats, comps, damped, _, _ = self._line_measurement(line, components)
         f = self._lum_factor()
         at = rec["lum"]
 
         def logm(full):
-            stats = self._profile_stats(profile(full), lam0, v, lam, full)
-            lum = f * stats[0] if at == "line" else at * f * self._agn_continuum(at, full)[0]
-            width = stats[2] if rec.get("width") == "sigma" else stats[1]
+            if damped and rec.get("width") == "sigma":
+                return np.nan
+            m = stats(full)
+            lum = f * m[0] if at == "line" else at * f * self._agn_continuum(at, full)[0]
+            width = m[2] if rec.get("width") == "sigma" else m[1]
+            if not (m[0] > 0 and width > 0 and lum > 0):
+                return np.nan
             return rec["a"] + rec["c"] * np.log10(width / 1000) + rec["b"] * (np.log10(lum) - rec["lnorm"])
 
         val, err = self.propagate(logm, depends=self._depends(comps))
-        return {"log_mbh": float(val), "log_mbh_err": float(err), "line": line,
+        return {"log_mbh": float(val), "log_mbh_err": float(err) if np.isfinite(val) else np.nan, "line": line,
                 "components": comps, "recipe": rec["ref"], "recipe_key": key,
                 "luminosity": "broad line" if at == "line" else f"L{at}",
                 "width": rec.get("width", "fwhm"), "systematic_dex": rec["scatter"]}
@@ -585,8 +777,9 @@ class FitResult:
         if broad:
             m = self.measure("Hb", broad)
             out.update(fwhm=m["fwhm"], fwhm_err=m["fwhm_err"])
-        if broad and self._feii_components():
-            fe = self.feii()
+        optical = next((c for c in self._feii_components() if self._feii_band(c)["ratio_label"] == "R_FeII"), None)
+        if broad and optical:
+            fe = self.feii(optical.name)
             out.update(r_feii=fe["r_feii"], r_feii_err=fe["r_feii_err"])
         r, w = out["r_feii"], out["fwhm"]
         if np.isfinite(w):
@@ -616,6 +809,8 @@ class FitResult:
                 try:
                     m = self.bh_mass(line, recipe=key)
                 except Exception:
+                    continue
+                if not np.isfinite(m["log_mbh"]):
                     continue
                 rows.append((line, key, m["recipe"], m["width"], m["luminosity"], m["log_mbh"], m["log_mbh_err"],
                              m["systematic_dex"]))
@@ -706,6 +901,7 @@ class FitResult:
             sl = dict(zip([c.name for c in self.model.components], self.model._slices()))[comp.name]
             fluxes = comp.line_fluxes(self.full[sl])
             groups = {}
+            local = self._line_parameters(comp, sl)
             for k, ln in enumerate(comp.line_names):
                 kin = "" if f"{comp.name}.fwhm" in self.model.params else f"{ln}."
                 name = f"{comp.name}.{kin}fwhm"

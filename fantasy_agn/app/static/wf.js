@@ -68,6 +68,45 @@ async function post(path, body, quiet) {
 function download(url) {
   const a = document.createElement("a"); a.href = withToken(url); a.download = ""; document.body.appendChild(a); a.click(); a.remove();
 }
+function initActionMenu(buttonId, menuId, refresh) {
+  const trigger = $(buttonId), menu = $(menuId), wrap = trigger.parentElement;
+  const choices = () => Array.from(menu.querySelectorAll('[role="menuitem"]:not(:disabled):not(.hidden)'));
+  function close(restore) {
+    menu.classList.add("hidden");
+    trigger.setAttribute("aria-expanded", "false");
+    if (restore) trigger.focus();
+  }
+  function open(last = false) {
+    if (refresh) refresh();
+    menu.classList.remove("hidden");
+    trigger.setAttribute("aria-expanded", "true");
+    const items = choices();
+    (last ? items[items.length - 1] : items[0])?.focus();
+  }
+  trigger.onclick = () => menu.classList.contains("hidden") ? open() : close(true);
+  trigger.onkeydown = (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); open(e.key === "ArrowUp");
+    }
+  };
+  menu.onkeydown = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); close(true); return; }
+    if (e.key === "Tab") { close(true); return; }  // allow native Tab/Shift+Tab from the trigger
+    const items = choices(), i = items.indexOf(document.activeElement);
+    const next = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: items.length - 1 }[e.key];
+    if (next !== undefined && items.length) {
+      e.preventDefault(); items[(next + items.length) % items.length].focus();
+    }
+  };
+  menu.addEventListener("click", (e) => {
+    const item = e.target.closest('[role="menuitem"]');
+    if (!item) return;
+    if (item.disabled || item.classList.contains("hidden")) { e.stopPropagation(); return; }
+    close(true);
+  });
+  document.addEventListener("click", (e) => { if (!wrap.contains(e.target)) close(false); });
+  wrap.addEventListener("focusout", (e) => { if (!wrap.contains(e.relatedTarget)) close(false); });
+}
 // An error of a request (e.g. no files match the path) stays until dismissed or the next action goes through;
 // one of a cell (S.error) goes when the session has none.
 let requestError = false, lastRequestError = "";
@@ -109,6 +148,7 @@ function schedule() {
 function setState(st) {
   const prev = S;
   S = st;
+  if (window.MB) MB.updateContext();
   const busyNow = !!S.busy;
   if (wasBusy && !busyNow) onIdle(prev);
   wasBusy = busyNow;
@@ -232,6 +272,7 @@ function loadPageData(force) {
 
 // =================================================================== 1 READ
 let srcTab = "files";
+let nextReadMode = null;
 function agoText(t) {
   const s = Math.max(0, Date.now() / 1000 - t);
   if (s < 90) return "a minute ago";
@@ -262,9 +303,13 @@ function renderRestore() {
   $("restorehide").onclick = () => { restoreHidden = true; renderRestore(); };
 }
 let restoreHidden = false;
+// the opening screen's quasar (hero.js): read it as a single spectrum
+window.fantasyTryExample = (path) => path && !path.startsWith("__") && readSpectra({ pattern: path, mode: "single" });
 function renderRead() {
   renderRestore();
-  const m = mode();
+  if (window.fantasyHero) window.fantasyHero.show(!loaded());
+  if (nextReadMode === mode() || !loaded()) nextReadMode = null;
+  const m = nextReadMode || mode();
   document.querySelectorAll(".mode").forEach((el) => {
     const on = el.dataset.mode === m;
     el.classList.toggle("on", on); el.querySelector("input").checked = on;
@@ -279,7 +324,7 @@ function renderRead() {
   if (S.wf.group && document.activeElement !== $("groupsel")) $("groupsel").value = S.wf.group;
   const L = loaded();
   $("loadedbox").classList.toggle("hidden", !L);
-  $("toprepare").disabled = !L || !!S.busy;
+  $("toprepare").disabled = !L || !!S.busy || !!nextReadMode;
   if (!L) { $("toprepare").textContent = "Prepare →"; return; }
   const n = L.n, unit = multi ? (n === 1 ? "epoch" : "epochs") : (n === 1 ? "spectrum" : "spectra");
   $("loadedtitle").textContent = `Loaded · ${n} ${unit}` + (L.shown < n ? ` (${L.shown} shown)` : "");
@@ -288,29 +333,35 @@ function renderRead() {
   if ($("loadedtbl").dataset.sig !== sig) {
     $("loadedtbl").dataset.sig = sig;
     $("loadedtbl").innerHTML = `<thead><tr><th><input type="checkbox" id="selall"></th><th>${multi ? "Epoch" : "#"}</th><th>Date</th><th>File</th><th>Format</th><th class="num">z</th><th>RA / Dec</th></tr></thead><tbody>` +
-      L.rows.map((r) => `<tr data-row="${r.k}" class="${r.k === CAT.k ? "catsel" : ""}"><td><input type="checkbox" data-k="${r.k}"></td><td class="mono">#${r.k}</td><td class="mono">${esc(r.date || "—")}</td>` +
+      L.rows.map((r) => `<tr data-row="${r.k}"><td><input type="checkbox" data-k="${r.k}"></td><td class="mono">#${r.k}</td><td class="mono">${esc(r.date || "—")}</td>` +
         `<td class="mono">${esc(r.file)}</td><td class="mono muted">${esc(r.format)}</td><td class="num">${r.z != null ? fmtNum(r.z, 5) : "—"}</td>` +
         `<td>${r.ra != null ? `<span class="mono">${fmtNum(r.ra, 7)}, ${fmtNum(r.dec, 7)}</span>` : '<span class="badge missing">missing</span>'}</td></tr>`).join("") + "</tbody>";
     $("selall").onchange = (e) => { document.querySelectorAll('#loadedtbl input[data-k]').forEach((c) => (c.checked = e.target.checked)); updateRemove(); };
     document.querySelectorAll('#loadedtbl input[data-k]').forEach((c) => (c.onchange = updateRemove));
     document.querySelectorAll("#loadedtbl tbody tr").forEach((tr) => (tr.onclick = (e) => {
-      if (e.target.tagName !== "INPUT" && S.wf.catalog && S.wf.catalog.done && S.wf.catalog.n > 1) catalogPick(+tr.dataset.row);
+      const k = S.wf.catalog?.loaded_rows?.[+tr.dataset.row];
+      if (e.target.tagName !== "INPUT" && k != null) catalogPick(k);
     }));
     updateRemove();
   }
   const noCoords = L.rows.some((r) => r.ra == null), noZ = L.rows.some((r) => r.z == null);
   const notes = [];
+  if (nextReadMode) notes.push(nextReadMode === "single" ? "Read one spectrum to start a single-spectrum analysis." :
+    "Read at least two spectra to start a multi-epoch analysis.");
   if (noCoords) notes.push("Some files carry no coordinates: give RA/Dec or E(B−V) in the next step.");
   if (noZ) notes.push("No redshift in the files: enter z in the next step.");
   $("loadednote").textContent = notes.join(" ");
+  updateRemove();
   renderCatalogCard();
 }
 function updateRemove() {
   const any = document.querySelectorAll('#loadedtbl input[data-k]:checked').length > 0;
-  $("removesel").disabled = !any || !S.wf.loaded.rows.every((r) => r.path);
+  $("removesel").disabled = !any || !!S.busy || !!nextReadMode;
 }
 async function readSpectra(src) {
-  const body = Object.assign({ mode: mode(), group: $("groupsel").value, format: $("fmtsel").value }, src);
+  const remote = !!(src.targetid || src.sdss);
+  const body = Object.assign({ mode: nextReadMode || mode(), group: remote ? "auto" : $("groupsel").value,
+    format: remote ? "auto" : $("fmtsel").value }, src);
   const box = $("readerr");
   box.classList.add("hidden");
   if (await post("/api/wf/read", body, true)) toast("Reading…", 1200);
@@ -340,9 +391,16 @@ function initRead() {
   document.querySelectorAll(".mode").forEach((el) => (el.onclick = (e) => {
     e.preventDefault();
     const m = el.dataset.mode;
-    if (m === mode()) return;
-    S.wf.mode = m; render();
-    post("/api/wf/mode", { mode: m });
+    if (S.busy) return;
+    nextReadMode = null;
+    if (m === mode()) { renderRead(); return; }
+    const L = loaded();
+    if (L && ((m === "single" && L.n !== 1) || (m === "multi" && L.n < 2))) {
+      nextReadMode = m;
+      renderRead();
+      return;
+    }
+    post("/api/wf/mode", { mode: m, loaded_id: L && L.id });
   }));
   document.querySelectorAll("#srctabs button").forEach((b) => (b.onclick = () => {
     srcTab = b.dataset.src;
@@ -363,13 +421,12 @@ function initRead() {
   $("sdssin").onkeydown = (e) => { if (e.key === "Enter") $("sdssbtn").click(); };   // returns nothing: false would cancel every other key
   $("groupsel").onchange = () => {
     const L = loaded();
-    if (L && mode() === "multi" && L.rows.every((r) => r.path)) readSpectra({ paths: L.rows.map((r) => r.path) });
+    if (L && !nextReadMode && mode() === "multi")
+      post("/api/wf/mode", { mode: "multi", group: $("groupsel").value, loaded_id: L.id });
   };
   $("removesel").onclick = () => {
-    const drop = new Set([...document.querySelectorAll('#loadedtbl input[data-k]:checked')].map((c) => +c.dataset.k));
-    const keep = S.wf.loaded.rows.filter((r) => !drop.has(r.k)).map((r) => r.path);
-    if (!keep.length) { post("/api/reset", {}); return; }
-    readSpectra({ paths: keep });
+    const indices = [...document.querySelectorAll('#loadedtbl input[data-k]:checked')].map((c) => +c.dataset.k);
+    post("/api/wf/remove", { indices, loaded_id: S.wf.loaded.id });
   };
   $("toprepare").onclick = () => go("prepare");
 }
@@ -377,8 +434,12 @@ function initRead() {
 // ================================================================ 2 PREPARE
 let prep = null, prepFor = null;   // form values, for the spectra read (loaded id)
 let pk = 0, pkind = "prepared", masking = false, prepTimer = null;
-function prepDefaults() {
-  const L = loaded(), saved = S.wf.settings.prepare;
+function appliedPreparation(scope = "all") {
+  const settings = S.wf.settings;
+  return settings.prepare_rows?.[scope] || settings.prepare;
+}
+function prepDefaults(scope = "all") {
+  const L = loaded(), saved = appliedPreparation(scope);
   if (saved) return Object.assign({}, saved, { masks: (saved.masks || []).slice() });
   const zs = L ? L.rows.map((r) => r.z) : [];
   const hasZ = zs.length && zs.every((z) => z != null);
@@ -423,9 +484,8 @@ function unitText(u) {
   return `${Math.abs(m - 1) < 1e-6 ? "" : +m.toPrecision(3) + " × "}10${String(e).replace(/./g, (c) => SUP[c])} erg s⁻¹ cm⁻² Å⁻¹`;
 }
 // the unit of an integrated line flux (flux density x Å), "" when the flux unit is not known
-function lineFluxUnit() {
-  const P = prepared();
-  return P && P.flux_unit ? unitText(P.flux_unit).replace(" Å⁻¹", "") : "";
+function lineFluxUnit(fluxUnit = prepared()?.flux_unit) {
+  return fluxUnit ? unitText(fluxUnit).replace(" Å⁻¹", "") : "";
 }
 function renderFluxUnit() {
   const L = loaded();
@@ -580,9 +640,9 @@ function renderPrepare() {
   if (!L) { $("prepstatus").textContent = "Read spectra first."; return; }
   if (!prep || prepFor !== L.id) { prep = prepDefaults(); prepFor = L.id; writePrepForm(); loadPreview.tried = false; pk = 0; }
   const n = L.shown;
-  const opts = `<option value="all">all ${n} ${mode() === "multi" ? "epochs" : "spectra"}</option>` +
+  const opts = `<option value="all">all ${L.n} ${mode() === "multi" ? "epochs" : "spectra"}</option>` +
     L.rows.map((r) => `<option value="${r.k}">#${r.k}${r.date ? " · " + r.date : ""}</option>`).join("");
-  if ($("applyto").dataset.sig !== String(n)) { $("applyto").innerHTML = opts; $("applyto").dataset.sig = String(n); }
+  if ($("applyto").dataset.sig !== String(L.id)) { $("applyto").innerHTML = opts; $("applyto").dataset.sig = String(L.id); }
   $("applybox").classList.toggle("hidden", n < 2);
   $("pprev").disabled = pk <= 0; $("pnext").disabled = pk >= n - 1;
   $("pprev").parentElement.querySelectorAll("button").forEach((b) => b.classList.toggle("hidden", n < 2));
@@ -590,7 +650,8 @@ function renderPrepare() {
   renderZFind();
   const P = prepared();
   if (P && !$("prepstatus").textContent.startsWith("Enter")) {
-    $("prepstatus").textContent = `${P.n} prepared · z ${P.z != null ? fmtNum(P.z, 5) : "—"} · E(B−V) ${P.ebv != null ? fmtNum(P.ebv, 3) : "—"}` +
+    const count = P.n < L.n ? `${P.n} previewed · ${L.n - P.n} prepared at fit time` : `${P.n} prepared`;
+    $("prepstatus").textContent = `${count} · z ${P.z != null ? fmtNum(P.z, 5) : "—"} · E(B−V) ${P.ebv != null ? fmtNum(P.ebv, 3) : "—"}` +
       (P.range ? ` · ${Math.round(P.range[0])}–${Math.round(P.range[1])} Å` : "");
   }
   document.querySelectorAll("#pkind button").forEach((b) => b.classList.toggle("on", b.dataset.kind === (P ? pkind : "raw")));
@@ -642,12 +703,18 @@ function initPrepare() {
   $("pprev").onclick = () => { pk = Math.max(0, pk - 1); renderPrepare(); loadPreview(true); };
   $("pnext").onclick = () => { pk = Math.min(loaded().shown - 1, pk + 1); renderPrepare(); loadPreview(true); };
   $("maskbtn").onclick = () => setMasking(!masking);
-  $("applyto").onchange = () => {};
+  $("applyto").onchange = () => {
+    clearTimeout(prepTimer);
+    const scope = $("applyto").value;
+    prep = prepDefaults(scope);
+    writePrepForm();
+    if (scope !== "all") { pk = Number(scope); renderPrepare(); loadPreview(true); }
+  };
   $("tomodel").onclick = () => {
     readPrepForm();
     const bad = prepValid();
     if (bad) { $("prepstatus").textContent = bad; return; }
-    const saved = JSON.stringify(S.wf.settings.prepare || null), now = JSON.stringify(Object.assign({}, prep));
+    const saved = JSON.stringify(appliedPreparation($("applyto").value) || null), now = JSON.stringify(prep);
     if (prepared() && sameSettings(saved, now)) { go("model"); return; }
     pendingGo = "model"; runPrepare();
   };
@@ -656,15 +723,13 @@ function sameSettings(a, b) {
   try {
     const x = JSON.parse(a), y = JSON.parse(b);
     if (!x) return false;
-    return ["z", "z_source", "rest_frame", "extinction", "ebv", "wmin", "wmax", "telluric", "sky_lines", "absorption", "flux_unit", "resolution", "resolution_unit"]
-      .every((k) => (x[k] ?? null) === (y[k] ?? null)) && JSON.stringify(x.masks || []) === JSON.stringify(y.masks || []);
+    return ["z", "z_source", "rest_frame", "extinction", "ebv", "ra", "dec", "wmin", "wmax", "telluric", "sky_lines", "absorption", "flux_unit", "resolution", "resolution_unit"]
+      .every((k) => String(x[k] ?? "") === String(y[k] ?? "")) && JSON.stringify(x.masks || []) === JSON.stringify(y.masks || []);
   } catch (e) { return false; }
 }
 
 // ================================================================== 3 MODEL
 let selComp = null, pendingSuggest = false, guessSig = null, modelTried = false, startMode = null, classInfo = null;
-let LINE_LIB = [];
-let LINE_SETS = [];
 function presetLabel() {
   for (let i = S.cells.length - 1; i >= 0; i--) {
     const m = /^model = fa\.presets\.(\w+)\((.*)\)$/m.exec(S.cells[i].code);
@@ -684,7 +749,7 @@ function modelOrigin() {
 }
 function modelForm() {
   const opt = {};
-  document.querySelectorAll("#optbar input[data-opt]").forEach((c) => { if (!c.closest(".check").classList.contains("na")) opt[c.dataset.opt] = c.checked; });
+  document.querySelectorAll("#optbar input[data-opt]").forEach((c) => { if (!c.closest(".check").classList.contains("hidden")) opt[c.dataset.opt] = c.checked; });
   const d = (S.model_defaults || {})[$("presetsel").value] || {};
   const cont = (d.options || []).includes("continuum") ? { continuum: $("contsel").value } : {};
   return Object.assign({ action: "preset", model: $("presetsel").value, broad_components: +$("bcount").textContent, host: $("hostsel").value }, cont, opt);
@@ -707,11 +772,8 @@ function setPresetDefaults(label) {
   for (const k of ["coronal", "oi6046", "red"]) document.querySelector(`#optbar input[data-opt="${k}"]`).checked = !!(d.values || {})[k];
 }
 // set the controls from the preset cell (made here, by the recommendation, or edited in the session)
-let syncedPreset = null;
-function syncFromPreset() {
-  const pl = presetLabel();
-  if (!pl || pl.code === syncedPreset) return;
-  syncedPreset = pl.code;
+function describePreset(pl) {
+  if (!pl) return { label: null, args: {} };
   const args = {};
   for (const m of pl.args.matchAll(/(\w+)=('[^']*'|"[^"]*"|[^,]+)/g)) args[m[1]] = m[2].trim().replace(/^['"]|['"]$/g, "");
   const defs = S.model_defaults || {};
@@ -723,6 +785,14 @@ function syncFromPreset() {
     const score = ok ? Object.keys(kw).length : -1;
     if (score > bestScore) { best = label; bestScore = score; }
   }
+  return { label: best, args };
+}
+let syncedPreset = null;
+function syncFromPreset() {
+  const pl = presetLabel();
+  if (!pl || pl.code === syncedPreset) return;
+  syncedPreset = pl.code;
+  const {label: best, args} = describePreset(pl);
   if (!best) return;
   $("presetsel").value = best;
   setPresetDefaults(best);
@@ -749,7 +819,10 @@ function enterModel(force) {
   if (m === "classify") $("model-note").textContent = "Classification fits its own model (stellar populations + power law, then the emission lines); there is nothing to set up here.";
   if (m === "sample") $("model-note").textContent = "In a sample each spectrum is classified and gets the model its class needs; you can also choose one model for all of them in the Fit step.";
   $("tofit").textContent = m === "classify" ? "Set up classification →" : "Set up fit →";
-  if (special) return;
+  if (special) {
+    $("tofit").disabled = !!S.busy || !(prepared() || (m === "sample" && loaded()));
+    return;
+  }
   if (!$("presetsel").options.length) {
     $("presetsel").innerHTML = S.models.map((l) => `<option>${esc(l)}</option>`).join("");
     $("hostsel").innerHTML = '<option value="default">preset default</option><option value="none">none</option><option value="pca">PCA eigenspectra</option>' +
@@ -760,7 +833,9 @@ function enterModel(force) {
     syncOptionAvailability();
   }
   syncFromPreset();
-  if (!S.model && prepared() && !S.busy && !modelTried) { modelTried = true; makePreset(); return; }
+  if (!S.model && prepared() && !S.busy && modelTried !== prepared().id) {
+    modelTried = prepared().id; makePreset(); return;
+  }
   renderModel();
   loadGuess(force);
 }
@@ -769,10 +844,6 @@ const COMP_NAME = { PowerLaw: "power law", BrokenPowerLaw: "broken power law", B
   Calibration: "calibration polynomial", Extinction: "dust extinction", Polynomial: "polynomial", Absorption: "absorption troughs" };
 function compDesc(c) {
   if (c.lines && c.lines.length) return c.lines.map(prettyLine).join(", ");
-  return COMP_NAME[c.type] || c.type;
-}
-function compKindLabel(c) {
-  if (c.type === "Lines") return `${c.absorption ? "absorption" : "emission"} lines${c.role && !c.absorption ? " · " + c.role : ""}`;
   return COMP_NAME[c.type] || c.type;
 }
 function sharedPatterns() {
@@ -822,7 +893,9 @@ function renderClassCard() {
     $("ccrun").onclick = () => { pendingSuggest = true; post("/api/wf/suggest", {}); renderClassCard(); };
     return;
   }
-  const inUse = modelOrigin() === "preset" && $("presetsel").value === rec.model && (!rec.broad_components || +$("bcount").textContent === rec.broad_components);
+  const active = describePreset(presetLabel());
+  const broad = active.args.broad_components ?? S.model_defaults?.[active.label]?.broad_components;
+  const inUse = active.label === rec.model && (!rec.broad_components || Number(broad) === rec.broad_components);
   const what = `${rec.model}${rec.broad_components ? `, ${rec.broad_components} broad component${rec.broad_components > 1 ? "s" : ""}` : ""}`;
   $("cctitle").innerHTML = `<span class="clsdot" style="background:${CLASS_COLOR[rec.label] || "#6b7280"}"></span>${esc(CLASS_NAME[rec.label] || rec.label)}` +
     (rec.uncertain ? ' <span class="badge warn">uncertain</span>' : "") + `<span class="ccrec">Recommended model: <b>${esc(what)}</b></span>`;
@@ -836,12 +909,13 @@ function renderClassCard() {
   }
 }
 function setStartMode(m) {
+  const openingSaved = m === "saved" && $("savedopts").classList.contains("hidden");
   startMode = m;
   document.querySelectorAll("#startseg button").forEach((b) => b.classList.toggle("on", b.dataset.s === m));
   $("presetopts").classList.toggle("hidden", m !== "preset");
   $("customopts").classList.toggle("hidden", m !== "custom");
   $("savedopts").classList.toggle("hidden", m !== "saved");
-  if (m === "saved") refreshSaved();
+  if (openingSaved) refreshSaved();
 }
 // the saved models: the library (~/.fantasy_agn/models) and models saved in other folders
 let savedModels = [], modelFolders = [];
@@ -902,22 +976,26 @@ function renderModel() {
   $("model-hint").textContent = pl ? pl.code : saved ? `fa.${saved}` : M ? "fa.Model(…)" : "fa.Model()";
   if ($("presetsel").options.length) syncFromPreset();
   setStartMode(startMode || modelOrigin() || "preset");
-  const own = modelOrigin() === "custom";
-  $("startempty").textContent = own ? "Start again" : "Start a new model";
-  $("startempty").className = own ? "btn" : "btn primary";
-  $("customnote").innerHTML = own ? `Your own model, ${S.model ? S.model.components.length : 0} components. Add more with <b>Add component</b>, or start again from a power law.`
-    : "Start with a power-law continuum and add the lines, templates and continuum components the spectrum needs with <b>Add component</b>. You can also start from a preset and change it: every model can be edited.";
   renderClassCard();
-  $("tofit").disabled = !M || !!S.busy;
-  if (!M) { $("comps").innerHTML = '<li class="muted empty">No model yet: choose a preset or start your own.</li>'; $("compcard").classList.add("hidden"); return; }
-  $("compcard").classList.remove("hidden");
+  $("tofit").disabled = !M || !M.components.length || !!S.busy;
+  for (const id of ["savemodel", "dlmodel"]) $(id).disabled = !M || !!S.busy;
+  $("usepreset").disabled = !!S.busy;
+  $("startempty").disabled = !!S.busy;
+  if (!M || !M.components.length) {
+    $("comps").innerHTML = '<li class="muted empty">No active components.</li>';
+    delete $("comps").dataset.sig;
+    $("nfree").textContent = "";
+    $("ghl").textContent = "";
+    guessSig = loadGuess.data = null;
+    drawGuess(); renderSharing(); return;
+  }
   $("nfree").textContent = `${M.n_free} free parameters`;
-  if (!selComp || !M.components.some((c) => c.name === selComp)) {
+  if (!M.components.some((c) => c.name === selComp)) {
     selComp = (M.components.find((c) => c.role === "broad") || M.components[0]).name;
   }
   const SH = mode() === "multi" && !$("sharedin").value.trim() ? S.wf.sharing || [] : null;
   const pats = mode() === "multi" && !SH ? sharedPatterns() : [];
-  const sig = JSON.stringify([M.components, selComp, pats, SH]);
+  const sig = JSON.stringify([M.components, pats, SH, selComp]);
   if ($("comps").dataset.sig !== sig) {
     $("comps").dataset.sig = sig;
     $("comps").innerHTML = M.components.map((c) => {
@@ -928,17 +1006,16 @@ function renderModel() {
         c.absorption ? '<span class="badge k-absorption">absorption</span>' : "",
         c.tied_to ? `<span class="badge info" title="shift and width tied to ${esc(c.tied_to)}">= ${esc(c.tied_to)}</span>` : "",
         shared ? `<span class="badge info" title="between the epochs of the joint fit">${shared}</span>` : ""].join("");
-      return `<li data-c="${esc(c.name)}" class="${c.name === selComp ? "sel" : ""}"><span class="sw" style="background:${compColor(c, M.components)}"></span>` +
-        `<span class="cname">${esc(c.name)}</span><span class="cbadges">${badges}</span>` +
-        `<button class="rm" data-rm="${esc(c.name)}" title="Remove ${esc(c.name)}">×</button><span class="cdesc">${esc(compDesc(c))}</span></li>`;
+      return `<li><button class="comp-preview" data-c="${esc(c.name)}" aria-pressed="${c.name === selComp}" title="Highlight ${esc(c.name)} in the initial guess"><span class="sw" style="background:${compColor(c, M.components)}"></span>` +
+        `<span class="cname">${esc(c.name)}</span><span class="cbadges">${badges}</span><span class="cdesc">${esc(compDesc(c))}</span></button></li>`;
     }).join("");
-    $("comps").querySelectorAll("li").forEach((li) => (li.onclick = (e) => {
-      if (e.target.dataset.rm) { removeComp(e.target.dataset.rm); return; }
-      selComp = li.dataset.c; renderModel(); drawGuess();
+    $("comps").querySelectorAll("button").forEach((button) => (button.onclick = () => {
+      selComp = button.dataset.c;
+      $("comps").dataset.sig = JSON.stringify([M.components, pats, SH, selComp]);
+      $("comps").querySelectorAll("button").forEach((row) => row.setAttribute("aria-pressed", String(row === button)));
+      drawGuess();
     }));
   }
-  renderCompCard();
-  renderParams();
   renderSharing();
 }
 // what is the same in all epochs: one row per component, fluxes and shape
@@ -982,105 +1059,21 @@ function sharingSummary() {
   return `<b>The same in all epochs</b>: ${parts.join("; ") || "nothing"}` +
     `${both.length || f.length ? "" : ' <span class="warnword">(no fluxes: nothing fixes the flux scale)</span>'}. Everything else is fitted in every epoch. <a href="#" class="textlink" data-go="model">change</a>`;
 }
-function removeComp(name) {
-  if (confirm(`Remove ${name} from the model?`)) post("/api/model", { action: "remove", name });
-}
-// the selected component: its profile, its kinematics and its parameters
-function renderCompCard() {
-  const M = S.model, c = M.components.find((x) => x.name === selComp);
-  $("csw").style.background = compColor(c, M.components);
-  $("ptabtitle").textContent = c.name;
-  $("cdesc").textContent = compKindLabel(c);
-  const isLines = c.type === "Lines";
-  $("profbox").classList.toggle("hidden", !isLines || !c.rebuildable);
-  if (isLines && c.rebuildable) {
-    const profs = ["gaussian", "lorentzian", "voigt", "gauss-hermite"].concat(c.role === "broad" || c.profile === "stratified" ? ["stratified"] : []);
-    $("profseg").innerHTML = profs.map((p) => `<button data-p="${p}" class="${p === c.profile ? "on" : ""}" title="${esc(PROFILE_HELP[p])}">${profileIcon(p, 26, 12)}${esc(PROFILE_NAME[p])}</button>`).join("");
-    $("profseg").querySelectorAll("button").forEach((b) => (b.onclick = () => {
-      if (b.dataset.p === c.profile) return;
-      post("/api/model", { action: "profile", component: c.name, profile: b.dataset.p }).then((ok) => ok && toast(`${c.name}: ${PROFILE_NAME[b.dataset.p]} profile`));
-    }));
-  }
-  const kin = (n) => ["shift", "fwhm"].filter((k) => M.params.some((p) => p.name === `${n}.${k}`));
-  const mine = kin(c.name);
-  const targets = M.components.filter((x) => x.name !== c.name && kin(x.name).length && x.tied_to !== c.name).map((x) => x.name);
-  $("kinbox").classList.toggle("hidden", !mine.length);
-  $("kinsel").innerHTML = `<option value="">free (fitted)</option>` + targets.map((t) => `<option value="${esc(t)}" ${t === c.tied_to ? "selected" : ""}>same as ${esc(t)}</option>`).join("");
-  $("compctl").classList.toggle("hidden", $("profbox").classList.contains("hidden") && !mine.length);
-  if (mine.length) loadTieCheck(c.name); else $("kintie").classList.add("hidden");
-}
-// is it safe to tie this component's shift and width to another one? judged on the last fit (fa.model_confidence)
-const TIE_VERDICT = { "safe": ["ok", "safe"], "model-dependent": ["warn", "changes it a little"], "changes the result": ["missing", "changes the result"],
-  "rejected by the data": ["missing", "rejected by the data"], "cannot assess": ["", "cannot assess"], "already in the model": ["", "already tied"] };
-let tieSig = "", tieData = null;
-async function loadTieCheck(name) {
-  const F = fitDone(), box = $("kintie");
-  if (!F || F.kind !== "single") { box.classList.add("hidden"); tieSig = ""; return; }
-  const sig = JSON.stringify([name, F.rchi2, F.time]);
-  if (sig !== tieSig) {
-    tieSig = sig; tieData = null;
-    let T = null;
-    try { T = await api(`/api/wf/tie_check?component=${encodeURIComponent(name)}`); } catch (e) { T = null; }
-    if (tieSig !== sig || selComp !== name) return;
-    tieData = T;
-  }
-  const T = tieData;
-  if (!T || !T.available || !T.rows.length) { box.classList.add("hidden"); return; }
-  const sel = $("kinsel");
-  [...sel.options].forEach((o) => {
-    const r = T.rows.find((x) => x.to === o.value);
-    if (r) o.textContent = `same as ${o.value} — ${(TIE_VERDICT[r.verdict] || ["", r.verdict])[1]}${r.probability !== null && ["safe", "model-dependent", "changes the result"].includes(r.verdict) ? ` (${Math.round(100 * r.probability)}%)` : ""}`;
-  });
-  const cur = T.rows.find((x) => x.to === sel.value);
-  box.innerHTML = `Judged on the last fit, where ${esc(name)} is free: the chance that a tie keeps the ${esc(T.targets)} (no new fit; <code>fa.model_confidence</code>).` +
-    (cur ? ` <span class="badge ${(TIE_VERDICT[cur.verdict] || [""])[0]}">${esc((TIE_VERDICT[cur.verdict] || ["", cur.verdict])[1])}</span>` +
-      (cur.verdict === "rejected by the data" ? " The data say the two differ: fit again with the tie and compare (Results › Checks)." : "") : "");
-  box.classList.remove("hidden");
-}
-function paramLabel(name) {
-  const rest = name.slice(selComp.length + 1).split(".");
-  if (rest.length === 2) return `${prettyLine(rest[0])} · ${rest[1]}`;
-  return rest.join(".");
-}
-function renderParams() {
-  const M = S.model;
-  const ps = M.params.filter((p) => p.name.startsWith(selComp + ".") && !p.linear);
-  const sig = JSON.stringify(ps);
-  if ($("paramtbl").dataset.sig === sig) return;
-  $("paramtbl").dataset.sig = sig;
-  if (!ps.length) { $("paramtbl").innerHTML = '<tbody><tr><td class="muted">Only linear amplitudes: solved exactly in the fit.</td></tr></tbody>'; return; }
-  const suffix = (n) => n.split(".").pop();
-  $("paramtbl").innerHTML = "<thead><tr><th>Parameter</th><th>Initial</th><th>Min</th><th>Max</th><th>Fixed</th><th>Tie to</th></tr></thead><tbody>" +
-    ps.map((p) => {
-      const cands = M.params.filter((q) => q.name !== p.name && !q.linear && suffix(q.name) === suffix(p.name)).map((q) => q.name);
-      if (p.tie && !cands.includes(p.tie)) cands.unshift(p.tie);
-      const dis = p.tie ? "disabled" : "";
-      return `<tr data-p="${esc(p.name)}" class="${p.tie ? "tied" : ""}"><td class="pname" title="${esc(p.description || p.name)}">${esc(paramLabel(p.name))}${p.unit ? ` <small>${esc(p.unit)}</small>` : ""}</td>` +
-        `<td><input data-f="value" value="${fmtNum(p.value, 6)}" ${dis}></td><td><input data-f="min" value="${fmtNum(p.min, 6)}" ${dis}></td>` +
-        `<td><input data-f="max" value="${fmtNum(p.max, 6)}" ${dis}></td><td><input type="checkbox" data-f="fixed" ${p.fixed ? "checked" : ""} ${dis}></td>` +
-        `<td><select data-f="tie"><option value="">—</option>${cands.map((c) => `<option ${c === p.tie ? "selected" : ""} value="${esc(c)}">${esc(c)}</option>`).join("")}</select></td></tr>`;
-    }).join("") + "</tbody>";
-  $("paramtbl").querySelectorAll("tr[data-p]").forEach((tr) => tr.querySelectorAll("input,select").forEach((el) => (el.onchange = () => {
-    const p = S.model.params.find((q) => q.name === tr.dataset.p);
-    const val = (f) => tr.querySelector(`[data-f="${f}"]`);
-    const change = { name: p.name, value: val("value").value, min: val("min").value, max: val("max").value,
-      fixed: val("fixed").checked, tie: val("tie").value || null, factor: p.factor };
-    tr.classList.add("changed");
-    post("/api/model", { action: "params", changes: [change] });
-  })));
-}
 async function loadGuess(force) {
   if (!S.model || !prepared()) return;
-  const sig = JSON.stringify([S.model.params.map((p) => [p.value, p.min, p.max, p.fixed, p.tie]), S.model.components.map((c) => c.name), prepared().id]);
+  const sig = JSON.stringify([S.model, prepared().id, S.wf.reference]);
   if (!force && sig === guessSig && loadGuess.data) { drawGuess(); return; }
   guessSig = sig;
   $("gtitle").textContent = "Initial guess · computing…";
-  try { loadGuess.data = await api("/api/wf/guess"); } catch (e) { loadGuess.data = null; }
+  let result;
+  try { result = await api("/api/wf/guess"); } catch (e) { result = null; }
+  if (guessSig !== sig || !S.model || !prepared()) return;
+  loadGuess.data = result;
   drawGuess();
 }
 function drawGuess() {
   const d = loadGuess.data;
-  if (!d || !d.x) {
+  if (!S.model || !d || !d.x) {
     $("gtitle").textContent = "Initial guess";
     $("gplot").innerHTML = `<div class="empty">${esc((d && d.error) || "Prepare the spectra and choose a model to see the starting point of the fit.")}</div>`;
     return;
@@ -1101,7 +1094,7 @@ function drawGuess() {
 }
 function applyRecommendation() {
   const r = S.recommended;
-  if (!r || !S.models.includes(r.model)) return;
+  if (!r || !S.models.includes(r.model) || !MB.confirmReplace()) return;
   $("presetsel").value = r.model;
   setPresetDefaults(r.model);
   if (r.broad_components) $("bcount").textContent = r.broad_components;
@@ -1119,227 +1112,19 @@ function showClassDialog() {
   $("classdlg").classList.remove("hidden");
 }
 
-// ---------------------------------------------------- add a component
-const PROFILE_HELP = { gaussian: "Gaussian: the default line shape", lorentzian: "Lorentzian: narrow core, extended wings (e.g. NLS1 broad lines)",
-  voigt: "Voigt: Gaussian convolved with a Lorentzian (two widths)", "gauss-hermite": "Gauss–Hermite: Gaussian with skewness h3 and kurtosis h4 (asymmetric lines)",
-  stratified: "Stratified BLR: sum of Gaussians from a radially stratified, virialised BLR (core plus power-law wings)" };
-function profileIcon(p, w = 54, h = 24) {
-  const n = 41, pts = [];
-  for (let i = 0; i < n; i++) {
-    const x = -3 + (6 * i) / (n - 1);
-    let y;
-    if (p === "lorentzian") y = 1 / (1 + (x / 0.55) ** 2);
-    else if (p === "voigt") y = 0.6 * Math.exp(-x * x / 0.9) + 0.4 / (1 + (x / 0.5) ** 2);
-    else if (p === "gauss-hermite") { const g = Math.exp(-x * x / 1.4); y = g * (1 + 0.32 * (x ** 3 - 1.5 * x) / 1.5); }
-    else if (p === "stratified") y = 0.55 * Math.exp(-x * x / 0.25) + 0.45 / (1 + (x / 0.9) ** 2);
-    else y = Math.exp(-x * x / 1.2);
-    pts.push(`${((i / (n - 1)) * w).toFixed(1)},${(h - 1 - Math.max(0, y) * (h - 3)).toFixed(1)}`);
-  }
-  return `<svg class="pico" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${pts.join(" ")}" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
-}
-const ADD_TYPES = [
-  ["Lines", [["emission", "Emission lines", "Broad, narrow or outflow lines from the line list"],
-             ["absorption", "Absorption lines", "Lines with negative flux: Na I D, Ca II H & K, Mg II, …"]]],
-  ["Continuum", [["PowerLaw", "Power law", "f ∝ λ^α, the accretion-disc continuum"], ["BrokenPowerLaw", "Broken power law", "Two slopes, blue and red of the pivot"],
-                 ["Blackbody", "Blackbody", "A thermal continuum, e.g. of a tidal disruption event"], ["Polynomial", "Polynomial", "A smooth additive continuum term"],
-                 ["BalmerContinuum", "Balmer continuum", "Bound-free emission below 3646 Å"]]],
-  ["Templates", [["FeII", "Fe II template", "FANTASY Fe II multiplets, broadened and shifted"], ["HighOrderBalmer", "High-order Balmer lines", "H7 to H50 near the Balmer edge"],
-                 ["StellarPopulation", "Host galaxy", "Stellar population templates with velocity dispersion"]]],
-  ["Absorption and dust", [["Absorption", "Absorption troughs", "Troughs at any wavelength that absorb the light behind them (BALs)"],
-                           ["Extinction", "Dust extinction", "Reddening of the AGN light, E(B−V) fitted"]]],
-];
-const ROLE_DEF = { broad: { fwhm: [3000, 1000, 15000], shift: [0, -3000, 3000] }, narrow: { fwhm: [400, 50, 1200], shift: [0, -500, 500] },
-  outflow: { fwhm: [1200, 300, 3000], shift: [-300, -2000, 500] }, absorption: { fwhm: [300, 30, 5000], shift: [0, -3000, 1000] } };
-let addType = "emission", addState = null;
-function uniqueName(base) {
-  const names = new Set(S.model ? S.model.components.map((c) => c.name) : []);
-  if (!names.has(base)) return base;
-  for (let i = 2; ; i++) if (!names.has(base + i)) return base + i;
-}
-function openAdd(type) {
-  addType = type || addType;
-  $("addtypes").innerHTML = ADD_TYPES.map(([g, items]) => `<li class="grp">${esc(g)}</li>` + items.map(([id, t, d]) =>
-    `<li data-t="${id}" class="${id === addType ? "on" : ""}"><b>${esc(t)}</b><small>${esc(d)}</small></li>`).join("")).join("");
-  $("addtypes").querySelectorAll("li[data-t]").forEach((li) => (li.onclick = () => openAdd(li.dataset.t)));
-  renderAddForm();
-  $("adddlg").classList.remove("hidden");
-}
-function closeAdd() { $("adddlg").classList.add("hidden"); }
-function kinOptions(selfLabel) {
-  const M = S.model;
-  const opts = (M ? M.components : []).filter((c) => M.params.some((p) => p.name === `${c.name}.shift`) && M.params.some((p) => p.name === `${c.name}.fwhm`));
-  return `<option value="">${esc(selfLabel)}</option>` + opts.map((c) => `<option value="${esc(c.name)}">same as ${esc(c.name)} (${esc(compKindLabel(c))})</option>`).join("");
-}
-function limitsRow(label, key, v, unit) {
-  return `<div><label class="lbl">${label} <small>${unit}</small></label><div class="row three">` +
-    `<input class="mono" data-lim="${key}" data-i="0" value="${v[0]}" title="start"><input class="mono" data-lim="${key}" data-i="1" value="${v[1]}" title="minimum">` +
-    `<input class="mono" data-lim="${key}" data-i="2" value="${v[2]}" title="maximum"></div><small class="muted">start · min · max</small></div>`;
-}
-function renderAddForm() {
-  const f = $("addform"), t = addType;
-  const isLines = t === "emission" || t === "absorption";
-  if (isLines) {
-    // a fresh form each time: Gaussian, and the kind of line the model still lacks
-    const roles = S.model ? S.model.components.filter((c) => c.type === "Lines" && !c.absorption).map((c) => c.role) : [];
-    const role = t === "absorption" ? "absorption" : !roles.includes("broad") ? "broad" : !roles.includes("narrow") ? "narrow" : "broad";
-    addState = { role, lines: [], type: t, profile: "gaussian" };
-    const d = ROLE_DEF[role];
-    f.innerHTML = `<h3>${t === "absorption" ? "Absorption lines" : "Emission lines"}</h3>
-      <div><label class="lbl">Lines</label>
-        <div class="linepick"><div class="chosen" id="lp-chosen"></div>
-          <div class="lpsets" id="lp-sets"></div>
-          <input id="lp-search" placeholder="Search the line list: Hb, OIII, 5007, He II, coronal, Bowen…">
-          <div class="lplist" id="lp-list"></div></div></div>
-      <div class="row two">
-        ${t === "emission" ? `<div><label class="lbl">Kind of line</label><div class="seg small" id="lp-role">
-          <button type="button" data-r="broad">Broad</button><button type="button" data-r="narrow">Narrow</button><button type="button" data-r="outflow">Outflow</button></div></div>` : "<div></div>"}
-        <div><label class="lbl" for="f-name">Component name</label><input id="f-name" class="mono"></div></div>
-      <div><label class="lbl">Profile</label><div class="profcards" id="lp-prof"></div></div>
-      <div class="row two">${limitsRow("Width (FWHM)", "fwhm", d.fwhm, "km/s")}${limitsRow("Velocity shift", "shift", d.shift, "km/s")}</div>
-      <div><label class="lbl" for="lp-kin">Shift and width</label><select id="lp-kin">${kinOptions("fitted, the same for all these lines")}<option value="__own">fitted separately for each line</option></select></div>
-      <div class="formfoot"><span class="muted small" id="f-msg"></span><span class="grow"></span><button type="button" class="btn" id="f-cancel">Cancel</button><button class="btn primary" type="submit">Add lines</button></div>`;
-    const setRole = (r) => {
-      addState.role = r;
-      document.querySelectorAll("#lp-role button").forEach((b) => b.classList.toggle("on", b.dataset.r === r));
-      const dd = ROLE_DEF[r];
-      f.querySelectorAll("[data-lim]").forEach((el) => (el.value = dd[el.dataset.lim][+el.dataset.i]));
-      if (!$("f-name").dataset.edited) $("f-name").value = uniqueName(r === "absorption" ? "abs" : r);
-      renderProfiles();
-    };
-    document.querySelectorAll("#lp-role button").forEach((b) => (b.onclick = () => setRole(b.dataset.r)));
-    $("f-name").oninput = () => ($("f-name").dataset.edited = "1");
-    $("lp-search").oninput = renderLinePick;
-    setRole(role);
-    renderLinePick();
-  } else {
-    const def = { PowerLaw: "continuum", BrokenPowerLaw: "continuum", Blackbody: "blackbody", Polynomial: "poly", BalmerContinuum: "balmer_cont",
-      FeII: "feii", HighOrderBalmer: "balmer_lines", StellarPopulation: "host", Absorption: "absorption", Extinction: "extinction" }[t];
-    const title = ADD_TYPES.flatMap(([, it]) => it).find((x) => x[0] === t);
-    let extra = "";
-    if (["PowerLaw", "BrokenPowerLaw", "Blackbody"].includes(t)) extra = `<div><label class="lbl" for="f-pivot">Pivot wavelength <small>Å</small></label><input id="f-pivot" class="mono" value="5100"></div>`;
-    if (t === "Polynomial") extra = `<div><label class="lbl" for="f-order">Order</label><input id="f-order" class="mono" value="2"></div>`;
-    if (t === "FeII") {
-      // the model that covers the fitted range: optical, or one of the UV ones below 3500 Å
-      const rng = (S.model && S.model.wave_range) || (prepared() && prepared().range) || null;
-      const uv = rng && rng[1] < 3600;
-      extra = `<div><label class="lbl" for="f-feiikind">Fe II model</label><select id="f-feiikind">` +
-        `<option value="optical"${uv ? "" : " selected"}>optical, 3700–10 900 Å (Kovačević et al. 2010)</option>` +
-        `<option value="uv"${uv ? " selected" : ""}>UV around Mg II, 2690–3005 Å (Kovačević-Dojčinović &amp; Popović 2015)</option>` +
-        `<option value="uv_extended">UV extended, 2200–3500 Å (grouped by lower term, NIST data; new)</option></select></div>` +
-        `<div class="row two">${limitsRow("Width (FWHM)", "fwhm", [2000, 1000, 6000], "km/s")}<div><label class="lbl" for="lp-kin">Shift and width</label><select id="lp-kin">${kinOptions("fitted")}</select></div></div>`;
-    }
-    if (t === "StellarPopulation") extra = `<div><label class="lbl" for="f-tpl">Templates</label><select id="f-tpl">${(S.templates || []).map((x) => `<option value="${esc(x.name)}">${esc(x.name)}${x.available ? "" : " (download)"}</option>`).join("")}</select></div>`;
-    if (t === "Extinction") extra = `<div><label class="lbl" for="f-law">Extinction law</label><select id="f-law"><option value="F99">Fitzpatrick (1999)</option><option value="calzetti">Calzetti (2000)</option></select></div>` +
-      (S.model && S.model.components.some((c) => c.type === "Extinction") ? '<p class="callout">The model already has dust extinction; only one is allowed.</p>' : "");
-    if (t === "Absorption") extra = `<div><label class="lbl">Troughs</label><table class="tbl troughs" id="f-troughs"><thead><tr><th>Rest wavelength <small>Å</small></th><th>Width (FWHM) <small>km/s</small></th><th></th></tr></thead><tbody></tbody></table>
-      <button type="button" class="btn small dashed" id="f-addtr">+ Trough</button></div>`;
-    f.innerHTML = `<h3>${esc(title[1])}</h3><p class="note">${esc(title[2])}.</p>
-      <div><label class="lbl" for="f-name">Component name</label><input id="f-name" class="mono" value="${esc(uniqueName(def))}"></div>${extra}
-      <div class="formfoot"><span class="muted small" id="f-msg"></span><span class="grow"></span><button type="button" class="btn" id="f-cancel">Cancel</button><button class="btn primary" type="submit">Add</button></div>`;
-    if (t === "Absorption") {
-      const addRow = (w = "", v = "") => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td><input class="mono" data-w value="${w}" placeholder="e.g. 5893"></td><td><input class="mono" data-v value="${v}" placeholder="e.g. 300"></td><td><button type="button" class="rm" title="Remove">×</button></td>`;
-        tr.querySelector(".rm").onclick = () => tr.remove();
-        $("f-troughs").tBodies[0].appendChild(tr);
-      };
-      $("f-addtr").onclick = () => addRow();
-      addRow();
-    }
-  }
-  $("f-cancel").onclick = closeAdd;
-}
-function renderProfiles() {
-  const profs = ["gaussian", "lorentzian", "voigt", "gauss-hermite"].concat(addState.role === "broad" ? ["stratified"] : []);
-  if (!profs.includes(addState.profile)) addState.profile = "gaussian";
-  $("lp-prof").innerHTML = profs.map((p) => `<button type="button" data-p="${p}" class="${p === addState.profile ? "on" : ""}" title="${esc(PROFILE_HELP[p])}">${profileIcon(p)}<span>${esc(PROFILE_NAME[p])}</span></button>`).join("");
-  $("lp-prof").querySelectorAll("button").forEach((b) => (b.onclick = () => { addState.profile = b.dataset.p; renderProfiles(); }));
-}
-const LINE_TYPE_ORDER = ["recombination", "permitted", "bowen", "semi-forbidden", "forbidden", "coronal", "molecular", "feature"];
-const LINE_TYPE_NAME = { recombination: "Recombination (H, He)", permitted: "Permitted", bowen: "Bowen fluorescence", "semi-forbidden": "Semi-forbidden",
-  forbidden: "Forbidden", coronal: "Coronal", molecular: "Molecular (H₂)", feature: "Dust and other features" };
-function renderLinePick() {
-  const rng = (S.model && S.model.wave_range) || (prepared() && prepared().range) || null;
-  const q = ($("lp-search").value || "").trim().toLowerCase().replace(/[\[\]\s]/g, "");
-  const chosen = addState.lines;
-  $("lp-chosen").innerHTML = chosen.length ? chosen.map((n) => `<span class="lchip">${esc(prettyLine(n))}<button type="button" data-x="${esc(n)}" title="Remove">×</button></span>`).join("")
-    : '<span class="muted small">Click lines below to choose them.</span>';
-  $("lp-chosen").querySelectorAll("[data-x]").forEach((b) => (b.onclick = () => { addState.lines = chosen.filter((x) => x !== b.dataset.x); renderLinePick(); }));
-  const inRange = (n) => { const l = LINE_LIB.find((x) => x.name === n); return l && (!rng || (l.wave >= rng[0] - 5 && l.wave <= rng[1] + 5)); };
-  const sets = LINE_SETS.map((st) => ({ ...st, here: st.lines.filter(inRange) })).filter((st) => st.here.length);
-  $("lp-sets").innerHTML = sets.length ? '<small class="muted">Line lists of FANTASY 1:</small> ' + sets.map((st) => {
-    const all = st.here.every((n) => chosen.includes(n));
-    return `<button type="button" data-set="${esc(st.key)}" class="${all ? "on" : ""}" title="${esc(st.here.map(prettyLine).join(", "))}">${esc(st.label)} <small>${st.here.length}</small></button>`;
-  }).join("") : "";
-  $("lp-sets").querySelectorAll("[data-set]").forEach((b) => (b.onclick = () => {
-    const st = sets.find((x) => x.key === b.dataset.set);
-    const all = st.here.every((n) => chosen.includes(n));
-    addState.lines = all ? chosen.filter((n) => !st.here.includes(n)) : chosen.concat(st.here.filter((n) => !chosen.includes(n)));
-    renderLinePick();
-  }));
-  let ls = LINE_LIB.filter((l) => !rng || (l.wave >= rng[0] - 5 && l.wave <= rng[1] + 5));
-  if (q) ls = LINE_LIB.filter((l) => (l.name + prettyLine(l.name) + (l.ion || "") + (l.type || "") + (l.series || "") + Math.round(l.wave)).toLowerCase().replace(/[\[\]\s]/g, "").includes(q));
-  const groups = {};
-  ls.forEach((l) => (groups[l.type || "other"] = groups[l.type || "other"] || []).push(l));
-  const rank = (g) => { const i = LINE_TYPE_ORDER.indexOf(g); return i < 0 ? 99 : i; };
-  const order = Object.keys(groups).sort((a, b) => rank(a) - rank(b));
-  $("lp-list").innerHTML = (ls.length ? "" : `<p class="muted small">No line matches${rng && !q ? " in the fitted range" : ""}.</p>`) +
-    (rng && !q ? `<p class="muted small">Lines in the fitted range ${Math.round(rng[0])}–${Math.round(rng[1])} Å; search to see all.</p>` : "") +
-    order.map((g) => `<div class="lpg"><small>${esc(LINE_TYPE_NAME[g] || g)}</small><div>` + groups[g].sort((a, b) => a.wave - b.wave).map((l) =>
-      `<button type="button" data-l="${esc(l.name)}" class="${chosen.includes(l.name) ? "on" : ""}" title="${esc((l.ion || "") + " " + (l.series || ""))}">${esc(prettyLine(l.name))} <small>${l.wave.toFixed(0)}</small></button>`).join("") + "</div></div>").join("");
-  $("lp-list").querySelectorAll("button[data-l]").forEach((b) => (b.onclick = () => {
-    const n = b.dataset.l;
-    addState.lines = chosen.includes(n) ? chosen.filter((x) => x !== n) : chosen.concat([n]);
-    renderLinePick();
-  }));
-}
-function addSubmit(e) {
-  e.preventDefault();
-  const t = addType, f = $("addform");
-  const lim = (key) => [0, 1, 2].map((i) => +f.querySelector(`[data-lim="${key}"][data-i="${i}"]`).value);
-  const name = $("f-name").value.trim();
-  let comp;
-  if (t === "emission" || t === "absorption") {
-    if (!addState.lines.length) { $("f-msg").textContent = "Choose at least one line."; return; }
-    const kin = $("lp-kin").value;
-    comp = { type: "Lines", name, lines: addState.lines, role: t === "absorption" ? "narrow" : addState.role, absorption: t === "absorption",
-      profile: addState.profile, fwhm: lim("fwhm"), shift: lim("shift"), own_kinematics: kin === "__own", tie_to: kin && kin !== "__own" ? kin : null };
-  } else {
-    comp = { type: t, name };
-    if ($("f-pivot")) comp.pivot = $("f-pivot").value;
-    if ($("f-order")) comp.order = $("f-order").value;
-    if ($("f-tpl")) comp.templates = $("f-tpl").value;
-    if ($("f-law")) comp.law = $("f-law").value;
-    if (t === "FeII") { comp.fwhm = lim("fwhm"); comp.tie_to = $("lp-kin").value || null; comp.feii_kind = $("f-feiikind").value; }
-    if (t === "Absorption") {
-      const rows = [...$("f-troughs").tBodies[0].rows].map((tr) => [tr.querySelector("[data-w]").value.trim(), tr.querySelector("[data-v]").value.trim()]).filter((r) => r[0]);
-      if (!rows.length || rows.some((r) => !isFinite(+r[0]) || !isFinite(+r[1]) || !r[1])) { $("f-msg").textContent = "Give the wavelength and width of each trough."; return; }
-      comp.troughs = rows.map((r) => r.join(":")).join(", ");
-    }
-  }
-  $("f-msg").textContent = "Adding…";
-  post("/api/model", { action: "add", component: comp }).then((ok) => {
-    if (!ok) { $("f-msg").textContent = ""; return; }
-    selComp = name; closeAdd(); toast(`Added ${name}`);
-  });
+function editFitComponent(parameter) {
+  selComp = parameter.split(".")[0];
+  go("model");
+  if (S.model && prepared()) MB.openCurrent(selComp);
 }
 function initModel() {
-  $("presetsel").onchange = () => { setPresetDefaults($("presetsel").value); makePreset(); };
-  $("hostsel").onchange = makePreset;
-  $("contsel").onchange = makePreset;
-  $("bminus").onclick = () => { $("bcount").textContent = Math.max(1, +$("bcount").textContent - 1); makePreset(); };
-  $("bplus").onclick = () => { $("bcount").textContent = Math.min(3, +$("bcount").textContent + 1); makePreset(); };
-  document.querySelectorAll("#optbar input[data-opt]").forEach((c) => (c.onchange = makePreset));
-  document.querySelectorAll("#startseg button").forEach((b) => (b.onclick = () => {
-    setStartMode(b.dataset.s);
-    if (b.dataset.s === "preset" && modelOrigin() === "custom") makePreset();     // back to the chosen preset
-  }));
-  $("startempty").onclick = () => {
-    if (S.model && modelOrigin() === "custom" && !confirm("Start again? The components you added are removed.")) return;
-    startMode = "custom"; selComp = null; post("/api/model", { action: "empty" });
-  };
-  $("addcomp").onclick = () => openAdd();
-  $("openmb").onclick = () => MB.openCurrent();
+  $("presetsel").onchange = () => { setPresetDefaults($("presetsel").value); syncOptionAvailability(); };
+  $("bminus").onclick = () => { $("bcount").textContent = Math.max(1, +$("bcount").textContent - 1); };
+  $("bplus").onclick = () => { $("bcount").textContent = Math.min(3, +$("bcount").textContent + 1); };
+  document.querySelectorAll("#startseg button").forEach((b) => (b.onclick = () => setStartMode(b.dataset.s)));
+  $("usepreset").onclick = () => { if (MB.confirmReplace()) makePreset(); };
+  $("startempty").onclick = () => MB.openNew();
+  $("openmb").onclick = () => MB.openCurrent(selComp);
   $("savemodel").onclick = saveModel;
   $("saveform").onsubmit = (e) => submitSave(e);
   $("closesave").onclick = $("cancelsave").onclick = () => $("savedlg").classList.add("hidden");
@@ -1349,30 +1134,21 @@ function initModel() {
   $("dlmodel").onclick = () => (S.model ? download("/api/model.json") : showError("Create a model first."));
   $("loadsaved").onclick = async () => {
     const path = $("savedsel").value, m = savedModels.find((x) => x.path === path);
-    if (path && (await post("/api/model", { action: "load", path }))) { startMode = "saved"; selComp = null; toast(`Model ${m ? m.name : path} loaded`); }
+    if (path && MB.confirmReplace() && (await post("/api/model", { action: "load", path }))) { startMode = "saved"; selComp = null; toast(`Model ${m ? m.name : path} loaded`); }
   };
   $("loadfile").onclick = () => $("modelfile").click();
   $("modelfile").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = "";
-    if (!f) return;
+    if (!f || !MB.confirmReplace()) return;
     const name = f.name.replace(/\.json$/i, "");
     if (await post("/api/model", { action: "upload", name, text: await f.text() })) {
       startMode = "saved"; selComp = null; toast(`Model ${name} loaded and added to your saved models`); refreshSaved();
     }
   };
-  $("closeadd").onclick = closeAdd;
-  $("adddlg").onclick = (e) => { if (e.target.id === "adddlg") closeAdd(); };
-  $("addform").onsubmit = addSubmit;
-  $("rmcomp").onclick = () => removeComp(selComp);
-  $("kinsel").onchange = () => {
-    const to = $("kinsel").value, c = selComp;
-    post("/api/model", to ? { action: "tie", component: c, to } : { action: "untie", component: c })
-      .then((ok) => ok && toast(to ? `${c}: shift and width tied to ${to}` : `${c}: shift and width fitted freely`));
-  };
   document.querySelectorAll("#classdlgkind button").forEach((b) => (b.onclick = () => { showClassDialog.kind = b.dataset.k; showClassDialog(); }));
   $("closeclass").onclick = () => $("classdlg").classList.add("hidden");
   $("classdlg").onclick = (e) => { if (e.target.id === "classdlg") $("classdlg").classList.add("hidden"); };
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeAdd(); $("classdlg").classList.add("hidden"); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("classdlg").classList.add("hidden"); });
   $("tofit").onclick = () => go("fit");
 }
 
@@ -1400,7 +1176,7 @@ function renderFitWhat() {
   const spectra = m === "multi" ? `${L.shown} epochs of <b>${esc(name)}</b>${dates.length > 1 ? ` · ${esc(dates[0])} → ${esc(dates[dates.length - 1])}` : ""}`
     : m === "single" ? `<b>${esc(name)}</b>` : `${L.n} spectra`;
   const rows = [[m === "single" ? "Spectrum" : "Spectra", spectra + (P && P.z != null ? ` · z ${fmtNum(P.z, 4)}` : ""), "read"]];
-  if (P && m !== "sample") rows.push(["Prepared", [P.rest_frame ? "rest frame" : "observed frame", P.ebv != null ? `E(B−V) ${fmtNum(P.ebv, 3)}` : "no Galactic extinction",
+  if (P) rows.push([m === "sample" && L.n > 1 ? "Prepared preview" : "Prepared", [P.rest_frame ? "rest frame" : "observed frame", P.ebv != null ? `E(B−V) ${fmtNum(P.ebv, 3)}` : "no Galactic extinction",
     P.flux_unit ? "flux unit known" : '<span class="warnword">flux unit unknown</span>'].join(" · "), "prepare"]);
   if (m === "single" || m === "multi") {
     const pl = presetLabel();
@@ -1579,7 +1355,7 @@ function renderDone(F) {
     renderDone.first = [...at.keys()][0];
   }
   $("donecard").innerHTML = `<div class="donehead"><span class="tick">✓</span><div class="grow"><b>${head}</b>${body}</div></div>`;
-  if ($("limopen")) $("limopen").onclick = () => { selComp = renderDone.first.split(".")[0]; go("model"); };
+  if ($("limopen")) $("limopen").onclick = () => editFitComponent(renderDone.first);
   if (F.epochs && F.epochs.length > 1 && F.chi2 != null) {
     $("epochtbl").innerHTML = '<thead><tr><th>Epoch</th><th>Date</th><th>Spectrum</th><th class="num">χ²ᵣ</th><th class="num">Flux scale</th><th>Parameters at a limit</th></tr></thead><tbody>' +
       F.epochs.map((e) => `<tr><td class="mono">#${e.k}${e.reference ? '<span class="badge ref">REF</span>' : ""}</td><td class="mono">${esc(e.date || "—")}</td>` +
@@ -1643,12 +1419,20 @@ function showView() {
   $("res-hint").textContent = rv === "corr" && kind === "fits" ? "ep = fa.epoch_table(fits) · fa.epoch_correlations(ep)"
     : rv === "atlas" ? (kind === "sample" ? "sample.table · sample.load(k)" : kind === "joint" ? "me.epochs[k] · me.epochs[k].key_results()" : "fits[k] · fits[k].key_results()") : VIEW_HINT[rv] || (kind === "joint" ? "me.epochs[k].plot() · me.epochs[k].lines" : kind === "fits" ? "fits[k].plot() · fits[k].lines"
     : kind === "sample" ? "sample.table · sample.load(k).plot()" : "r.plot() · r.lines");
-  // downloads that apply
+  renderDownloads();
+}
+function renderDownloads() {
+  const F = fitDone(), kind = F?.kind;
   $("dlwrap").classList.toggle("hidden", !F);
   const fitLike = ["single", "joint", "fits"].includes(kind);
-  $("dl-lines").classList.toggle("hidden", kind === "classify");
-  $("dl-lines").dataset.dl = kind === "sample" ? "/api/sample.csv" : "/api/wf/lines.csv";
-  ["dl-fits", "dl-comp", "dl-plots", "dl-report"].forEach((id) => $(id).classList.toggle("hidden", !fitLike));
+  $("dl-sample").classList.toggle("hidden", kind !== "sample");
+  const epochs = F?.epochs || [], anyFit = epochs.some((e) => !e.failed);
+  for (const id of ["dl-lines", "dl-fits", "dl-comp", "dl-plots", "dl-report"]) {
+    const item = $(id);
+    item.classList.toggle("hidden", !fitLike);
+    item.disabled = !anyFit || (id === "dl-comp" && !!epochs.find((e) => e.k === rk)?.failed);
+  }
+  $("dl-comp").dataset.dl = `/api/wf/components.csv?k=${rk}`;
   $("dl-comp").querySelector("small").textContent = `CSV of the ${F && F.epochs && F.epochs.length > 1 ? "shown epoch" : "fit"}: data, model, every component, host, AGN`;
 }
 async function loadResult(force) {
@@ -1671,17 +1455,21 @@ async function loadResult(force) {
     try { samplePts = await api("/api/wf/sample_points"); } catch (e) { samplePts = null; }
     return drawSampleDiagrams();
   }
-  const sig = JSON.stringify([F.chi2, F.time, F.n, kind === "sample" ? sk : rk]);
+  const sig = JSON.stringify([kind, F.chi2, F.time, F.n, kind === "sample" ? S.sample?.id : null,
+    kind === "sample" ? sk : rk]);
   if (!force && sig === resultSig && resultData) { renderResults(); return; }
   resultSig = sig;
   if (kind === "sample") {
     $("etabs").innerHTML = "";
     renderSampleResults();
   }
-  if (!resultData || resultData.k !== (kind === "sample" ? sk : rk)) {
+  if (kind === "sample" || !resultData || resultData.k !== rk) {
     $("rplot").innerHTML = '<div class="empty">Loading the fit…</div>'; $("rlegend").innerHTML = ""; $("rsummary").innerHTML = "";
   }
-  try { resultData = await api(kind === "sample" ? `/api/wf/sample?k=${sk}` : `/api/wf/result?k=${rk}`); } catch (e) { resultData = null; }
+  let detail;
+  try { detail = await api(kind === "sample" ? `/api/wf/sample?k=${sk}` : `/api/wf/result?k=${rk}`); } catch (e) { detail = null; }
+  if (resultSig !== sig) return;
+  resultData = detail;
   showView();
   renderResults();
   if (kind !== "sample" && resultData && !resultData.error) loadMore(resultData);
@@ -1743,7 +1531,7 @@ function drawMainSeq() {
   // several epochs: shaded by date (light = early, dark = late) and joined in time order; FWHM in 1000 km/s
   const t = good.map((p) => p.mjd).filter((v) => v !== null), t0 = Math.min(...t), t1 = Math.max(...t);
   const shade = (p) => (p.mjd === null || !(t1 > t0) ? C.broad[0] : p.k === rk ? C.accent : mixColor("#9ec5f4", "#104281", (p.mjd - t0) / (t1 - t0)));
-  const pts = good.map((p) => ({ x: p.r_feii, y: p.fwhm / 1000, xerr: p.r_feii_err, yerr: p.fwhm_err / 1000, k: p.k,
+  const pts = good.map((p) => ({ x: p.r_feii, y: p.fwhm / 1000, xerr: p.r_feii_err, yerr: p.fwhm_err == null ? null : p.fwhm_err / 1000, k: p.k,
     sel: !many || p.k === rk, color: many ? shade(p) : C.accent,
     tip: `${many ? `#${p.k} ${p.date || p.name}: ` : ""}R_FeII = ${p.r_feii.toFixed(2)}, FWHM = ${Math.round(p.fwhm)} km/s, ${p.type || p.population}` }));
   const path = many ? good.slice().sort((a, b) => (a.mjd ?? a.k) - (b.mjd ?? b.k)) : [];
@@ -1815,12 +1603,12 @@ function renderSummary() {
         `<span>${fitErr === null ? "" : `± ${fitErr.toFixed(2)} fit · `}± ${(+k.scatter).toFixed(2)} recipe, dex</span></div>`);
       return;
     }
-    const unit = k.unit || (/ flux$/.test(k.name) ? lineFluxUnit() : "");
+    const unit = k.unit || (/ flux$/.test(k.name) ? lineFluxUnit(R.flux_unit) : "");
     tiles.push(`<div class="tile"><small>${prettyQuantity(k.name)}</small><b>${num.v}</b><span>${num.e} ${esc(unit)}</span></div>`);
   });
-  const noUnit = prepared() && prepared().flux_unit == null;
+  const noUnit = R.flux_unit == null;
   $("rsummary").innerHTML = tiles.join("") + (R.key && R.key.length > 5 ? `<a href="#" class="textlink moreq" id="moreq">All ${R.key.length} quantities with their errors →</a>` : "") +
-    (noUnit ? '<p class="note unitnote">The flux unit is not known, so there are no luminosities or black-hole masses. <a href="#" class="textlink" data-go="prepare">Set it in Prepare</a></p>' : "");
+    (noUnit ? '<p class="note unitnote">The flux unit is unknown for this spectrum, so luminosities and black-hole masses are unavailable. <a href="#" class="textlink" data-go="prepare">Set it in Prepare</a> and refit.</p>' : "");
   if ($("moreq")) $("moreq").onclick = (e) => { e.preventDefault(); rtab = "continuum"; renderResultTable(); $("rtabs").scrollIntoView({ behavior: "smooth", block: "start" }); };
   // a trial fit of one epoch of a multi-epoch analysis: what it is, and the way on
   const T = S.wf.trial, trial = T && T.active && F && F.kind === "single";
@@ -1838,7 +1626,7 @@ function renderSummary() {
   if (lim.length) {
     $("rlimits").innerHTML = `<div class="grow"><b>${lim.length} parameter${lim.length > 1 ? "s" : ""} ended at a limit</b>: ${lim.slice(0, 6).map((p) => `<code>${esc(p)}</code>`).join(", ")}${lim.length > 6 ? " …" : ""}.` +
       ` The value is then set by the limit, not by the data: widen the limit, fix the parameter, or change the model.</div><button class="btn small" id="limfix">Open ${esc(lim[0].split(".")[0])} in the Model step</button>`;
-    $("limfix").onclick = () => { selComp = lim[0].split(".")[0]; go("model"); };
+    $("limfix").onclick = () => editFitComponent(lim[0]);
   }
   // lines narrower than the data can sample
   const und = (ep && ep.undersampled) || [];
@@ -1849,7 +1637,7 @@ function renderSummary() {
       ` Below about 1.2 pixels the flux depends on where the peak falls between two pixels, so it is unreliable.` +
       (unknown ? " The instrumental resolution is not known: set it in Prepare, or raise the lower limit of the width." : " Raise the lower limit of the width.") +
       `</div><button class="btn small" id="sampfix">${unknown ? "Set the resolution in Prepare" : `Open ${esc(und[0].parameter.split(".")[0])} in the Model step`}</button>`;
-    $("sampfix").onclick = () => { if (unknown) go("prepare"); else { selComp = und[0].parameter.split(".")[0]; go("model"); } };
+    $("sampfix").onclick = () => { if (unknown) go("prepare"); else editFitComponent(und[0].parameter); };
   }
 }
 function drawResultPlot() {
@@ -2933,8 +2721,8 @@ function renderFeii() {
     const a = F.before, b = F.now, line = F.line ? `Broad ${esc(F.line)}` : "";
     const row = (label, x, y, ch) => `<tr><td><b>${label}</b></td><td class="num">${x}</td><td class="num">${y}${ch || ""}</td></tr>`;
     cmp = `<div class="rbgroup"><h4>What changed</h4><div class="tblwrap"><table class="tbl"><thead><tr><th>Result</th><th class="num">Every group</th><th class="num">Without the undetected groups</th></tr></thead><tbody>` +
-      row("Fe II flux", pm(a.flux, a.flux_err), pm(b.flux, b.flux_err), chg(a.flux, b.flux)) +
-      (a.r_feii !== null && a.r_feii !== undefined ? row("R(Fe II)", pm(a.r_feii, a.r_feii_err, 3), pm(b.r_feii, b.r_feii_err, 3), chg(a.r_feii, b.r_feii)) : "") +
+      row(esc(a.band_label || "Fe II") + " flux", pm(a.flux, a.flux_err), pm(b.flux, b.flux_err), chg(a.flux, b.flux)) +
+      (a.r_feii !== null && a.r_feii !== undefined ? row(esc(a.ratio_label || "R(Fe II)"), pm(a.r_feii, a.r_feii_err, 3), pm(b.r_feii, b.r_feii_err, 3), chg(a.r_feii, b.r_feii)) : "") +
       (line && a.line_flux !== undefined ? row(`${line} flux`, pm(a.line_flux, a.line_flux_err), pm(b.line_flux, b.line_flux_err), chg(a.line_flux, b.line_flux)) +
         row(`${line} FWHM`, pm(a.line_fwhm, a.line_fwhm_err) + " km/s", pm(b.line_fwhm, b.line_fwhm_err) + " km/s", chg(a.line_fwhm, b.line_fwhm)) : "") +
       (a.continuum !== undefined ? row("Continuum", pm(a.continuum, null), pm(b.continuum, null), chg(a.continuum, b.continuum)) : "") +
@@ -3468,7 +3256,7 @@ function renderResultTable() {
   if (!R || R.error) return;
   document.querySelectorAll("#rtabs button").forEach((b) => b.classList.toggle("on", b.dataset.rt === rtab));
   $("hideund").closest("label").classList.toggle("hidden", rtab !== "lines");
-  if (rtab === "lines") t.innerHTML = lineTable(R.lines, $("hideund").checked);
+  if (rtab === "lines") t.innerHTML = lineTable(R.lines, $("hideund").checked, R.flux_unit);
   else if (rtab === "continuum") {
     t.innerHTML = '<thead><tr><th>Quantity</th><th class="num">Value</th><th>Unit / status</th></tr></thead><tbody>' +
       (R.key === undefined ? '<tr><td colspan="3" class="muted">Computing the main numbers and their errors…</td></tr>' : "") +
@@ -3488,21 +3276,24 @@ function renderResultTable() {
       (R.params || []).map((p) => `<tr><td class="mono">${esc(p.name)}</td><td class="num">${esc(p.value)}</td><td class="num">${fmtNum(p.min)}</td><td class="num">${fmtNum(p.max)}</td><td class="muted">${esc(p.unit)}</td><td>${statusBadge(p.status)}</td></tr>`).join("") + "</tbody>";
   }
 }
-function lineTable(lines, hideUnd) {
+function lineTable(lines, hideUnd, fluxUnit) {
   // grouped by component; a width and shift shared by the lines of a component are given once, in its header
   const rows = lines.filter((r) => !hideUnd || r.detected);
   const groups = [];
   rows.forEach((r) => { let g = groups.find((x) => x.name === r.component); if (!g) groups.push((g = { name: r.component, role: r.role, rows: [] })); g.rows.push(r); });
   const same = (g, k) => g.rows.length > 1 && g.rows.every((r) => r[k] !== null && Math.abs(r[k] - g.rows[0][k]) <= 1e-6 * Math.max(1, Math.abs(g.rows[0][k])));
-  const fu = lineFluxUnit();
+  const fu = lineFluxUnit(fluxUnit);
   return `<thead><tr><th>Line</th><th class="num">Flux${fu ? ` <span class="muted small">(${esc(fu)})</span>` : ""}</th>` + '<th class="num">FWHM (km/s)</th><th class="num">Shift (km/s)</th><th class="num">EW (Å)</th><th>Flag</th></tr></thead><tbody>' +
     groups.map((g) => {
       const sw = same(g, "fwhm"), ss = same(g, "shift"), r0 = g.rows[0];
       const head = `<tr class="grouphead"><td colspan="2"><b class="mono">${esc(g.name)}</b>${g.role ? ` <span class="muted small">${esc(g.role)}</span>` : ""}</td>` +
         `<td class="num">${sw ? pm(r0.fwhm, r0.fwhm_err) : ""}</td><td class="num">${ss ? pm(r0.shift, r0.shift_err) : ""}</td><td></td><td></td></tr>`;
-      return head + g.rows.map((r) => `<tr class="${r.detected ? "" : "dim"}"><td class="lname">${esc(r.label)}</td>` +
-        `<td class="num">${r.limit && (!r.detected || r.flux < 2 * (r.flux_err || 0)) ? `<span title="upper limit: ${esc(r.limit.how)}">&lt; ${fmtNum(r.limit.value, 3)}</span>${r.detected ? ` <span class="muted small">(${pm(r.flux, r.flux_err)})</span>` : ""}` : r.detected ? pm(r.flux, r.flux_err) : "0"}</td><td class="num">${sw ? "" : pm(r.fwhm, r.fwhm_err)}</td><td class="num">${ss ? "" : pm(r.shift, r.shift_err)}</td>` +
-        `<td class="num">${r.detected ? pm(r.ew, r.ew_err) : "0"}</td><td>${r.flags.map((f) => `<span class="badge ${f.kind}">${esc(f.text)}</span>`).join(" ")}</td></tr>`).join("");
+      return head + g.rows.map((r) => {
+        const hasEstimate = r.detected || r.flags.some((f) => f.text === "weak (<2σ)");
+        return `<tr class="${r.detected ? "" : "dim"}"><td class="lname">${esc(r.label)}</td>` +
+        `<td class="num">${r.limit && (!r.detected || r.flux < 2 * (r.flux_err || 0)) ? `<span title="upper limit: ${esc(r.limit.how)}">&lt; ${fmtNum(r.limit.value, 3)}</span>${hasEstimate ? ` <span class="muted small">(${pm(r.flux, r.flux_err)})</span>` : ""}` : hasEstimate ? pm(r.flux, r.flux_err) : "—"}</td><td class="num">${sw ? "" : pm(r.fwhm, r.fwhm_err)}</td><td class="num">${ss ? "" : pm(r.shift, r.shift_err)}</td>` +
+        `<td class="num">${hasEstimate ? pm(r.ew, r.ew_err) : "—"}</td><td>${r.flags.map((f) => `<span class="badge ${f.kind}">${esc(f.text)}</span>`).join(" ")}</td></tr>`;
+      }).join("");
     }).join("") + "</tbody>";
 }
 function statusBadge(s) {
@@ -3736,7 +3527,6 @@ async function catalogLoad(c) {
 }
 function catalogPick(k) {
   CAT.k = k;
-  document.querySelectorAll("#loadedtbl tbody tr").forEach((tr) => tr.classList.toggle("catsel", tr.dataset.row === String(k)));
   renderCatalogCard();
 }
 function catalogSkyHtml() {
@@ -3749,6 +3539,9 @@ function renderCatalogCard() {
   const el = $("catcard"), c = S.wf && S.wf.catalog;
   if (!el) return;
   el.classList.toggle("hidden", !c);
+  document.querySelectorAll("#loadedtbl tbody tr").forEach((tr) => {
+    tr.classList.toggle("catsel", c?.loaded_rows?.[+tr.dataset.row] === CAT.k);
+  });
   if (!c) return;
   const many = c.n > 1;
   if (c.done) { CAT.k = Math.min(CAT.k, c.n - 1); catalogLoad(c); }
@@ -3816,15 +3609,7 @@ function initResults() {
     rv = "figure"; loadResult(); figChanged();
   };
   document.querySelectorAll("#cfigkind button").forEach((b) => (b.onclick = () => { cfigKind = b.dataset.k; if (classData) showClassFig(); }));
-  $("dlbtn").onclick = (e) => { e.stopPropagation(); $("dlmenu").classList.toggle("hidden"); };
-  $("dlmenu").onclick = (e) => {
-    const a = e.target.closest("a");
-    if (!a) return;
-    e.preventDefault();
-    if (a.id === "dl-comp") download(`/api/wf/components.csv?k=${rk}`);     // the others: the page's [data-dl] handler
-    $("dlmenu").classList.add("hidden");
-  };
-  document.addEventListener("click", (e) => { if (!e.target.closest("#dlwrap")) $("dlmenu").classList.add("hidden"); });
+  initActionMenu("dlbtn", "dlmenu", renderDownloads);
   $("figopts").onsubmit = (e) => e.preventDefault();
   $("figopts").querySelectorAll("[data-o]").forEach((el) => (el[el.type === "checkbox" || el.tagName === "SELECT" ? "onchange" : "oninput"] = figChanged));
   $("figopts").querySelectorAll("[data-fmt]").forEach((b) => (b.onclick = () => download(figUrl(b.dataset.fmt, true))));
@@ -4260,7 +4045,7 @@ function renderUpdate(result) {
 }
 function initUpdate() {
   $("updbtn").onclick = () => { renderUpdate(); $("updpanel").classList.toggle("hidden"); };
-  document.querySelector('[data-act="check-update"]').onclick = () => { $("moremenu").classList.add("hidden"); checkUpdate(true); };
+  document.querySelector('[data-act="check-update"]').onclick = () => checkUpdate(true);
   document.addEventListener("click", (e) => { if (!e.target.closest("#updwrap") && !e.target.closest('[data-act="check-update"]')) $("updpanel").classList.add("hidden"); });
   setTimeout(() => checkUpdate(false), 2500);        // after the page is up; the server asks PyPI at most daily
 }
@@ -4271,10 +4056,9 @@ function initTop() {
     const g = e.target.closest("[data-go]");
     if (g) { e.preventDefault(); go(g.dataset.go); }
     const d = e.target.closest("[data-dl]");
-    if (d) { e.preventDefault(); download(d.dataset.dl); $("moremenu").classList.add("hidden"); }
-    if (!e.target.closest(".menuwrap")) $("moremenu").classList.add("hidden");
+    if (d && !d.disabled) { e.preventDefault(); download(d.dataset.dl); }
   });
-  $("morebtn").onclick = () => $("moremenu").classList.toggle("hidden");
+  initActionMenu("morebtn", "moremenu");
   $("stopbtn").onclick = async () => {
     $("stopbtn").disabled = true;
     await post("/api/stop", {});
@@ -4286,6 +4070,16 @@ function initTop() {
     if (await post("/api/reset", {})) go("read");
   };
   document.querySelector('[data-act="open-project"]').onclick = () => $("projectfile").click();
+  // How to cite: from the ⋯ menu and the Results page
+  document.querySelectorAll('[data-act="cite"]').forEach((b) => (b.onclick = () => {
+    $("citever").textContent = S && S.version ? ` ${S.version}` : "";
+    $("citedlg").showModal();
+  }));
+  $("citeclose").onclick = () => $("citedlg").close();
+  $("citedlg").addEventListener("click", (e) => { if (e.target === $("citedlg")) $("citedlg").close(); });
+  $("citecopy").onclick = async () => {
+    try { await navigator.clipboard.writeText($("citebib").textContent); toast("BibTeX copied"); } catch (e) { toast("Select the BibTeX and copy it"); }
+  };
   $("projectfile").onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     try { setState(await api("/api/project", { method: "POST", body: f })); toast("Project opened"); go(guessPage()); }
@@ -4309,8 +4103,6 @@ async function main() {
   initTop(); initUpdate(); initRead(); initPrepare(); initModel(); initFit(); initResults(); initTime(); initResid(); initSession();
   try { S = await api("/api/state"); } catch (e) { showError("Cannot reach the FANTASY server: " + e.message); return; }
   wasBusy = !!S.busy;
-  api("/api/lines").then((ls) => (LINE_LIB = ls)).catch(() => {});
-  api("/api/linesets").then((ls) => (LINE_SETS = ls)).catch(() => {});
   go(guessPage());
   schedule();
 }
@@ -4806,7 +4598,7 @@ document.querySelectorAll("#dg-scope button").forEach((b) => (b.onclick = () => 
 // worth a look. A card opens its fit.
 const AT = { data: null, key: null, sort: null, dir: -1, off: new Set(), flagged: false, common: false, same: false };
 const AT_SORTS = {
-  sample: [["rchi2", "χ²ν"], ["struct", "residual structure"], ["z", "redshift"], ["fwhm", "broad FWHM"], ["rfeii", "R_FeII"],
+  sample: [["rchi2", "χ²ν"], ["struct", "residual structure"], ["z", "redshift"], ["fwhm", "broad FWHM"], ["rfeii", "optical R(Fe II)"],
     ["mbh", "log M_BH"], ["edd", "log L/L_Edd"], ["lum", "log λL_λ"], ["o3hb", "log [O III]/Hβ"]],
   epochs: [["mjd", "date"], ["lum", "continuum log λL_λ"], ["bflux", "broad-line flux"], ["fwhm", "broad FWHM"], ["rchi2", "χ²ν"], ["struct", "residual structure"]],
 };
@@ -4819,9 +4611,9 @@ function atFlags(o) {
   if (o.error) return f;
   if (o.rchi2 > 2) f.push(["χ²ν " + o.rchi2.toFixed(1), "the model misses structure the errors cannot explain"]);
   if (o.struct > 10) f.push(["residual stretch " + o.struct.toFixed(0) + "σ", "40 pixels in a row sit off the model by this much (noise alone gives about 4σ): a missing or misplaced component"]);
-  if (o.fwhm != null && (o.fwhm >= 20000 || o.fwhm <= 1200)) f.push([`FWHM ${o.fwhm >= 20000 ? "at the upper" : "at the lower"} limit`, "the broad line took the width of a limit: it is fitting continuum or a narrow line"]);
-  if (o.rfeii != null && o.rfeii > 3) f.push(["R_FeII " + o.rfeii.toFixed(1), "far above the observed range (0 to 2.5): Fe II takes flux from the continuum or the broad line"]);
-  if (o.mbh != null && (o.mbh > 10.5 || o.mbh < 5.5)) f.push(["M_BH 10^" + o.mbh.toFixed(1), "outside the range of known black holes"]);
+  if (o.width_limits?.length) f.push(["Broad width at a bound", o.width_limits.join(", ")]);
+  if (o.rfeii != null && o.rfeii > 3) f.push(["Optical R(Fe II) " + o.rfeii.toFixed(1), "Inspect the Fe II blend, broad Hβ and continuum decomposition."]);
+  if (o.mbh != null && (o.mbh > 10.5 || o.mbh < 5.5)) f.push(["M_BH 10^" + o.mbh.toFixed(1), "Check the broad-line width, luminosity and mass calibration."]);
   if ((o.limits || []).length >= 3) f.push([o.limits.length + " at limits", "parameters at a limit: " + o.limits.slice(0, 8).join(", ")]);
   return f;
 }

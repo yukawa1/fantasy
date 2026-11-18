@@ -13,7 +13,7 @@ reverberation black-hole mass.
 Methods:
 
 * rms spectrum: the broad line alone in every epoch (the intercalibrated data
-  minus the continuum, FeII, host and narrow lines of that epoch's model),
+  minus all other fitted emission, including broad blends),
   noise-corrected rms (Park et al. 2012, ApJS 203, 6); widths from the
   bootstrap over epochs.
 * ICCF: Gaskell & Peterson (1987), White & Peterson (1994), both light curves
@@ -782,44 +782,97 @@ class ComponentReverberation:
 
 # ---------------------------------------------------------- rms spectrum
 def _broad_only(result, line):
-    """Rest wavelength, broad-line-only data and error of one epoch."""
+    """Observed broad target plus the data residual, on the epoch's native grid."""
+    from .plotting import _line_parts, _transmission
     s = result.spectrum
-    parts = result.model_flux(components=True)
-    other = sum(v for k, v in parts.items()
-                if not any(c.name == k and getattr(c, "role", None) == "broad" for c in result.model.components))
-    return s.wave, s.flux - other, s.err
+    broad = [c.name for c in result._line_components() if c.role == "broad" and line in c.line_names]
+    if not broad:
+        raise ValueError(f"no broad component of {line} in the model")
+    parts = _line_parts(result, line, s.wave)
+    target = sum(parts[name] for name in broad) * _transmission(result, s.wave)
+    return s.flux - result.model_flux() + target
+
+
+def _rms_resample(grid, wave, flux, err, good):
+    """Interpolate between adjacent fitted pixels, leaving masked and inter-segment gaps empty."""
+    from .wavelengths import _sampling_gaps
+    f = np.interp(grid, wave, np.where(good, flux, np.nan), left=np.nan, right=np.nan)
+    e = np.interp(grid, wave, np.where(good, err, np.nan), left=np.nan, right=np.nan)
+    gaps, _, _ = _sampling_gaps(np.diff(wave))
+    for i in gaps:
+        between = (grid > wave[i]) & (grid < wave[i+1])
+        f[between] = e[between] = np.nan
+    return f, e
 
 
 def rms_spectrum(epochs, line, window=None, n_boot=200, seed=0):
     """
     Mean and noise-corrected rms spectrum of the broad ``line`` over the epochs
     (list of FitResult), with FWHM and line dispersion of the rms profile and
-    bootstrap errors. Returns a dict.
+    bootstrap errors. Other fitted transitions are subtracted on each epoch's
+    native pixel grid, including their instrumental and transmission effects.
+    Fitted wavelength offsets are removed before stacking. The first covered epoch
+    with a measurable width sets the default window and wavelength grid. With an
+    explicit window, the first covered epoch sets the grid. Missing pixels remain
+    missing, and the rms needs two epochs at a pixel. The wavelengths are in the
+    reference epoch's medium and the widths include instrumental broadening.
+    Returns a dict.
     """
-    from .lines import line_wavelength
-    lam0 = line_wavelength(line)
-    ref = epochs[0]
-    broad = [c.name for c in ref._line_components() if c.role == "broad" and line in c.line_names]
-    if not broad:
-        raise ValueError(f"no broad component of {line} in the model")
-    if window is None:
-        fwhm = ref.measure(line, broad)["fwhm"]
-        window = float(np.clip(2.0 * fwhm, 3000, 15000))
-    w0 = ref.spectrum.wave
-    grid = w0[np.abs(w0 / lam0 - 1) * C_KMS <= window]
-    F, E = [], []
+    from .components import _in_medium
+    if window is not None and (not np.isfinite(window) or window <= 0):
+        raise ValueError("window must be a finite positive half-width in km/s")
+    ref = None
+    covered = []
     for r in epochs:
-        w, f, e = _broad_only(r, line)
-        good = r.mask & np.isfinite(f) & np.isfinite(e)
-        F.append(np.interp(grid, w[good], f[good], left=np.nan, right=np.nan))
-        E.append(np.interp(grid, w[good], e[good], left=np.nan, right=np.nan))
+        broad = [c for c in r._line_components() if c.role == "broad" and line in c.line_names]
+        if not broad or not np.any(r.mask & r.spectrum.good):
+            continue
+        names = [c.name for c in broad]
+        if not np.isfinite(r._line_flux_func(line, names)(r.full)):
+            continue
+        covered.append(r)
+        if ref is None:
+            width = window
+            if width is None:
+                stats, *_ = r._line_measurement(line, names)
+                fwhm = stats(r.full)[1]
+                if not np.isfinite(fwhm) or fwhm <= 0:
+                    continue
+                width = float(np.clip(2.0 * fwhm, 3000, 15000))
+            rest = broad[0]._wave[broad[0].line_names.index(line)]
+            lam0 = _in_medium(rest, r.spectrum.context)
+            wave = r.spectrum.wave / (1 + getattr(r, "offset", 0.0) / C_KMS)
+            inside = np.abs(wave / lam0 - 1) * C_KMS <= width
+            if np.any(inside & r.mask & r.spectrum.good):
+                ref, grid = r, wave[inside]
+    if len(covered) < 2:
+        raise ValueError(f"rms_spectrum needs at least two fitted epochs covering broad {line}")
+    if ref is None:
+        raise ValueError(f"no covered epoch supplies a usable window for broad {line}; "
+                         "specify a window in km/s containing fitted pixels")
+    F, E = [], []
+    for r in covered:
+        # The joint fit stores calibrated data/errors, its effective resolution,
+        # and the offset in the fitted shifts. Subtract on that grid, then align
+        # in target-line velocity, preserving integrated flux when resampling F_lambda.
+        s = r.spectrum
+        factor = (_in_medium(rest, s.context) / lam0) * (1 + getattr(r, "offset", 0.0) / C_KMS)
+        w, f, e = s.wave / factor, _broad_only(r, line) * factor, s.err * factor
+        good = r.mask & s.good & np.isfinite(f)
+        f, e = _rms_resample(grid, w, f, e, good)
+        if np.isfinite(f).any():
+            F.append(f)
+            E.append(e)
     F, E = np.array(F), np.array(E)
+    if len(F) < 2 or not np.any(np.isfinite(F).sum(axis=0) >= 2):
+        raise ValueError(f"rms_spectrum needs overlapping fitted pixels in at least two epochs for broad {line}")
     v = (grid / lam0 - 1) * C_KMS
 
     def stats(rows):
         f, e = F[rows], E[rows]
-        mean = np.nanmean(f, axis=0)
-        var = np.nanmean((f - mean) ** 2, axis=0) - np.nanmean(e ** 2, axis=0)   # noise-corrected
+        n = np.isfinite(f).sum(axis=0)
+        mean = np.nansum(f, axis=0) / np.where(n > 0, n, np.nan)
+        var = (np.nansum((f - mean) ** 2, axis=0) - np.nansum(e ** 2, axis=0)) / np.where(n >= 2, n, np.nan)
         rms = np.sqrt(np.clip(var, 0, None))
         return mean, rms
 
@@ -834,18 +887,24 @@ def rms_spectrum(epochs, line, window=None, n_boot=200, seed=0):
         fwhm = float(v[above[-1]] - v[above[0]]) if above.size else np.nan
         return fwhm, sigma
 
-    rows = np.arange(len(epochs))
+    rows = np.arange(len(F))
     mean, rms = stats(rows)
     fwhm, sigma = widths(rms)
     mfwhm, msigma = widths(mean)
     rng = np.random.default_rng(seed)
-    boot = np.array([widths(stats(rng.integers(0, len(rows), len(rows)))[1]) for _ in range(n_boot)])
-    bm = np.array([widths(stats(rng.integers(0, len(rows), len(rows)))[0]) for _ in range(min(n_boot, 100))])
+    def bootstrap_errors(index, count):
+        samples = np.array([widths(stats(rng.integers(0, len(rows), len(rows)))[index])
+                            for _ in range(count)]).reshape(-1, 2)
+        return [float(np.std(col[np.isfinite(col)])) if np.isfinite(col).any() else np.nan
+                for col in samples.T]
+
+    efwhm, esigma = bootstrap_errors(1, n_boot)
+    emfwhm, emsigma = bootstrap_errors(0, min(n_boot, 100))
     return {"wave": grid, "velocity": v, "mean": mean, "rms": rms,
-            "fwhm_rms": fwhm, "fwhm_rms_err": float(np.nanstd(boot[:, 0])),
-            "sigma_rms": sigma, "sigma_rms_err": float(np.nanstd(boot[:, 1])),
-            "fwhm_mean": mfwhm, "fwhm_mean_err": float(np.nanstd(bm[:, 0])),
-            "sigma_mean": msigma, "sigma_mean_err": float(np.nanstd(bm[:, 1])), "line": line}
+            "fwhm_rms": fwhm, "fwhm_rms_err": efwhm,
+            "sigma_rms": sigma, "sigma_rms_err": esigma,
+            "fwhm_mean": mfwhm, "fwhm_mean_err": emfwhm,
+            "sigma_mean": msigma, "sigma_mean_err": emsigma, "line": line}
 
 
 # ---------------------------------------------------------------- result

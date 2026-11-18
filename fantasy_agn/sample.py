@@ -32,7 +32,7 @@ def _row_name(path):
 
 def _process(job):
     """One spectrum: read, classify, fit, measure; returns a catalog row (dict)."""
-    path, opts = job
+    source, prepared, index, opts = job
     warnings.filterwarnings("ignore")
     import matplotlib
     matplotlib.use("Agg")
@@ -40,18 +40,31 @@ def _process(job):
     from .plotting import main_line
     from .refine import EXTENSIONS
     t0 = time.time()
-    row = {"file": os.path.basename(path), "path": path}
+    path = None if isinstance(source, fa.Spectrum) else os.fspath(source)
+    row = {"file": os.path.basename(path) if path is not None else source.name, "path": path}
     try:
-        spec = fa.read(path)
-        if opts.get("z") is not None:
-            spec.z = float(opts["z"])
-        if opts.get("deredden", True):
-            spec = spec.deredden(ebv=opts.get("ebv"))
+        spec = prepared
+        steps = opts.get("prepare")
+        default_preparation = prepared is None and steps is None
+        if spec is None:
+            spec = source if path is None else fa.read(path, format=opts["format"])
+            if default_preparation:
+                if opts.get("z") is not None:
+                    spec = spec.copy(z=float(opts["z"]))
+                if opts.get("deredden", True):
+                    spec = spec.deredden(ebv=opts.get("ebv"))
+                spec = spec.to_rest_frame()
+                if opts.get("mask_absorption"):
+                    spec = spec.mask_absorption()
+            else:
+                for step in steps:
+                    spec = step(spec)
+        if spec.dereddened:
             row["ebv_gal"] = spec.meta.get("ebv")
-        spec = spec.to_rest_frame()
-        if opts.get("mask_absorption"):
-            spec = spec.mask_absorption()
         row.update(name=spec.name, z=spec.z, ra=spec.ra, dec=spec.dec)
+        if not spec.rest_frame and spec.z != 0:
+            raise ValueError("sample presets require rest wavelengths: move this spectrum to the rest frame "
+                             "in Prepare, or set z=0 if its wavelengths are already rest wavelengths")
         preset, kw = opts.get("model") or (None, {})
         c = None
         if preset is None:
@@ -59,8 +72,8 @@ def _process(job):
             row.update(cls=c.label, cls_uncertain=bool(c.uncertain))
             preset, kw = c.RECOMMENDED[c.label]
         mask_sky = opts.get("mask_sky", "auto")
-        if mask_sky is True or (mask_sky == "auto" and preset in ("starforming", "seyfert2", "composite",
-                                                                   "liner", "passive", "type2", "galaxy")):
+        if default_preparation and (mask_sky is True or (mask_sky == "auto" and preset in
+                ("starforming", "seyfert2", "composite", "liner", "passive", "type2", "galaxy"))):
             spec = spec.mask_sky()
         row["preset"] = preset + (f"({', '.join(f'{k}={v!r}' for k, v in kw.items())})" if kw else "()")
         r = fa.fit(spec, getattr(fa.presets, preset)(**kw), verbose=False)
@@ -84,8 +97,12 @@ def _process(job):
         prune = opts.get("prune_feii")
         if prune and r._feii_components():
             try:
-                ms = r.main_sequence()
-                row["R_FeII all groups"], row["broad Hb FWHM all groups"] = ms["r_feii"], ms["fwhm"]
+                for comp in r._feii_components():
+                    fe = r.feii(comp.name)
+                    row[fe["ratio_label"] + " all groups"] = fe["r_feii"]
+                hb = [c.name for c in r._line_components() if c.role == "broad" and "Hb" in c.line_names]
+                if hb:
+                    row["broad Hb FWHM all groups"] = r.measure("Hb", hb)["fwhm"]
                 r = fa.prune_feii(r, nsigma=2.0 if prune is True else float(prune))
                 row["feii_groups"], row["feii_dropped"] = len(r.feii_pruning), len(r.feii_pruned)
             except Exception as exc:                 # noqa: BLE001  (the fit itself stands)
@@ -108,9 +125,13 @@ def _process(job):
                 pass
         out = opts.get("out")
         if out:
-            base = os.path.join(out, row["name"])
+            filename = os.path.basename(row["name"])
+            if prepared is not None or steps is not None or path is None:
+                filename = f"{index:06d}_{filename}"
+            base = os.path.join(out, filename)
             fa.save(r, base + ".fantasy")
-            fig = r.plot(title=f"{row['name']}  z = {spec.z:.4f}  ({row['preset']}, "
+            redshift = f"  z = {spec.z:.4f}" if spec.z is not None else ""
+            fig = r.plot(title=f"{row['name']}{redshift}  ({row['preset']}, "
                                f"reduced chi2 = {r.rchi2:.2f})")
             fig.savefig(base + "_fit.png", dpi=80, bbox_inches="tight")
             line = main_line(r)
@@ -158,7 +179,8 @@ class SampleResult:
                              f"{html.escape(str(d.get('error')))}</p></div>")
                 continue
             base = os.path.basename(d["saved"])[:-8]
-            info = (f"<b>{html.escape(str(d.get('name')))}</b> · z = {d.get('z', np.nan):.4f} · "
+            redshift = f" · z = {d['z']:.4f}" if pd.notna(d.get("z")) else ""
+            info = (f"<b>{html.escape(str(d.get('name')))}</b>{redshift} · "
                     f"{html.escape(str(d.get('cls', '')))} · {html.escape(str(d.get('preset')))} · "
                     f"reduced chi2 {d.get('rchi2', np.nan):.2f}"
                     + (f" · at limits: {html.escape(str(d.get('at_limit')))}" if d.get("at_limit") else ""))
@@ -180,11 +202,17 @@ class SampleResult:
 
 
 def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mask_absorption=False,
-               mask_sky="auto", refine=True, diagnostics=True, prune_feii=False, n_jobs=-1, verbose=True):
+               mask_sky="auto", refine=True, diagnostics=True, prune_feii=False, n_jobs=-1, verbose=True,
+               *, prepared=None, prepare=None, format="auto"):
     """
     Classify and fit many spectra in parallel; returns a :class:`SampleResult`.
 
-    :param files: list of paths (any format ``fa.read`` knows).
+    :param files: ordered paths (any format ``fa.read`` knows) or raw Spectrum objects.
+    :param prepared: spectra already prepared for the first rows. They are fitted exactly as supplied.
+    :param prepare: ordered callables taking and returning a Spectrum for the remaining rows.
+        Each worker applies them once, replacing the default extinction, rest-frame and masking
+        steps. Use picklable callables such as ``operator.methodcaller`` for parallel fits.
+    :param format: file format used to read paths.
     :param out: folder for the fits (``.fantasy``) and figures (made if needed); None: catalog only.
     :param model: None (default): the model the classification recommends for each spectrum;
         or a preset name ('hbeta', 'seyfert2', ...) or (name, {options}) for all spectra.
@@ -199,21 +227,26 @@ def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mas
         (:func:`fantasy_agn.prune_feii`; True: below 2 sigma, or the number of sigma). Weak Fe II comes
         out too high otherwise, which moves the weak-Fe II end of a main sequence diagram to the right;
         with moderate Fe II pruning removes real weak multiplets too, so it is a choice. The catalog gets
-        ``feii_groups``, ``feii_dropped`` and the values before pruning (``R_FeII all groups``,
-        ``broad Hb FWHM all groups``).
+        ``feii_groups``, ``feii_dropped`` and the band-specific ratios before pruning (for example,
+        ``R_FeII all groups`` for optical Fe II), plus ``broad Hb FWHM all groups`` when applicable.
     :param n_jobs: processes (-1: all cores but one).
     """
     from ._threads import SINGLE_THREADED, environment
     from .fitting import _n_workers
     from .progress import report
     files = list(files)
+    prepared = list(prepared) if prepared is not None else []
+    if len(prepared) > len(files):
+        raise ValueError("more prepared spectra than input rows")
+    prepare = tuple(prepare) if prepare is not None else None
     if isinstance(model, str):
         model = (model, {})
     if out:
         os.makedirs(out, exist_ok=True)
     opts = dict(out=out, model=model, deredden=deredden, ebv=ebv, z=z, mask_absorption=mask_absorption,
-                mask_sky=mask_sky, refine=refine, diagnostics=diagnostics, prune_feii=prune_feii)
-    jobs = [(f, opts) for f in files]
+                mask_sky=mask_sky, refine=refine, diagnostics=diagnostics, prune_feii=prune_feii,
+                prepare=prepare, format=format)
+    jobs = [(f, prepared[k] if k < len(prepared) else None, k, opts) for k, f in enumerate(files)]
     n = len(jobs)
     workers = _n_workers(n_jobs, n)
     rows, t0, task = [None] * n, time.time(), f"fitting a sample of {n} spectra"

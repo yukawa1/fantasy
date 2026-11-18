@@ -53,6 +53,7 @@ token created when the server starts (it is put into the page) and that are
 addressed to 127.0.0.1/localhost (against DNS rebinding); other web pages open
 in the browser cannot use it.
 """
+import html
 import json
 import math
 import mimetypes
@@ -64,11 +65,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .session import Session
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
+# the bundled Seyfert 1 galaxy of the opening screen, read by its "Fit this galaxy yourself" button
+EXAMPLE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "examples", "spec-0354-51792-0617.fits")
 
 
 def _versioned(html):
     """Add the modification time to the stylesheet and script links, so a changed file is never served from the cache."""
-    for name in ("wf.css", "wf.js", "mb.js"):
+    for name in ("wf.css", "wf.js", "mb.js", "hero.js"):
         v = int(os.path.getmtime(os.path.join(STATIC, name)))
         html = html.replace(f'"/static/{name}"', f'"/static/{name}?v={v}"')
     return html
@@ -282,9 +285,12 @@ class Handler(BaseHTTPRequestHandler):
                     s.run_step(code, "model = fa.")       # replaces the last model choice
                     return self._send(s.state())
                 elif action in ("recipe", "presetkw"):        # Use this model, from the gallery or the builder
-                    code = (s.recipe_code(opts.get("state") or {}) if action == "recipe"
-                            else s.preset_kw_code(str(opts.get("name", "")), opts.get("kw") or {}))
-                    s.run_step(code, "model = fa.")       # replaces the last model choice
+                    with s.lock:
+                        if s.busy:
+                            raise RuntimeError("a cell is still running")
+                        code = (s.recipe_code(opts.get("state") or {}) if action == "recipe"
+                                else s.preset_kw_code(str(opts.get("name", "")), opts.get("kw") or {}))
+                        s.run_step(code, "model = fa.")
                     return self._send(s.state())
                 elif action == "empty":
                     s.run_step(s.empty_model_code(), "model = fa.")       # replaces a preset chosen just before
@@ -468,12 +474,21 @@ class Handler(BaseHTTPRequestHandler):
             from .steps import MODES
             if mode not in MODES:
                 raise ValueError("unknown mode")
-            s.wf["mode"] = mode
+            with s.lock:
+                if s.busy:
+                    raise RuntimeError("a cell is still running")
+                if s.raw:
+                    s.run_step(s.wf_reselect_code(mode, opts.get("loaded_id", s._loaded_id()), opts.get("group", "auto")))
+                else:
+                    s.wf["mode"] = mode
         elif name == "read":
             s.run_step(s.wf_read_code(mode=opts.get("mode", "single"), paths=opts.get("paths"),
                                       pattern=opts.get("pattern"), targetid=opts.get("targetid"),
-                                      sdss=opts.get("sdss"), group=opts.get("group", "date"),
-                                      format=opts.get("format", "auto")), "# read")
+                                      sdss=opts.get("sdss"), group=opts.get("group", "auto"),
+                                      format=opts.get("format", "auto")))
+        elif name == "remove":
+            with s.lock:
+                s.run_step(s.wf_remove_code(opts.get("indices"), opts.get("loaded_id")))
         elif name == "prepare":
             keys = ("z", "z_source", "rest_frame", "extinction", "ebv", "ra", "dec", "wmin", "wmax",
                     "telluric", "sky_lines", "absorption", "masks", "apply_to", "flux_unit", "resolution",
@@ -543,7 +558,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _index(self, page="index.html"):
         with open(os.path.join(STATIC, page), encoding="utf-8") as fh:
-            page = _versioned(fh.read().replace("__FANTASY_TOKEN__", self.token))
+            page = _versioned(fh.read().replace("__FANTASY_TOKEN__", self.token)
+                              .replace("__FANTASY_EXAMPLE__", html.escape(EXAMPLE)))
         self._send(page, "text/html; charset=utf-8")
 
     def _static(self, name):

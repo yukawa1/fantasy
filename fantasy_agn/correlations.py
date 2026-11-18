@@ -42,12 +42,12 @@ def _epoch_row(task):
         row[f"cont{continuum_at:g}"], row[f"cont{continuum_at:g}_err"] = r.continuum(continuum_at)
         if r.spectrum.z and r.spectrum.flux_unit:
             row[f"logL{continuum_at:g}"], row[f"logL{continuum_at:g}_err"] = r.luminosity(continuum_at)
-    if r._feii_components() and any(ln in ("Hb", "MgII2798") for ln in lines):
-        try:
-            f = r.feii()
-            row["R_FeII"], row["R_FeII_err"] = f["r_feii"], f["r_feii_err"]
-        except Exception:
-            row["R_FeII"], row["R_FeII_err"] = np.nan, np.nan
+    for comp in r._feii_components():
+        band = r._feii_band(comp)
+        if band["reference"] in lines:
+            f = r.feii(comp.name)
+            label = band["ratio_label"]
+            row[label], row[label + "_err"] = f["r_feii"], f["r_feii_err"]
     if any("[OIII]5007" in c.line_names for c in comps):
         m = r.measure("[OIII]5007")
         row["[OIII]5007_flux"], row["[OIII]5007_flux_err"] = m["flux"], m["flux_err"]
@@ -124,6 +124,10 @@ def epoch_table(results, lines=None, continuum_at=None, n_jobs=-1):
     return pd.DataFrame(rows)
 
 
+def _is_feii_ratio(col):
+    return col == "R_FeII" or (col.startswith("FeII") and col.endswith("/MgII2798"))
+
+
 def quantity_columns(table):
     """The quantities of an epoch table that have errors (the columns worth correlating), grouped: the continuum,
     the main broad line (flux, FWHM, sigma, shift, EW), R_FeII, the other broad lines, [OIII]."""
@@ -135,7 +139,7 @@ def quantity_columns(table):
     def key(c):
         if c.startswith(("cont", "logL")):
             return (0, 0, c)
-        if c == "R_FeII":
+        if _is_feii_ratio(c):
             return (2, 0, c)
         line, _, kind = c.rpartition("_")
         k = kinds.index(kind) if kind in kinds else 9
@@ -163,6 +167,8 @@ def _label(col):
         return f"log $\\lambda L_{{{col[4:]}}}$"
     if col == "R_FeII":
         return "$R_{\\rm Fe\\,II}$"
+    if _is_feii_ratio(col):
+        return plain_label(col)
     line, _, kind = col.rpartition("_")
     name = pretty_line(line)
     return {"flux": f"{name} flux", "fwhm": f"{name} FWHM", "sigma": f"{name} $\\sigma$", "shift": f"{name} shift",
@@ -181,6 +187,9 @@ def plain_label(col):
         return f"log λL{col[4:]}"
     if col == "R_FeII":
         return "R(Fe II)"
+    if _is_feii_ratio(col):
+        band = col.removeprefix("FeII").split("/")[0].replace("-", "–")
+        return f"Fe II {band} Å / Mg II"
     line, _, kind = col.rpartition("_")
     return f"{plain_line(line)} {'σ' if kind == 'sigma' else kind.upper() if kind in ('fwhm', 'ew') else kind}"
 
@@ -214,7 +223,7 @@ def epoch_correlations(table, columns=None):
 
 def _use_log(table, col):
     """Logarithmic by default for positive quantities (fluxes, widths, EWs); not for log L, shifts or R_FeII."""
-    if col.startswith("logL") or col.endswith("_shift") or col == "R_FeII":
+    if col.startswith("logL") or col.endswith("_shift") or _is_feii_ratio(col):
         return False
     v = table[col].to_numpy(float)
     return bool(np.all(v[np.isfinite(v)] > 0))

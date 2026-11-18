@@ -57,6 +57,7 @@ from .components import Lines, Polynomial, PowerLaw
 from .fitting import fit
 from .lines import line_wavelength
 from .model import Model
+from .wavelengths import vac_to_air
 
 __all__ = ("classify", "classify_fit", "Classification", "kauffmann03", "kewley01", "kewley06")
 
@@ -147,9 +148,10 @@ def _line_model(lines, broad, balmer_wing=True, broad_wing=False):
                     fwhm=(300, 50, NARROW_FWHM_MAX), shift=(0, -600, 600)))
     wing = [ln for ln in ("Hb", "[OIII]4959", "[OIII]5007", "[NII]6548", "Ha", "[NII]6583")
             if ln in narrow and (balmer_wing or ln not in ("Hb", "Ha"))]
-    m.add(Lines("outflow", wing, role="outflow",
-                ratios={a: b for a, b in ratios.items() if a in wing and b[0] in wing},
-                fwhm=(1100, NARROW_FWHM_MAX, 2500), shift=(-200, -1500, 500)))
+    if wing:
+        m.add(Lines("outflow", wing, role="outflow",
+                    ratios={a: b for a, b in ratios.items() if a in wing and b[0] in wing},
+                    fwhm=(1100, NARROW_FWHM_MAX, 2500), shift=(-200, -1500, 500)))
     if broad:
         bl = [ln for ln in ("Hb", "Ha") if ln in narrow]
         if broad_wing:                      # broad core + very broad wing; the core is tested
@@ -163,15 +165,14 @@ def _line_model(lines, broad, balmer_wing=True, broad_wing=False):
     return m
 
 
-def _fluxes(r):
-    """Narrow (narrow + outflow) flux and error of every diagnostic line."""
-    t = r.lines
-    t = t[t.component.isin(["narrow", "outflow"])]
-    out = {}
-    for ln, g in t.groupby("line"):
-        err = np.sqrt(np.nansum(np.where(np.isfinite(g.flux_err), g.flux_err, 0) ** 2))
-        out[ln] = (float(g.flux.sum()), float(err))
-    return out
+def _line_covered(used_wave, vacuum_wave, medium):
+    """Require a usable pixel on each side of line centre within half the maximum narrow FWHM."""
+    centre = vac_to_air(vacuum_wave) if medium == "air" else vacuum_wave
+    half_width = centre * (0.5 * NARROW_FWHM_MAX / C_KMS)
+    left = np.searchsorted(used_wave, centre, side="left") - 1
+    right = np.searchsorted(used_wave, centre, side="right")
+    return (left >= 0 and right < used_wave.size and used_wave[left] >= centre - half_width
+            and used_wave[right] <= centre + half_width)
 
 
 def _covers(spec, a, b, min_fraction=0.8):
@@ -302,7 +303,12 @@ class Classification:
             fig = self.fit.plot(fig=fig, title=f"{self.spectrum.name}: {self.label}")
             return savefig(fig, save) if save else fig
         if self.stellar_fit is None:
-            return self._plot_uv(fig, save)
+            if self.label.startswith("uv_"):
+                return self._plot_uv(fig, save)
+            from .plotting import savefig
+            ax = self.spectrum.plot(fig=fig)
+            ax.set_title(self.reason)
+            return savefig(ax.figure, save) if save else ax.figure
         from .plotting import COLORS, flux_label, new_figure, paper_style, savefig
         s, m = self.spectrum, self.measurements
         cont = self.stellar_fit.model_flux(s.wave)
@@ -327,7 +333,9 @@ class Classification:
                          f"\u03c3$_\\star$ = {m['sigma_star']:.0f} km/s", fontsize=9)
             ax.legend(loc="upper right", fontsize=7, ncol=3)
             ax2 = fig.add_subplot(gs[1, 0])
-            w = (s.wave > 6400) & (s.wave < 6740)
+            has_ha = m.get("broad_line", "Ha" if m.get("ha_covered", True) else "Hb") == "Ha"
+            a, b = (6400, 6740) if has_ha else (4750, 4980)
+            w = s.good & (s.wave > a) & (s.wave < b)
             if w.sum() > 10 and self.narrow_fit is not None:
                 res = s.flux - cont
                 ax2.plot(s.wave[w], res[w], color="0.35", lw=0.6, drawstyle="steps-mid")
@@ -336,10 +344,11 @@ class Classification:
                 ax2.plot(s.wave[w], self.broad_fit.model_flux(s.wave)[w], color="#D55E00", lw=1.0,
                          label="+ broad")
                 ax2.legend(fontsize=7, loc="upper left")
-                ax2.set_xlim(6400, 6740)
+                ax2.set_xlim(a, b)
             ax2.set_xlabel(r"Rest-frame wavelength ($\mathrm{\AA}$)")
             dec = "yes" if self.label.startswith("type1") else ("weak?" if m.get("weak_broad") else "no")
-            ax2.set_title(f"2 \u00b7 broad H\u03b1? {dec}  (\u0394BIC = {m['broad_dbic']:.0f}, "
+            balmer = "Hα" if has_ha else "Hβ"
+            ax2.set_title(f"2 \u00b7 broad {balmer}? {dec}  (\u0394BIC = {m['broad_dbic']:.0f}, "
                           f"S/N = {m['broad_snr']:.0f})", fontsize=9)
             ax3 = fig.add_subplot(gs[1, 1])
             x = np.linspace(-2.0, 0.46, 200)
@@ -461,8 +470,19 @@ def _narrow_class(meas, det, min_snr):
     ew = meas["ew_ha"]
     x, y = meas["log_nii_ha"], meas["log_oiii_hb"]
     ex, ey = meas["log_nii_ha_err"], meas["log_oiii_hb_err"]
-    if not np.isfinite(ew) or ew < PASSIVE_EW or meas["ha_snr"] < min_snr:
-        label, reason = "passive", f"no significant H-alpha emission (EW < {PASSIVE_EW} A)"
+    if not meas["ha_covered"]:
+        reason = "H-alpha lacks usable coverage in the fit; BPT and WHAN are unavailable"
+        if det["log_oiii_hb"] and y > 0.5:
+            return "seyfert2", reason + "; log [OIII]/Hb > 0.5 suggests a possible AGN", True
+        return "unknown", reason, True
+    if not np.isfinite(ew):
+        return "unknown", "the continuum does not constrain EW(H-alpha)", True
+    if ew < PASSIVE_EW:
+        label, reason = "passive", f"EW(H-alpha) = {ew:.2f} A is below {PASSIVE_EW} A"
+    elif not np.isfinite(meas["ha_snr"]):
+        return "unknown", "the significance of H-alpha is unavailable", True
+    elif meas["ha_snr"] < min_snr:
+        label, reason, uncertain = "passive", f"H-alpha is not detected at S/N {min_snr:g}", True
     elif ew < RETIRED_EW:
         label = "retired"
         reason = f"weak lines, EW(Ha) = {ew:.1f} A: ionised by old stars (WHAN)"
@@ -510,7 +530,10 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
              min_snr=3.0, templates="emiles", verbose=False):
     """
     Classify a rest-frame spectrum before choosing a model (see the module
-    documentation for the procedure).
+    documentation for the procedure). H-alpha has priority when both broad
+    Balmer lines pass the detection criteria. Missing or masked H-alpha makes
+    the narrow-line classification uncertain. A detected log [OIII]/Hb above
+    0.5 flags a possible AGN from the blue lines alone.
 
     :param spectrum: Spectrum; moved to the rest frame if it is not.
     :param wave_range: range for the stellar continuum fit (clipped to the data).
@@ -532,8 +555,13 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
     hi = min(wave_range[1], float(spec.wave[good].max()) - 5)
     meas = {}
 
-    lines = [ln for ln in DIAG_LINES if lo < line_wavelength(ln) < hi]
     lrange = (max(lo, 4750.0), min(hi, 6800.0))
+    used_wave = spec.wave[good & (spec.wave >= lrange[0]) & (spec.wave <= lrange[1])]
+    lines = [ln for ln in DIAG_LINES if _line_covered(used_wave, line_wavelength(ln), spec.medium)]
+    meas["ha_covered"] = "Ha" in lines
+    if not lines:
+        return Classification(spec, "unknown", True, "no optical diagnostic line has usable coverage",
+                              meas, None, None)
 
     def stages(masks):
         stellar, smooth = _stellar_fit(spec, (lo, hi), masks, templates)
@@ -542,6 +570,8 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             r_n = fit(resid, _line_model(lines, False), wave_range=lrange, verbose=False)
+            if "Ha" not in lines and "Hb" not in lines:
+                return stellar, smooth, cont, r_n, r_n
             r_b = fit(resid, _line_model(lines, True), wave_range=lrange, verbose=False)
             # In Seyfert 1s with broad lines of ~3000 km/s the Balmer part of the outflow wing (FWHM up to
             # 2500 km/s) can take the broad line, leaving the broad component only the far wings (very wide,
@@ -554,27 +584,45 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
                 r_b = r_f
         return stellar, smooth, cont, r_n, r_b
 
-    def broad_stats(r_n, r_b):
-        # the whole broad profile (core, and the very broad wing when it is fitted): flux, its S/N, FWHM
-        comps = [c.name for c in r_b.model.components if c.name in ("broad", "broad_wing")]
-        bl = r_b.lines[r_b.lines.component == "broad"].set_index("line")
-        bline = "Ha" if "Ha" in bl.index else ("Hb" if "Hb" in bl.index else None)
-        if bline is None:
-            return None, 0.0, 0.0, np.nan, np.nan
-        m = r_b.measure(bline, comps)
-        f, e = m["flux"], m["flux_err"]
-        return (bline, float(r_n.bic - r_b.bic), float(f / e) if e > 0 else 0.0, float(m["fwhm"]), float(f))
+    def broad_stats(r_n, r_b, cont):
+        # Prefer a detected broad line; when both lines qualify H-alpha is tested first.
+        dbic = float(r_n.bic - r_b.bic)
+        best_rank = -1
+        best = (None, dbic, 0.0, np.nan, np.nan)
+        for ln in ("Ha", "Hb"):
+            comps = [c.name for c in r_b._line_components() if c.role == "broad" and ln in c.line_names]
+            if not comps:
+                continue
+            m = r_b.measure(ln, comps)
+            f, e, width = m["flux"], m["flux_err"], m["fwhm"]
+            snr = f / e if np.isfinite(e) and e > 0 else np.nan
+            c_b = float(np.interp(line_wavelength(ln), spec.wave, cont))
+            ew = f / c_b if c_b > 0 else np.nan
+            width_ok = BROAD_FWHM_RANGE[0] < width < BROAD_FWHM_RANGE[1]
+            stats = (ln, dbic, float(snr), float(width), float(f))
+            if width_ok and snr > broad_snr and ew > broad_ew:
+                return stats
+            # A candidate can still require the second stellar fit or qualify as a weak broad line.
+            if width_ok and snr > broad_snr:
+                rank = 3
+            elif BROAD_FWHM_RANGE[0] < width < WEAK_BROAD_FWHM_MAX and snr > WEAK_BROAD_SNR:
+                rank = 2
+            else:
+                rank = int(np.isfinite(snr))
+            if rank > best_rank:
+                best, best_rank = stats, rank
+        return best
 
     # 1.-2. stellar continuum (narrow masks) and emission lines
     masks = _MASK_NARROW
     stellar, smooth, cont, r_n, r_b = stages(masks)
-    bline, dbic, snr, fwhm, bflux = broad_stats(r_n, r_b)
+    bline, dbic, snr, fwhm, bflux = broad_stats(r_n, r_b, cont)
     if dbic > broad_dbic and snr > broad_snr and BROAD_FWHM_RANGE[0] < fwhm < BROAD_FWHM_RANGE[1]:
         # broad lines: repeat with wide masks so that their wings do not
         # leak into the stellar fit
         masks = _MASK_BROAD
         stellar, smooth, cont, r_n, r_b = stages(masks)
-        bline, dbic, snr, fwhm, bflux = broad_stats(r_n, r_b)
+        bline, dbic, snr, fwhm, bflux = broad_stats(r_n, r_b, cont)
     hp = stellar.host_properties()
     meas["host_fraction_5100"] = hp["host_fraction_5100"][0] if lo < 5100 < hi else np.nan
     meas["sigma_star"], meas["sigma_star_err"] = hp["sigma_star"]
@@ -591,6 +639,7 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
     meas["stellar_dbic"] = float(smooth.bic - stellar.bic)
     meas["broad_dbic"], meas["broad_snr"], meas["broad_fwhm"] = dbic, snr, fwhm
     if bline is not None:
+        meas["broad_line"] = bline
         meas["broad_flux_" + bline] = bflux
         c_b = float(np.interp(line_wavelength(bline), spec.wave, cont))
         meas["broad_ew"] = bflux / c_b if c_b > 0 else np.nan
@@ -606,36 +655,37 @@ def classify(spectrum, wave_range=(3700, 6900), broad_dbic=25.0, broad_snr=5.0, 
     r = r_b if broad else r_n
 
     # 3. narrow-line diagnostics
-    fl = _fluxes(r)
+    from .diagnostics import _flux_function
+    fluxes = _flux_function(r, outflow=True)
+    if {"[SII]6716", "[SII]6731"} <= fluxes.keys():
+        fluxes["[SII]"] = lambda p: fluxes["[SII]6716"](p) + fluxes["[SII]6731"](p)
+    fl = {name: r.propagate(flux) for name, flux in fluxes.items()}
 
     def ratio(num, den):
         if num not in fl or den not in fl:
             return np.nan, np.nan, False
         (a, ea), (b, eb) = fl[num], fl[den]
-        det = a > min_snr * ea and b > min_snr * eb
         if a <= 0 or b <= 0:
             return np.nan, np.nan, False
-        return (float(np.log10(a / b)),
-                float(np.hypot(ea / a, eb / b) / np.log(10)), det)
 
-    def summed(names):
-        names = [n for n in names if n in fl]
-        if not names:
-            return None
-        return (sum(fl[n][0] for n in names), np.sqrt(sum(fl[n][1] ** 2 for n in names)))
+        def log_ratio(p):
+            x, y = fluxes[num](p), fluxes[den](p)
+            return np.log10(x / y) if x > 0 and y > 0 else np.nan
 
-    if summed(["[SII]6716", "[SII]6731"]):
-        fl["[SII]"] = summed(["[SII]6716", "[SII]6731"])
+        value, error = r.propagate(log_ratio)
+        return float(value), float(error), ea > 0 and eb > 0 and a > min_snr * ea and b > min_snr * eb
+
     det = {}
     for key, num, den in (("log_nii_ha", "[NII]6583", "Ha"), ("log_oiii_hb", "[OIII]5007", "Hb"),
                           ("log_sii_ha", "[SII]", "Ha"), ("log_oi_ha", "[OI]6300", "Ha")):
         meas[key], meas[key + "_err"], det[key] = ratio(num, den)
-    if "Ha" in fl:
+    meas["ha_covered"] = "Ha" in fl
+    if meas["ha_covered"]:
         cont_ha = float(np.interp(line_wavelength("Ha"), spec.wave, cont))
         meas["ew_ha"] = fl["Ha"][0] / cont_ha if cont_ha > 0 else np.nan
-        meas["ha_snr"] = fl["Ha"][0] / fl["Ha"][1] if fl["Ha"][1] > 0 else 0.0
+        meas["ha_snr"] = float(fl["Ha"][0] / fl["Ha"][1]) if fl["Ha"][1] > 0 else np.nan
     else:
-        meas["ew_ha"], meas["ha_snr"] = np.nan, 0.0
+        meas["ew_ha"], meas["ha_snr"] = np.nan, np.nan
 
     host = meas["host_fraction_5100"]
     uncertain = False
@@ -686,7 +736,8 @@ def classify_fit(result, broad_snr=5.0, min_snr=3.0, outflow=True, preliminary=N
     * otherwise the narrow-line ratios and EW(H-alpha) of the fit
       (:meth:`FitResult.diagnostics`) place it on the BPT and WHAN diagrams: star-forming,
       composite, Seyfert 2, LINER, retired or passive. A ratio enters when both lines have
-      S/N >= ``min_snr``.
+      S/N >= ``min_snr``. Without usable H-alpha coverage the narrow-line class is uncertain.
+      A detected log [OIII]/Hb > 0.5 flags a possible AGN on the blue lines alone.
 
     For a type 1 the position of its narrow lines is given too (``measurements['narrow_class']``).
 
@@ -698,43 +749,52 @@ def classify_fit(result, broad_snr=5.0, min_snr=3.0, outflow=True, preliminary=N
     """
     spec = result.spectrum
     meas = {"source": "fit"}
-    lines = result.lines
-    roles = {c.name: c.role for c in result._line_components()}
-    narrow_roles = ("narrow", "outflow") if outflow else ("narrow",)
+    from .diagnostics import _flux_function
+    fluxes = _flux_function(result, outflow)
+    used_wave = spec.wave[result.mask]
+    measured = {}
 
     def line_flux(name):
-        t = lines[(lines.line == name) & lines.component.map(lambda c: roles.get(c) in narrow_roles)]
-        if t.empty:
+        if name not in fluxes:
             return np.nan, np.nan
-        return float(t.flux.sum()), float(np.sqrt(np.nansum(t.flux_err.to_numpy() ** 2)))
+        if name not in measured:
+            measured[name] = result.propagate(fluxes[name])
+        return measured[name]
 
     def detected(*names):
         for n in names:
             f, e = line_flux(n)
-            if not (np.isfinite(f) and f > 0 and np.isfinite(e) and f > min_snr * e):
+            if not (np.isfinite(f) and f > 0 and np.isfinite(e) and e > 0 and f > min_snr * e):
                 return False
         return True
 
-    # 1. broad lines
-    bline, b = None, None
+    # 1. broad lines: a weak or unmeasured H-alpha must not hide a detected broad H-beta.
+    bline, b, best_rank = None, None, -1
     for ln in BROAD_LINES:
+        if not _line_covered(used_wave, line_wavelength(ln), spec.medium):
+            continue
         comps = [c.name for c in result._line_components() if c.role == "broad" and ln in c.line_names]
-        if comps:
-            try:
-                b = result.measure(ln, comps)
-                bline = ln
-            except Exception:                        # noqa: BLE001  (a line outside the data)
-                b = None
-            if b is not None:
-                break
-    broad = weak_broad = False
-    if b is not None:
-        snr = b["flux"] / b["flux_err"] if b["flux_err"] > 0 else (np.inf if b["flux"] > 0 else 0.0)
-        meas.update(broad_line=bline, broad_flux=b["flux"], broad_fwhm=b["fwhm"], broad_snr=float(snr),
-                    broad_ew=b["ew"])
-        wide = np.isfinite(b["fwhm"]) and b["fwhm"] >= BROAD_FWHM_RANGE[0]
-        broad = wide and snr >= broad_snr
-        weak_broad = not broad and wide and snr >= min_snr
+        if not comps:
+            continue
+        m = result.measure(ln, comps)
+        if not np.isfinite(m["flux"]):
+            continue
+        err = m["flux_err"]
+        snr = m["flux"] / err if np.isfinite(err) and err > 0 else np.nan
+        wide = m["fwhm"] >= BROAD_FWHM_RANGE[0]
+        if wide and snr >= broad_snr:
+            rank = 3
+        elif wide and snr >= min_snr:
+            rank = 2
+        else:
+            rank = int(np.isfinite(snr))
+        if rank > best_rank:
+            bline, b, best_rank = ln, m, rank
+            meas.update(broad_line=ln, broad_flux=m["flux"], broad_fwhm=m["fwhm"], broad_snr=float(snr),
+                        broad_ew=m["ew"])
+        if rank == 3:
+            break
+    broad, weak_broad = best_rank == 3, best_rank == 2
     # host
     meas["host_fraction_5100"], meas["sigma_star"] = np.nan, np.nan
     host_detected = False
@@ -766,22 +826,13 @@ def classify_fit(result, broad_snr=5.0, min_snr=3.0, outflow=True, preliminary=N
         meas[key], meas[key + "_err"] = val(q)
         det[key] = np.isfinite(meas[key]) and detected(*names)
     if np.isfinite(meas["log_sii_ha"]):              # [SII]: the doublet together
-        f1, e1 = line_flux("[SII]6716")
-        f2, e2 = line_flux("[SII]6731")
-        det["log_sii_ha"] = det["log_sii_ha"] and (f1 + f2) > min_snr * np.hypot(e1, e2)
+        sii, err = result.propagate(lambda p: fluxes["[SII]6716"](p) + fluxes["[SII]6731"](p))
+        det["log_sii_ha"] = det["log_sii_ha"] and err > 0 and sii > min_snr * err
     meas["ew_ha"] = val("EW(Ha) narrow")[0]
+    meas["ha_covered"] = "Ha" in fluxes
     f, e = line_flux("Ha")
-    meas["ha_snr"] = f / e if np.isfinite(f) and e > 0 else 0.0
-    has_ha = any("Ha" in c.line_names for c in result._line_components() if c.role in narrow_roles)
-
-    if has_ha:
-        n_label, n_reason, n_unc = _narrow_class(meas, det, min_snr)
-    elif det["log_oiii_hb"]:
-        n_label, n_reason, n_unc = (("seyfert2", "[OIII]/Hb > 0.5 without H-alpha (no BPT): probably an AGN", True)
-                                    if meas["log_oiii_hb"] > 0.5 else
-                                    ("unknown", "H-alpha is not in the fit: the BPT and WHAN diagrams need it", True))
-    else:
-        n_label, n_reason, n_unc = "unknown", "H-alpha is not in the fit: the BPT and WHAN diagrams need it", True
+    meas["ha_snr"] = float(f / e) if e > 0 else np.nan
+    n_label, n_reason, n_unc = _narrow_class(meas, det, min_snr)
     meas["narrow_class"] = n_label
 
     if broad:
@@ -796,7 +847,10 @@ def classify_fit(result, broad_snr=5.0, min_snr=3.0, outflow=True, preliminary=N
     else:
         label, reason, uncertain = n_label, n_reason, n_unc
         if b is None:
-            reason += "; no broad component in the model"
+            reason += "; no broad line with usable coverage in the model"
+        elif not np.isfinite(meas["broad_snr"]):
+            reason += f"; the broad {bline} flux has no usable uncertainty to test for a detection"
+            uncertain = True
         elif weak_broad:
             reason += (f"; weak broad {bline} (FWHM {b['fwhm']:.0f} km/s, S/N {meas['broad_snr']:.1f}): "
                        "type 1.8/1.9?")
@@ -807,7 +861,7 @@ def classify_fit(result, broad_snr=5.0, min_snr=3.0, outflow=True, preliminary=N
         meas["preliminary"] = preliminary.label
         if preliminary.label != label:
             reason += f" (the preliminary classification said {preliminary.label}"
-            reason += ("; the model has no broad lines)" if b is None and preliminary.label.startswith("type1") else ")")
+            reason += ("; the fit has no usable broad line)" if b is None and preliminary.label.startswith("type1") else ")")
     out = Classification(spec, label, bool(uncertain), reason, meas, None, result)
     out.fit = result
     return out

@@ -21,7 +21,8 @@ Marino et al. (2013, A&A 559, A114), O3N2 and N2 calibrations.
 import numpy as np
 import pandas as pd
 
-from .classify import kauffmann03, kewley01, kewley06, _above_kewley
+from .classify import kauffmann03, kewley01, kewley06, _above_kewley, _line_covered
+from .components import C_KMS, _in_medium
 from .extinction import fitzpatrick99
 from .lines import line_wavelength
 
@@ -31,18 +32,23 @@ CASE_B = {"starforming": 2.86, "agn": 3.1}
 
 
 def _flux_function(result, outflow):
-    """{line: list of parameter indices} for the narrow (+ outflow) fluxes."""
-    names = result.model.params.names
+    """Map each covered narrow line to its physical summed flux as a function of all parameters."""
     roles = ("narrow", "outflow") if outflow else ("narrow",)
-    out = {}
+    spec = result.spectrum
+    used_wave = spec.wave[result.mask]
+    selected = {}
     for comp in result._line_components():
-        if comp.role not in roles:
-            continue
-        for ln in comp.line_names:
-            key = f"{comp.name}.{ln}.flux"
-            if key in names:
-                out.setdefault(ln, []).append(names.index(key))
-    return out
+        if comp.role in roles:
+            for name, wave in zip(comp.line_names, comp._wave):
+                if _line_covered(used_wave, wave, spec.medium):
+                    selected.setdefault(name, []).append(comp.name)
+
+    fluxes = {}
+    for name, components in selected.items():
+        flux = result._line_flux_func(name, components)
+        if np.isfinite(flux(result.full)):
+            fluxes[name] = flux
+    return fluxes
 
 
 def _k(line):
@@ -89,16 +95,19 @@ def diagnostics(result, outflow=True, kind=None):
     unit, note). Quantities that the model or the data cannot give are left
     out.
 
+    Fluxes include every covered line of the selected components, including lines
+    specified through flux ratios. Errors propagate the joint fitted uncertainties.
+
     :param outflow: include the outflow wing in the line fluxes.
     :param kind: 'starforming' or 'agn' for the intrinsic Balmer decrement
         (default: from the BPT position, AGN above the Kewley et al. 2001 line).
     """
-    idx = _flux_function(result, outflow)
-    have = set(idx)
+    fluxes = _flux_function(result, outflow)
+    have = set(fluxes)
     k_ha, k_hb = _k("Ha"), _k("Hb")
 
     def flux(full, line):
-        return float(np.sum(full[idx[line]])) if line in idx else np.nan
+        return fluxes[line](full) if line in fluxes else np.nan
 
     def ratio(full, a, b):
         fa, fb = flux(full, a), flux(full, b)
@@ -177,11 +186,9 @@ def diagnostics(result, outflow=True, kind=None):
     ne = vals.get("n_e ([SII])", 100.0)
     ne = 100.0 if not np.isfinite(ne) else max(ne, 1.0)
     # electron temperatures (the auroral lines must be detected)
-    tab = result.lines
-
     def detected(line, snr=3.0):
-        t = tab[tab.line == line]
-        return len(t) and t.flux.sum() > snr * np.sqrt(np.nansum(t.flux_err ** 2))
+        value, error = result.propagate(fluxes[line])
+        return error > 0 and value > snr * error
 
     if {"[OIII]4959", "[OIII]5007", "[OIII]4363"} <= have and detected("[OIII]4363"):
         add("T_e ([OIII])", lambda f: _te_oiii(
@@ -192,18 +199,47 @@ def diagnostics(result, outflow=True, kind=None):
             dered(f, "[NII]6583", "[NII]5755") * (1 + ratio(f, "[NII]6548", "[NII]6583")), ne), "K",
             "Osterbrock & Ferland (2006)")
 
-    # WHAN: equivalent width of narrow H-alpha
+    # WHAN uses the observed line flux and the observed stellar + AGN continuum.
     if "Ha" in have:
+        model, ctx = result.model, result.spectrum.context
+        centre = _in_medium(line_wavelength("Ha"), ctx)
+        sidebands = centre + np.array([-60., 60.])
+        components = list(zip(model.components, model._slices()))
+        mult = model._multipliers()
+        roles = ("narrow", "outflow") if outflow else ("narrow",)
+        gas = [(c, sl, c.line_names.index("Ha")) for c, sl in components
+               if getattr(c, "role", None) in roles and "Ha" in c.line_names]
+        # Match the profile-measurement velocity aperture. Normalising the
+        # transmission by the sampled profile preserves exact integrated amplitudes.
+        grid = centre * (1 + np.linspace(-40000, 40000, 16001) / C_KMS) if mult else None
+
         def ew_ha(f):
-            from .lines import line_wavelength as lw
-            cont = result._agn_continuum(lw("Ha"), f)[0] if hasattr(result, "_agn_continuum") else np.nan
-            total = result.model.evaluate(np.array([lw("Ha") - 60, lw("Ha") + 60]),
-                                          result.spectrum.context, f, components=True)
-            line_free = sum(v for k, v in total.items()
-                            if not any(c.name == k and hasattr(c, "line_names") for c in result.model.components))
-            c_ha = float(np.mean(line_free)) if np.ndim(line_free) else np.nan
-            return flux(f, "Ha") / c_ha if c_ha > 0 else np.nan
-        add("EW(Ha) narrow", ew_ha, "A", "WHAN (Cid Fernandes et al. 2011)")
+            parts = model.evaluate(sidebands, ctx, f, components=True)
+            continuum = sum(np.mean(parts[c.name]) for c in model.components if c.kind in ("host", "continuum"))
+            if continuum <= 0:
+                return np.nan
+            if not mult:
+                return flux(f, "Ha") / continuum
+            transmissions = {i: c.value(grid, f[sl], ctx) for i, (c, sl) in enumerate(components) if i in mult}
+            observed = 0.0
+            for c, sl, k in gas:
+                amplitude = c.line_fluxes(f[sl])[k]
+                if amplitude == 0:
+                    continue
+                profile = c._unit_profiles(grid, f[sl], ctx)[:, k]
+                if hasattr(profile, "toarray"):
+                    profile = profile.toarray().ravel()
+                transmitted = np.asarray(profile)
+                for i in mult:
+                    if model._applies(components[i][0], c):
+                        transmitted = transmitted * transmissions[i]
+                norm = np.sum(profile)
+                if norm <= 0:
+                    return np.nan
+                observed += amplitude * np.sum(transmitted) / norm
+            return observed / continuum
+
+        add("EW(Ha) narrow", ew_ha, "A", "observed narrow H-alpha / local observed continuum (WHAN)")
 
     # metallicity of star-forming galaxies
     vals = {r[0]: r[1] for r in rows}

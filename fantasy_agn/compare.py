@@ -40,7 +40,9 @@ def default_quantities(result):
         return {}
     preferred = ("Hb", "Ha", "MgII2798", "CIV1549")
     lines = [ln for c in comps for ln in c.line_names]
-    line = next((ln for ln in preferred if ln in lines), lines[0])
+    line = result._primary_broad_line(tuple(dict.fromkeys([*preferred, *lines])))
+    if line is None:
+        return {}
 
     def broad(key):
         def f(r):

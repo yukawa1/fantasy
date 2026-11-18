@@ -9,12 +9,22 @@ window.MB = (() => {
   const call = (path, body) => api(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const GCOL = { continuum: "#52514e", host: "#008300", feii: "#e34948", narrow: "#1baf7a", outflow: "#eda100", broad: "#2a78d6", absorption: "#4a3aa7", other: "#9aa1ad" };
   const GNAME = { continuum: "continuum", host: "host", feii: "Fe II", narrow: "narrow", outflow: "outflow", broad: "broad", absorption: "absorption, dust", other: "other" };
-  const QS = [["broad Hb FWHM", "FWHM Hβ", "km/s", 0], ["broad Ha FWHM", "FWHM Hα", "km/s", 0], ["broad MgII FWHM", "FWHM Mg II", "km/s", 0],
-    ["broad CIV FWHM", "FWHM C IV", "km/s", 0], ["log M_BH", "log M_BH", "", 2], ["R_FeII", "R_FeII", "", 2], ["broad Ha/Hb", "Hα/Hβ broad", "", 2]];
+  const QS = [["broad Hb FWHM", "FWHM Hβ", "km/s", 0], ["broad Ha FWHM", "FWHM Hα", "km/s", 0], ["broad MgII2798 FWHM", "FWHM Mg II", "km/s", 0],
+    ["broad CIV1549 FWHM", "FWHM C IV", "km/s", 0], ["log M_BH", "log M_BH", "", 2], ["R_FeII", "Optical R(Fe II)", "", 2],
+    ["FeII2650-3050/MgII2798", "Fe II 2650–3050 Å / Mg II", "", 2],
+    ["FeII2200-3090/MgII2798", "Fe II 2200–3090 Å / Mg II", "", 2], ["broad Ha/Hb", "Hα/Hβ broad", "", 2]];
 
   // ================================================================ gallery
-  const G = { data: null, sel: null, tab: "comp", used: null, timer: null, specName: null, tableOpen: false, waitFor: null };
+  const G = { request: 0, data: null, sel: null, tab: "comp", used: null, timer: null, specName: null, tableOpen: false, waitFor: null };
   let cands = [], base = null, best = null, rec = null;
+  let galleryPayload, drawnData, drawnView, drawnCandidate;
+  function setGalleryData(data) {
+    const payload = JSON.stringify(data);
+    if (galleryPayload === payload) return;
+    galleryPayload = payload;
+    G.data = data;
+    rank();
+  }
 
   function rank() {
     cands = (G.data ? G.data.cands : []).filter((c) => !c.error && c.bic != null);
@@ -33,11 +43,18 @@ window.MB = (() => {
   function inUse(c) {                      // the session model is this candidate: its cell is the last model choice
     if (!S || !S.model || !S.cells) return false;
     const last = [...S.cells].reverse().find((x) => /^model = fa\./.test(x.code));
-    return !!last && last.code.replace(/\nmodel\s*$/, "").trim() === c.code.trim();
+    return !!last && last.code.replace(/^.*# results from the previous model$/gm, "").replace(/\nmodel\s*$/, "").trim() === c.code.trim();
   }
   async function load() {
-    try { G.data = await call("/api/wf/gallery"); } catch (e) { G.data = null; }
-    rank();
+    const scope = G.specName, request = ++G.request;
+    let result;
+    try { result = await call("/api/wf/gallery"); }
+    catch (e) {
+      if (scope === G.specName && request === G.request && page === "model") G.timer = setTimeout(load, 2000);
+      return;
+    }
+    if (scope !== G.specName || request !== G.request) return;
+    setGalleryData(result);
     if (G.waitFor && byKey(G.waitFor)) { G.sel = G.waitFor; G.picked = true; G.tab = "vs"; G.waitFor = null; }
     if (G.waitFor && G.data && !G.data.pending.length) G.waitFor = null;
     if (!G.picked || !byKey(G.sel)) G.sel = rec ? rec.key : null;      // follow the recommendation until you pick one
@@ -46,22 +63,54 @@ window.MB = (() => {
     if (G.data && (G.data.running || G.data.pending.length) && page === "model") G.timer = setTimeout(load, 2000);
   }
   function render() {
+    updateContext();
     if (!$("galcard")) return;
     const on = prepared() && ["single", "multi"].includes(mode());
     $("galcard").classList.toggle("hidden", !on);
     if (!on) return;
-    const name = prepared().id ?? prepared().name;
-    if (G.specName !== name) { G.specName = name; G.data = null; G.sel = null; G.picked = false; G.used = null; load(); return; }
+    const name = JSON.stringify([prepared().id, S.wf.reference]);
+    if (G.specName !== name) {
+      clearTimeout(G.timer); G.specName = name; G.sel = G.used = G.waitFor = null; G.picked = false;
+      setGalleryData(null); renderGallery(); load(); return;
+    }
     renderGallery();
   }
   async function runGallery() {
-    try { G.data = await call("/api/mb/gallery", {}); rank(); renderGallery(); clearTimeout(G.timer); G.timer = setTimeout(load, 1500); }
-    catch (e) { showError(e.message); }
+    const scope = G.specName;
+    try {
+      const response = await call("/api/mb/gallery", {});
+      if (scope !== G.specName) return;
+      setGalleryData(response); renderGallery(); clearTimeout(G.timer); G.timer = setTimeout(load, 1500);
+    } catch (e) { if (scope === G.specName) showError(e.message); }
   }
 
   function renderGallery() {
+    const body = $("gx-body"), main = $("main");
+    const view = JSON.stringify([G.sel, G.tab, G.matterOpen, body.clientWidth, cands.filter(inUse).map(c => c.key)]);
+    if (G.data === drawnData && view === drawnView) return;
+
+    const scroll = main.scrollTop, viewportTop = main.getBoundingClientRect().top;
+    const rows = body.querySelectorAll("#gx-alld[open] tbody tr[data-k]");
+    const anchor = [...rows].find(row => {
+      const rect = row.getBoundingClientRect();
+      return rect.top <= viewportTop && rect.bottom > viewportTop;
+    });
+    const offset = anchor?.getBoundingClientRect().top;
+    const codeScroll = drawnCandidate === G.sel ? body.querySelector(".gx-code")?.scrollTop : 0;
+    if ($("gx-alld")) G.tableOpen = $("gx-alld").open;
+    drawGalleryBody();
+    drawnData = G.data; drawnView = view; drawnCandidate = G.sel;
+
+    // Drawing an SVG measures its width while the table below it is still empty.
+    // Restore the reader's position after all sections have their final height.
+    main.scrollTop = scroll;
+    const row = anchor && body.querySelector(`#gx-all tr[data-k="${CSS.escape(anchor.dataset.k)}"]`);
+    if (row) main.scrollTop += row.getBoundingClientRect().top - offset;
+    const code = body.querySelector(".gx-code");
+    if (code && codeScroll) code.scrollTop = codeScroll;
+  }
+  function drawGalleryBody() {
     const body = $("gx-body"), D = G.data;
-    newButton();
     if (!D || (!D.cands.length && !D.running && !(D.pending || []).length)) {
       body.innerHTML = `<div class="gx-empty"><p>Fit variants of the recommended model on this spectrum: one broad component more and fewer, and each option
         of the preset (host, outflow wing, coronal lines, Fe II, …) switched on its own, then the best combination. They are ranked by BIC = χ² + k ln n,
@@ -84,12 +133,26 @@ window.MB = (() => {
     $("gx-alld").ontoggle = (e) => (G.tableOpen = e.target.open);
     if ($("gx-rerun")) $("gx-rerun").onclick = (e) => { e.preventDefault(); runGallery(); };
   }
-  function newButton() {
-    const d = DRAFT && !DRAFT.fitKey ? DRAFT : null;
-    $("gx-new").textContent = d ? "Continue your model →" : "+ Your own model";
-    $("gx-new").onclick = () => (d ? resume() : open(rec ? fromCand(rec) : S.model ? { model: true } : {}, rec ? rec.title : S.model ? "the current model" : "empty"));
-    $("gx-draft").innerHTML = d ? `unsaved edits · <a id="gx-draftnew">start a new one</a>` : "";
-    if (d) $("gx-draftnew").onclick = () => { DRAFT = null; newButton(); };
+  const context = () => JSON.stringify([prepared()?.id, S?.wf?.reference, S?.model]);
+  function buttons() {
+    const d = !!DRAFT;
+    if ($("openmb")) {
+      $("openmb").textContent = d ? "Resume draft" : "Edit model";
+      $("openmb").disabled = !prepared() || (!d && !S?.model) || !!S?.busy;
+    }
+    if ($("mbdraft")) $("mbdraft").textContent = d ? `Draft from ${DRAFT.label}` : "";
+    if ($("mbdiscard")) { $("mbdiscard").classList.toggle("hidden", !d); $("mbdiscard").onclick = discard; }
+  }
+  function confirmReplace() {
+    return !edited(B || DRAFT) || confirm("Replace the current draft? Its unapplied edits will be discarded.");
+  }
+  function updateContext() {
+    const draft = B || DRAFT;
+    if (draft && !draft.applying && draft.context !== context()) {
+      clearTimeout(prevTimer); DRAFT = B = null; showWB(false);
+      if (edited(draft)) toast("The active spectrum or model changed. Its draft was closed.");
+    }
+    buttons();
   }
   const fromCand = (c) => (c.state ? { state: c.state } : { preset: c.preset[0], kw: c.preset[1] });
 
@@ -132,8 +195,8 @@ window.MB = (() => {
   function matter() {
     if (!rec || cands.length < 3) return;
     const use = cands.slice().sort((a, b) => a.bic - b.bic).slice(0, 5);
-    const rows = QS.map(([k, lab, u, d]) => { const vals = use.map((c) => c.results[k]).filter((v) => v && isFinite(v[0])), r = rec.results[k];
-      if (vals.length < 2 || !r || !r[1]) return null;
+    const rows = QS.map(([k, lab, u, d]) => { const vals = use.map((c) => c.results[k]).filter((v) => v && Number.isFinite(v[0])), r = rec.results[k];
+      if (vals.length < 2 || !r || !Number.isFinite(r[0]) || !(r[1] > 0)) return null;
       const lo = Math.min(...vals.map((v) => v[0])), hi = Math.max(...vals.map((v) => v[0]));
       return { lab, u, d, r, lo, hi, rat: (hi - lo) / 2 / r[1] }; }).filter(Boolean);
     const top = rows.filter((q) => q.rat > 1).sort((a, b) => b.rat - a.rat);
@@ -156,7 +219,7 @@ window.MB = (() => {
       <div id="gx-tab"></div>`;
     const s = $("gx-big"), W = s.clientWidth || 900; s.setAttribute("viewBox", `0 0 ${W} 250`); mini(s, c, W, 250, true);
     $("gx-tabs").querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b.dataset.t === G.tab); b.onclick = () => { G.tab = b.dataset.t; renderGallery(); }; });
-    $("gx-cust").onclick = () => (c.mine && DRAFT && DRAFT.fitKey === c.key ? resume() : open(fromCand(c), c.title));
+    $("gx-cust").onclick = () => open(fromCand(c), c.title);
     if ($("gx-use")) $("gx-use").onclick = () => use(c);
     const ref = base || c, T = $("gx-tab");
     if (G.tab === "comp") {
@@ -170,10 +233,10 @@ window.MB = (() => {
       T.innerHTML = `<table class="tbl"><thead><tr><th></th><th class="num">${esc(ref.title)}</th><th class="num">${esc(c.title)}</th></tr></thead><tbody>
         ${row("χ²ν", ref.rchi2.toFixed(3), c.rchi2.toFixed(3))}${row("BIC", Math.round(ref.bic), `${Math.round(c.bic)} <span class="muted small">(${dB(c)})</span>`)}
         ${row("free parameters", ref.nfree, c.nfree)}${row("largest residual structure", ref.struct.toFixed(1) + "σ", c.struct.toFixed(1) + "σ")}
-        ${QS.map(([k, lab, u, d]) => ref.results[k] && c.results[k] ? row(`${lab} <span class="muted small">${u}</span>`, ref.results[k][0].toFixed(d), `${c.results[k][0].toFixed(d)}${c.results[k][1] ? ` <span class="muted small">± ${c.results[k][1].toFixed(d)}</span>` : ""}`) : "").join("")}
+        ${QS.map(([k, lab, u, d]) => Number.isFinite(ref.results[k]?.[0]) && Number.isFinite(c.results[k]?.[0]) ? row(`${lab} <span class="muted small">${u}</span>`, ref.results[k][0].toFixed(d), `${c.results[k][0].toFixed(d)}${c.results[k][1] ? ` <span class="muted small">± ${c.results[k][1].toFixed(d)}</span>` : ""}`) : "").join("")}
         ${row("parameters at a limit", ref.limits.length, c.limits.length)}</tbody></table>`;
     } else {
-      T.innerHTML = `<pre class="gx-code">${esc(c.code)}\nmodel</pre><p class="note"><b>Use this model</b> runs this as a cell of the session; the component editor below stays available for changes by hand.</p>`;
+      T.innerHTML = `<pre class="gx-code">${esc(c.code)}\nmodel</pre><p class="note"><b>Use this model</b> applies this candidate. Choose <b>Customize</b> to edit it first.</p>`;
     }
   }
   function table() {
@@ -187,9 +250,10 @@ window.MB = (() => {
     $("gx-all").querySelectorAll("[data-bar]").forEach((s) => { const c = byKey(s.dataset.bar), v = sc(c.vsBase);
       svgEl("line", { x1: 80, x2: 80, y1: 0, y2: 14, stroke: "#cfd3d9" }, s);
       if (c !== base) svgEl("rect", { x: v < 0 ? 80 + v * 78 : 80, y: 2, width: Math.abs(v) * 78, height: 10, rx: 2, fill: c.vsBase < -10 ? "#1f7a4d" : c.vsBase > 10 ? "#d4472a" : "#b8bec7", opacity: 0.8 }, s); });
-    $("gx-all").querySelectorAll("tbody tr").forEach((r) => (r.onclick = () => { G.sel = r.dataset.k; G.picked = true; renderGallery(); $("gx-detail").scrollIntoView({ behavior: "smooth", block: "nearest" }); }));
+    $("gx-all").querySelectorAll("tbody tr").forEach((r) => (r.onclick = () => { G.sel = r.dataset.k; G.picked = true; renderGallery(); }));
   }
   async function use(c) {
+    if (!confirmReplace()) return;
     const ok = await post("/api/model", c.state ? { action: "recipe", state: c.state } : { action: "presetkw", name: c.preset[0], kw: c.preset[1] });
     if (ok) { G.used = c.key; toast(`Model in use: ${c.title}`); renderGallery(); }
   }
@@ -201,7 +265,7 @@ window.MB = (() => {
   const TGROUP = { PowerLaw: "continuum", BrokenPowerLaw: "continuum", Blackbody: "continuum", Polynomial: "continuum", BalmerContinuum: "continuum",
     StellarPopulation: "host", HostGalaxy: "host", FeII: "feii", HighOrderBalmer: "feii", Absorption: "absorption", Extinction: "absorption" };
   const PROFILE_FIELDS = { h3: "gauss-hermite", h4: "gauss-hermite", fwhm_l: "voigt", span: "stratified", gamma: "stratified" };
-  const HIDE = new Set(["name", "lines", "ratios", "line_ratios", "max_ratios"]);
+  const HIDE = new Set(["name", "lines", "ratios", "line_ratios"]);
   const FIELD_LABEL = { fwhm: "FWHM (km/s)", shift: "velocity shift (km/s)", tie_kinematics: "one shift and width for all lines", flux_max: "largest flux",
     index: "slope", index_blue: "slope, blue side", index_red: "slope, red side", break_wave: "break wavelength (Å)", ebv: "E(B−V)", r_v: "R_V",
     sigma: "σ (km/s)", velocity: "velocity (km/s)", amp_max: "largest amplitude", max_wavelength: "reddest line (Å)", n_components: "eigenspectra",
@@ -216,34 +280,77 @@ window.MB = (() => {
   const wl = (e) => (Array.isArray(e) ? e[1] : LD.lines.find((l) => l.name === e)?.wave ?? 0);
   const R = () => $("mb");
 
-  function showWB(on) { R().classList.toggle("hidden", !on); document.body.classList.toggle("mb-open", on); if (on) R().scrollTop = 0; }
-  const edited = (b) => b && b.st && (b.undo.length || b.title.trim());
-  function resume() { B = DRAFT; DRAFT = null; B.add = false; showWB(true); draw(); newButton(); }
-  function close() { if (edited(B) || (B && B.fitKey)) DRAFT = B; B = null; showWB(false); if ($("gx-new")) newButton(); }
-  async function open(source, label) {
-    if (B && edited(B) && !B.fitKey && !confirm("Start again from this model? Your edits so far are lost.")) return draw();
-    B = { label, st: null, sel: null, info: null, prev: null, undo: [], redo: [], error: null, warn: [], busyPrev: false, seq: 0, pseq: 0, add: false, code: "", title: "" };
-    showWB(true); DRAFT = null; if ($("gx-new")) newButton();
-    R().innerHTML = `<div class="mb-in"><div class="mb-top"><div class="mb-head"><button class="mb-back" id="mb-close">← Back to the Model step</button></div></div>
-      <p class="note" style="margin-top:20px"><span class="spin"></span> taking “${esc(label)}” apart into components…</p></div>`;
-    $("mb-close").onclick = close;
+  let opener = null;
+  function showWB(on) {
+    const root = R(); if (!root) return;
+    root.classList.toggle("hidden", !on);
+    document.body.classList.toggle("mb-open", on);
+    if (on) {
+      root.setAttribute("role", "dialog"); root.setAttribute("aria-modal", "true");
+      root.setAttribute("aria-label", "Model editor"); root.scrollTop = 0;
+    } else if (opener) {
+      (opener.isConnected ? opener : $("openmb"))?.focus(); opener = null;
+    }
+  }
+  const edited = (b) => !!(b?.st && (JSON.stringify(b.st) !== JSON.stringify(b.start) || b.title.trim()));
+  function close() {
+    if (B?.applying) return;
+    if (B?.st) DRAFT = B;
+    clearTimeout(prevTimer); B = null; showWB(false); buttons();
+  }
+  function discard() {
+    if (B?.applying || !confirmReplace()) return;
+    clearTimeout(prevTimer); B = DRAFT = null; showWB(false); buttons();
+  }
+  function resume(name) {
+    opener = document.activeElement;
+    B = DRAFT; DRAFT = null; B.add = false;
+    if (name) B.sel = B.st.comps.find(c => c.kw.name === name)?.uid ?? B.sel;
+    showWB(true); draw(); $("mb-close").focus(); sync();
+  }
+  function openCurrent(name) {
+    updateContext();
+    if (DRAFT) return resume(name);
+    return S.model ? open({ model: true }, "active model", name) : openNew();
+  }
+  function openNew() { return open({ empty: true }, "new power law"); }
+  async function open(source, label, name) {
+    if (B?.applying) return;
+    if (!confirmReplace()) { if (B) draw(); return; }
+    if (!B) opener = document.activeElement;
+    DRAFT = B?.st ? B : DRAFT; // keep the previous draft until the new source opens successfully
+    const b = B = { label, source, context: context(), st: null, sel: null, info: null, prev: null, undo: [], redo: [],
+      error: null, warn: [], busyPrev: false, seq: 0, pseq: 0, add: false, code: "", title: "", ties: new Map() };
+    showWB(true);
+    R().innerHTML = `<div class="mb-in"><div class="mb-top"><div class="mb-head"><button class="mb-back" id="mb-close">← Back</button><h3>Model editor</h3></div></div>
+      <p class="note" role="status">Opening ${esc(label)}…</p></div>`;
+    $("mb-close").onclick = close; $("mb-close").focus();
     try {
-      if (!TYPES) { const [t, l] = await Promise.all([call("/api/wf/mbtypes"), call("/api/wf/mblines")]); TYPES = Object.fromEntries(t.map((x) => [x.type, x])); LD = l; }
-      const st = source.state ? clone(source.state) : (await call("/api/mb/decompose", { source })).state;
+      const [types, lines, data] = await Promise.all([TYPES ? null : call("/api/wf/mbtypes"), call("/api/wf/mblines"),
+        call("/api/mb/decompose", { source })]);
+      if (B !== b || b.context !== context()) return;
+      if (types) TYPES = Object.fromEntries(types.map((x) => [x.type, x]));
+      LD = lines;
+      b.serverContext = data.context;
+      const st = data.state;
       st.comps.forEach((c) => (c.uid = ++UID));
-      B.st = st; B.start = clone(st); B.sel = st.comps.find((c) => c.type === "Lines" && c.kw.role === "broad")?.uid || st.comps[0]?.uid;
+      b.st = st; b.start = clone(st); b.sel = st.comps.find(c => c.kw.name === name)?.uid ??
+        st.comps.find(c => c.type === "Lines" && c.kw.role === "broad")?.uid ?? st.comps[0]?.uid;
+      DRAFT = null;
       await sync(true);
-      B.startNfree = B.info ? B.info.nfree : 0;
-    } catch (e) { B.error = e.message; }
-    draw();
+      if (B !== b) return;
+      b.startNfree = b.info?.nfree || 0;
+    } catch (e) { if (B !== b) return; b.error = e.message; }
+    draw(); $("mb-close")?.focus();
   }
   const comp = (uid) => B.st.comps.find((c) => c.uid === uid);
   const ready = (c) => c.on !== false && !(c.type === "Lines" && !(c.kw.lines || []).length) && !(c.type === "Absorption" && !(c.kw.troughs || []).length);
   const payload = () => ({ ...B.st, comps: B.st.comps.filter(ready).map(({ type, kw, on }) => ({ type, kw, on })) });
   function edit(fn) {
+    if (B.applying) return;
     B.undo.push(clone(B.st)); if (B.undo.length > 80) B.undo.shift(); B.redo = [];
     try { fn(); } catch (e) { B.st = B.undo.pop(); B.error = e.message; return draw(); }
-    B.error = null; sync();
+    B.error = B.actionError = null; sync();
   }
   function undo(dir) {
     const [from, to] = dir < 0 ? [B.undo, B.redo] : [B.redo, B.undo];
@@ -251,20 +358,23 @@ window.MB = (() => {
   }
   async function sync(first) {
     const s = ++B.seq, b = B;
+    ++b.pseq; clearTimeout(prevTimer); b.pending = true;
     let r; try { r = await call("/api/mb/build", { state: payload() }); } catch (e) { r = { error: e.message }; }
     if (b !== B || s !== B.seq) return;
+    b.pending = false;
     if (r.error) B.error = r.error; else { B.info = r; B.code = r.code; B.warn = r.warnings || []; B.error = null; }
     if (!first) draw();
     if (!r.error) schedulePreview();
   }
   function schedulePreview() {
     clearTimeout(prevTimer);
+    const b = B, s = ++b.pseq;
     prevTimer = setTimeout(async () => {
-      if (!B) return;
-      const s = ++B.pseq, b = B; B.busyPrev = true; plot();
+      if (b !== B || s !== b.pseq) return;
+      B.busyPrev = true; plot();
       let r; try { r = await call("/api/mb/preview", { state: payload() }); } catch (e) { r = { error: e.message }; }
       if (b !== B || s !== B.pseq) return;
-      B.busyPrev = false; if (!r.error) B.prev = r; plot();
+      B.busyPrev = false; B.previewError = r.error || null; B.prev = r.error ? null : r; plot();
     }, 450);
   }
   const infoOf = (c) => B.info?.components.find((q) => q.name === c.kw.name);
@@ -289,6 +399,7 @@ window.MB = (() => {
     const b = kw.name || { Lines: kw.role || "lines", PowerLaw: "continuum", BrokenPowerLaw: "continuum", Blackbody: "blackbody" }[type] || d.name || type.toLowerCase();
     const c = { uid: ++UID, type, on: true, kw: { ...d, ...kw } };
     if (type === "Lines") { c.kw.lines = c.kw.lines || []; Object.assign(c.kw, ROLEDEF[c.kw.role || "narrow"], kw); }
+    if (type === "Calibration") c.kw.wave_range = (B.st.wave_range || LD.range).slice();
     if (type === "Absorption") c.kw.troughs = kw.troughs || [];
     c.kw.name = uniqueName(b);
     return c;
@@ -300,31 +411,47 @@ window.MB = (() => {
     if (!B) return showWB(false);
     if (!B.st) { R().innerHTML = `<div class="mb-in"><div class="mb-top"><div class="mb-head"><button class="mb-back" id="mb-close">← Back to the Model step</button></div></div><p class="callout">${esc(B.error || "")}</p></div>`; $("mb-close").onclick = close; return; }
     const c = comp(B.sel), nf = B.info?.nfree ?? 0, dn = nf - (B.startNfree ?? nf);
-    const focusId = document.activeElement?.id, keepOpen = $("mb-code")?.open, sy = R().scrollTop;
+    const incomplete = B.st.comps.filter(c => c.on !== false && !ready(c)).map(c => c.kw.name);
+    const cannotApply = B.error || B.pending || B.applying || incomplete.length;
+    const focused = R().contains(document.activeElement) ? document.activeElement : null;
+    const focusId = focused?.id;
+    const unfinishedInput = focused?.matches("input[type=text],input:not([type])") && focused.value !== focused.defaultValue
+      ? { value: focused.value, start: focused.selectionStart, end: focused.selectionEnd } : null;
+    const focusSelector = focused && !focusId && Object.keys(focused.dataset).length ?
+      focused.tagName + Object.keys(focused.dataset).map(k => `[data-${k.replace(/[A-Z]/g, a => "-" + a.toLowerCase())}="${CSS.escape(focused.dataset[k])}"]`).join("") : null;
+    const keepOpen = $("mb-code")?.open, sy = R().scrollTop;
     const srcs = [["model", "the current model"], ["empty", "empty: one power law"]].filter(([k]) => k !== "model" || S.model).concat(cands.map((q) => [q.key, q.title]));
-    R().innerHTML = `<div class="mb-in"><div class="mb-top"><div class="mb-head"><button class="mb-back" id="mb-close" title="Esc · your edits are kept">← Back to the Model step</button><span class="mb-vsep"></span><h3>Your own model</h3>
-        <span class="muted small">from</span><select id="mb-from" class="small"><option value="">${esc(B.label)}</option>${srcs.map(([k, t]) => `<option value="${esc(k)}">${esc(t)}</option>`).join("")}</select>
+    R().innerHTML = `<div class="mb-in"><div class="mb-top"><div class="mb-head"><button class="mb-back" id="mb-close" title="Escape · keep this draft">← Back · keep draft</button><span class="mb-vsep"></span><h3>Model editor</h3>
+        <label class="muted small" for="mb-from">Start from</label><select id="mb-from" class="small"><option value="">${esc(B.label)}</option>${srcs.map(([k, t]) => `<option value="${esc(k)}">${esc(t)}</option>`).join("")}</select>
         <button class="btn icon" id="mb-undo" title="Undo (⌘Z)" ${B.undo.length ? "" : "disabled"}>↶</button><button class="btn icon" id="mb-redo" title="Redo (⇧⌘Z)" ${B.redo.length ? "" : "disabled"}>↷</button>
         <span class="grow"></span><span class="muted small">fit range</span><input class="mb-num" id="mb-wr0" value="${fmtN(B.st.wave_range?.[0])}"><span class="muted small">–</span><input class="mb-num" id="mb-wr1" value="${fmtN(B.st.wave_range?.[1])}"><span class="muted small">Å</span></div></div>
       <div class="mb-plot" id="mb-plot"><div class="mb-cap" id="mb-cap"></div><svg id="mb-svg"></svg><div class="mb-pick hidden" id="mb-pick"></div></div>
       <div class="mb-grid"><div class="mb-stack" id="mb-stack">${stackHTML()}</div><div class="mb-insp" id="mb-insp">${c ? inspHTML(c) : '<p class="muted">Select a component, or add one.</p>'}</div></div>
       ${B.warn.length ? `<p class="note" style="color:var(--warn)">${B.warn.map(esc).join("<br>")}</p>` : ""}
-      <details class="mb-codebox" id="mb-code" ${keepOpen ? "open" : ""}><summary>Code <span class="muted small">· exactly what is fitted · Use this model runs it as a session cell</span></summary><pre class="gx-code">${esc(B.code)}</pre></details>
+      <details class="mb-codebox" id="mb-code" ${keepOpen ? "open" : ""}><summary>Code <span class="muted small">· exactly what is fitted · Apply model runs it as a session cell</span></summary><pre class="gx-code">${esc(B.code)}</pre></details>
       <div class="mb-bot"><div class="mb-foot"><span class="mb-stat"><b>${B.st.comps.filter(ready).length}</b> components · <b>${nf}</b> free parameters ${dn ? `<span class="${dn > 0 ? "up" : "dn"}">${dn > 0 ? "+" : ""}${dn} vs start</span>` : ""}</span>
         <span class="grow"></span><input type="text" id="mb-title" placeholder="name it (optional)" value="${esc(B.title)}">
-        <button class="btn" id="mb-use" ${B.error ? "disabled" : ""} title="Make it the session model, without fitting it here">Use this model</button>
-        <button class="btn primary" id="mb-fit" ${B.error ? "disabled" : ""} title="Fit it on this spectrum and rank it among the candidates">Fit and rank it</button></div>
-        ${B.error ? `<p class="callout" style="margin:0 0 8px">${esc(B.error)}</p>` : ""}</div></div>`;
+        <button class="btn" id="mb-drop">Discard draft</button>
+        <button class="btn" id="mb-fit" ${cannotApply ? "disabled" : ""} title="Compare this draft with the gallery candidates">Fit and rank</button>
+        <button class="btn primary" id="mb-use" ${cannotApply ? "disabled" : ""}>${B.applying ? "Applying…" : "Apply model"}</button></div>
+        ${incomplete.length ? `<p class="note">Add lines or troughs to ${incomplete.map(esc).join(", ")} or disable the component.</p>` : ""}
+        ${B.error || B.actionError ? `<p class="callout" role="alert">${esc(B.error || B.actionError)}</p>` : ""}</div></div>`;
     R().scrollTop = sy;
     wire(); plot();
-    if (focusId && $(focusId)) $(focusId).focus();
+    const replacement = focusId ? $(focusId) : focusSelector ? R().querySelector(focusSelector) : null;
+    if (unfinishedInput && replacement instanceof HTMLInputElement) {
+      replacement.value = unfinishedInput.value;
+      replacement.setSelectionRange(unfinishedInput.start, unfinishedInput.end);
+    }
+    replacement?.focus({ preventScroll: true });
+    if (B.applying) R().querySelectorAll("button,input,select").forEach(el => el.disabled = true);
   }
   function stackHTML() {
     const by = {}; B.st.comps.forEach((c) => (by[groupOf(c)] = by[groupOf(c)] || []).push(c));
     return `<div class="mb-addw"><button class="btn mb-addb" id="mb-add">${B.add ? "× Close the list" : "+ Add component"}</button>${B.add ? paletteHTML() : ""}</div>` +
       GROUPS.filter(([g]) => by[g]).map(([g, lab]) => `<div class="mb-sg"><div class="mb-sgh"><i style="background:${GCOL[g] || GCOL.other}"></i>${lab}</div>
       ${by[g].map((c) => { const inf = infoOf(c), off = c.on === false, empty = !ready(c) && !off;
-        return `<div class="mb-row${c.uid === B.sel ? " sel" : ""}${off ? " off" : ""}" data-u="${c.uid}">
+        return `<div tabindex="0" class="mb-row${c.uid === B.sel ? " sel" : ""}${off ? " off" : ""}" data-u="${c.uid}">
           <input type="checkbox" class="mb-tg" data-on="${c.uid}" ${off ? "" : "checked"} title="${off ? "include it" : "leave it out (keeps the settings)"}">
           <span class="mb-nm">${esc(c.kw.name)}</span><span class="mb-ty">${c.type}${c.type === "Lines" && c.kw.profile && c.kw.profile !== "gaussian" ? " · " + c.kw.profile : ""}</span>
           <span class="mb-sum">${empty ? '<span style="color:var(--warn)">add lines</span>' : c.type === "Lines" ? esc((c.kw.lines || []).map(lineName).slice(0, 4).join(" ")) + ((c.kw.lines || []).length > 4 ? ` +${c.kw.lines.length - 4}` : "") : ""}</span>
@@ -334,7 +461,7 @@ window.MB = (() => {
   function paletteHTML() {
     const grp = [["Lines", [["Lines", "narrow", "Narrow lines"], ["Lines", "broad", "Broad lines"], ["Lines", "outflow", "Outflow / wing"]]],
       ["Continuum", [["PowerLaw"], ["BrokenPowerLaw"], ["Blackbody"], ["Polynomial"], ["BalmerContinuum"]]],
-      ["Templates and host", [["FeII"], ["HighOrderBalmer"], ["StellarPopulation"], ["HostGalaxy"]]], ["Absorption and dust", [["Absorption"], ["Extinction"]]]];
+      ["Templates and host", [["FeII"], ["HighOrderBalmer"], ["StellarPopulation"], ["HostGalaxy"]]], ["Absorption and dust", [["Absorption"], ["Extinction"]]], ["Calibration", [["Calibration"]]]];
     const doc = (t) => esc((TYPES[t]?.doc || "").split(/(?<=\.)\s/)[0].slice(0, 110));
     return `<div class="mb-pal">${grp.map(([h, items]) => `<div class="mb-palh">${h}</div>${items.map(([t, role, lab]) => `<button class="mb-pi" data-new="${t}" data-role="${role || ""}"><b>${lab || t}</b><span>${role ? `role='${role}' · ${ROLEDEF[role].fwhm[1]}–${ROLEDEF[role].fwhm[2]} km/s` : doc(t)}</span></button>`).join("")}`).join("")}
       <div class="mb-palh">A line set as a new component</div><div class="mb-chips">${Object.entries(LD.sets).map(([k, s]) => `<button class="mb-chip" data-set="${k}" title="${esc(s.lines.join(", "))}">${esc(s.label)} <span class="muted">${s.lines.length}</span></button>`).join("")}</div></div>`;
@@ -354,10 +481,16 @@ window.MB = (() => {
         <div class="mb-lns">${(kw.lines || []).map((e, j) => { const n = lineName(e), w = Array.isArray(e) ? e[1] : LD.lines.find((l) => l.name === n)?.wave;
           return `<span class="mb-ln" data-hl="${esc(n)}">${esc(n)}${w ? `<small>${Math.round(w)}</small>` : ""}<button data-rml="${j}" title="remove">×</button></span>`; }).join("")}
           <span class="mb-sugw"><input type="text" id="mb-addln" placeholder="+ line, ion or Å" autocomplete="off" spellcheck="false"></span></div>
-        ${ratioHTML(c)}`;
+        ${ratioHTML(c)}
+        ${(kw.lines || []).length > 1 ? `<details class="mb-split"><summary>Move lines into a separate component</summary>
+        <div class="mb-chips">${kw.lines.map(e => `<label><input type="checkbox" data-split="${esc(lineName(e))}"> ${esc(lineName(e))}</label>`).join("")}</div>
+        <label>Component name <input id="mb-splitname" value="${esc(uniqueName(kw.name + "_split"))}"></label>
+        <button class="btn small" id="mb-split">Split selected lines</button></details>` : ""}`;
     }
     if (others.length && inf?.params.some((p) => p.name === kw.name + ".fwhm"))
       h += `<span class="mb-lbl">Kinematics</span><div class="mb-frow"><span>same shift and width as</span><select id="mb-tiekin" class="small"><option value="">— its own —</option>${others.map((q) => `<option ${tied === q.kw.name ? "selected" : ""}>${esc(q.kw.name)}</option>`).join("")}</select></div>`;
+    if (B.source.model && fitDone()?.kind === "single" && B.start.comps.some(q => q.uid === c.uid && JSON.stringify(q.kw) === JSON.stringify(c.kw)))
+      h += '<div class="note small" id="mb-tieconfidence"></div>';
     h += `<span class="mb-lbl">Settings</span><div>${fields.map((f) => fieldHTML(f, kw[f.key])).join("")}</div>`;
     if (inf) h += paramsHTML(c, inf);
     return h;
@@ -391,7 +524,7 @@ window.MB = (() => {
           <td><input class="mb-num" data-p="${esc(p.name)}" data-k="min" value="${fmtN(p.min)}" ${dis}></td>
           <td><input class="mb-num" data-p="${esc(p.name)}" data-k="max" value="${fmtN(p.max)}" ${dis}></td>
           <td><input type="checkbox" data-p="${esc(p.name)}" data-k="fixed" ${p.fixed ? "checked" : ""} ${dis}></td>
-          <td><span class="mb-sugw"><input type="text" class="mb-tie" autocomplete="off" spellcheck="false" data-lin="${p.linear ? 1 : 0}" data-p="${esc(p.name)}" data-k="tie" value="${esc(p.tie ? p.tie[0] : "")}" placeholder="—"></span>${p.tie ? `<input class="mb-num f" data-p="${esc(p.name)}" data-k="factor" value="${fmtN(p.tie[1])}" title="factor">` : ""}</td>
+          <td><span class="mb-sugw"><input type="text" class="mb-tie" autocomplete="off" spellcheck="false" data-lin="${p.linear ? 1 : 0}" data-p="${esc(p.name)}" data-k="tie" value="${esc(p.tie ? p.tie[0] : "")}" placeholder="—"></span>${p.tie ? `<input class="mb-num f" data-p="${esc(p.name)}" data-k="factor" value="${fmtN(p.tie[1])}" title="tie factor">${p.linear ? "" : ` + <input class="mb-num f" data-p="${esc(p.name)}" data-k="offset" value="${fmtN(p.tie[2] || 0)}" title="tie offset">`}` : ""}</td>
           <td>${o ? `<button class="mb-x" data-rst="${esc(p.name)}" title="back to the component's own setting">↺</button>` : ""}</td></tr>`; }).join("")}
       </tbody></table></details>`;
   }
@@ -404,6 +537,7 @@ window.MB = (() => {
     $("mb-undo").onclick = () => undo(-1); $("mb-redo").onclick = () => undo(1);
     ["mb-wr0", "mb-wr1"].forEach((id, k) => ($(id).onchange = (e) => edit(() => { const v = parseN(e.target.value); B.st.wave_range = B.st.wave_range || LD.range.slice(); B.st.wave_range[k] = v; })));
     $("mb-title").oninput = (e) => (B.title = e.target.value);
+    $("mb-drop").onclick = discard;
     $("mb-fit").onclick = fitMine;
     $("mb-use").onclick = useMine;
     $("mb-add").onclick = () => { B.add = !B.add; draw(); };
@@ -411,6 +545,8 @@ window.MB = (() => {
     q("[data-set]").forEach((b) => (b.onclick = () => edit(() => { const s = LD.sets[b.dataset.set], br = /broad|feii_IZw1/.test(b.dataset.set);
       const n = newComp("Lines", { role: br ? "broad" : "narrow", name: b.dataset.set.toLowerCase(), lines: s.lines.slice() }); B.st.comps.push(n); B.sel = n.uid; B.add = false; })));
     q(".mb-row[data-u]").forEach((r) => (r.onclick = (e) => { if (e.target.closest("button,input")) return; B.sel = +r.dataset.u; draw(); }));
+    q(".mb-row[data-u]").forEach(r => r.onkeydown = e => { if (e.target === r && ["Enter", " "].includes(e.key)) {
+      e.preventDefault(); B.sel = +r.dataset.u; draw(); R().querySelector(`[data-u="${B.sel}"]`)?.focus(); } });
     q("[data-on]").forEach((i) => (i.onchange = () => edit(() => (comp(+i.dataset.on).on = i.checked))));
     q("[data-del]").forEach((b) => (b.onclick = () => edit(() => { const k = B.st.comps.findIndex((x) => x.uid === +b.dataset.del); B.st.comps.splice(k, 1); if (B.sel === +b.dataset.del) B.sel = B.st.comps[Math.max(0, k - 1)]?.uid; })));
     q("[data-dup]").forEach((b) => (b.onclick = () => edit(() => { const o = comp(+b.dataset.dup), n = { ...clone(o), uid: ++UID }; n.kw.name = uniqueName(o.kw.name.replace(/\d+$/, "") || o.kw.name);
@@ -420,6 +556,8 @@ window.MB = (() => {
         if (v.tie && v.tie[0].startsWith(pre)) v.tie[0] = n.kw.name + "." + v.tie[0].slice(pre.length);
         B.st.params[n.kw.name + "." + k.slice(pre.length)] = v; } })));
     if (!c) return;
+    if ($("mb-split")) $("mb-split").onclick = () => split(c);
+    if ($("mb-tieconfidence") && $("mb-tiekin")) tieConfidence(c);
     $("mb-iname").onchange = (e) => edit(() => rename(c, e.target.value));
     q("[data-seg]").forEach((b) => (b.onclick = () => edit(() => { const k = b.dataset.seg, v = b.dataset.v; c.kw[k] = v;
       if (k === "role" && ROLEDEF[v]) { c.kw.fwhm = ROLEDEF[v].fwhm.slice(); c.kw.shift = ROLEDEF[v].shift.slice(); dropOverrides(c, "fwhm"); dropOverrides(c, "shift"); } })));
@@ -452,9 +590,50 @@ window.MB = (() => {
     q("[data-p]").forEach((i) => (i.onchange = () => edit(() => { const n = i.dataset.p, k = i.dataset.k, o = (B.st.params[n] = B.st.params[n] || {});
       if (k === "fixed") o.fixed = i.checked;
       else if (k === "tie") { const v = i.value.trim(); if (v) { if (!B.info.components.some((x) => x.params.some((p) => p.name === v))) throw new Error(`no parameter ${v}`); o.tie = [v, 1]; } else o.tie = null; }
-      else if (k === "factor") o.tie = [o.tie?.[0] || infoOf(c).params.find((p) => p.name === n).tie[0], parseN(i.value)];
+      else if (k === "factor" || k === "offset") {
+        const tie = (o.tie || infoOf(c).params.find(p => p.name === n).tie).slice();
+        tie[k === "factor" ? 1 : 2] = parseN(i.value); o.tie = tie;
+      }
       else o[k] = parseN(i.value); })));
     q("[data-rst]").forEach((b) => (b.onclick = () => edit(() => delete B.st.params[b.dataset.rst])));
+  }
+  async function tieConfidence(c) {
+    const b = B, name = c.kw.name, key = JSON.stringify([name, fitDone()?.time, fitDone()?.rchi2]);
+    if (!b.ties.has(key)) b.ties.set(key, call("/api/wf/tie_check?component=" + encodeURIComponent(name)).catch(() => null));
+    const result = await b.ties.get(key);
+    if (B !== b || B.sel !== c.uid || !result?.available) return;
+    const select = $("mb-tiekin"), note = $("mb-tieconfidence");
+    if (!select || !note) return;
+    for (const opt of select.options) {
+      const row = result.rows.find(r => r.to === opt.value);
+      if (row) opt.textContent = opt.value + " · " + row.verdict +
+        (Number.isFinite(row.probability) ? ` (${Math.round(row.probability * 100)}%)` : "");
+    }
+    note.textContent = "Tie estimates from the last single-spectrum fit: " + result.targets + ".";
+  }
+  async function split(c) {
+    const b = B, seq = b.seq;
+    const lines = [...R().querySelectorAll("[data-split]:checked")].map(el => el.dataset.split);
+    const name = $("mb-splitname").value.trim();
+    try {
+      const data = await call("/api/mb/decompose", { source: { state: payload(), split: { component: c.kw.name, lines, name } } });
+      if (B !== b || b.seq !== seq) return;
+      const splitComps = data.state.comps.filter(q => q.kw.name === c.kw.name || q.kw.name === name);
+      edit(() => {
+        const [kept, moved] = splitComps; kept.uid = c.uid; moved.uid = ++UID;
+        b.st.comps.splice(b.st.comps.indexOf(c), 1, kept, moved); b.sel = moved.uid;
+        // Retain off/empty component overrides. Redirect their links to moved line parameters, too.
+        const redirect = target => {
+          const line = lines.find(line => target.startsWith(c.kw.name + "." + line + "."));
+          return line ? name + target.slice(c.kw.name.length) : target;
+        };
+        for (const [key, o] of Object.entries(b.st.params)) {
+          if (key.startsWith(c.kw.name + ".")) delete b.st.params[key];
+          else if (o.tie) o.tie[0] = redirect(o.tie[0]);
+        }
+        Object.assign(b.st.params, data.state.params);
+      });
+    } catch (e) { if (B === b) { b.actionError = e.message; draw(); } }
   }
   function addLine(c, v) {
     v = String(v).trim(); if (!v) return;
@@ -467,7 +646,7 @@ window.MB = (() => {
   }
   function removeLine(c, j) {
     const n = lineName(c.kw.lines[j]); c.kw.lines = c.kw.lines.filter((_, k) => k !== j);
-    for (const key of ["ratios", "line_ratios"]) if (c.kw[key]) { const d = Object.fromEntries(Object.entries(c.kw[key]).filter(([a, [b]]) => a !== n && b !== n)); c.kw[key] = Object.keys(d).length ? d : null; }
+    for (const key of ["ratios", "line_ratios", "max_ratios"]) if (c.kw[key]) { const d = Object.fromEntries(Object.entries(c.kw[key]).filter(([a, [b]]) => a !== n && b !== n)); c.kw[key] = Object.keys(d).length ? d : null; }
   }
 
   // ---------------------------------------------------------------- the spectrum
@@ -476,7 +655,7 @@ window.MB = (() => {
     const p = B.prev, W = s.clientWidth || 1100, H = 230, L = 44, Rm = 10, top = 22, ph = H - top - 22;
     s.setAttribute("viewBox", `0 0 ${W} ${H}`); s.innerHTML = "";
     const cap = $("mb-cap");
-    if (!p) { cap.innerHTML = `<span class="spin"></span> initial guess…`; return; }
+    if (!p) { cap.textContent = B.previewError ? "Preview unavailable · " + B.previewError : "Calculating initial guess…"; return; }
     cap.innerHTML = `${B.busyPrev ? '<span class="spin"></span> updating · ' : ""}<b>initial guess</b>, not a fit · updates as you edit · <span class="muted">click the spectrum to add a line there</span>`;
     const x0 = p.x0, x1 = p.x1; let hi = 0; p.flux.forEach((v, i) => { if (v != null && p.wave[i] >= p.w0 && p.wave[i] <= p.w1 && v > hi) hi = v; }); hi *= 1.08;
     const x = (w) => L + (w - x0) / (x1 - x0) * (W - L - Rm), y = (v) => top + (1 - v / hi) * ph;
@@ -577,24 +756,54 @@ window.MB = (() => {
   }
   async function fitMine() {
     const ch = summary(), title = B.title.trim() || (ch.length ? ch.slice(0, 3).join(" ") + (ch.length > 3 ? " …" : "") : "same as " + B.label);
+    const b = B;
+    if (b.ranking || b.applying || b.st.comps.some(c => c.on !== false && !ready(c))) return;
+    b.ranking = true;
     try {
-      G.data = await call("/api/mb/fit", { state: payload(), title, change: `from ${B.label}: ${ch.join(", ") || "no change"}` });
-      G.waitFor = G.data.key; const k = G.data.key.replace("mine", "");
-      B.title = ""; B.fitKey = G.waitFor; B.start = clone(B.st); B.startNfree = B.info ? B.info.nfree : B.startNfree; B.undo = []; B.redo = []; B.label = `your model #${k}`;
-      DRAFT = B; B = null; showWB(false); rank(); renderGallery();
-      $("galcard").scrollIntoView({ behavior: "smooth", block: "start" });
+      const response = await call("/api/mb/fit", { state: { ...payload(), context: b.serverContext }, title, change: `from ${b.label}: ${ch.join(", ") || "no change"}` });
+      if (b.context !== context()) return;
+      setGalleryData(response); G.waitFor = response.key; renderGallery();
+      toast("Candidate fit started. Results will appear in the model gallery.");
       clearTimeout(G.timer); G.timer = setTimeout(load, 1500);
-    } catch (e) { B.error = e.message; draw(); }
+    } catch (e) { if (B === b) { b.actionError = e.message; draw(); } }
+    finally { b.ranking = false; }
   }
   async function useMine() {
-    const ok = await post("/api/model", { action: "recipe", state: payload() });
-    if (!ok) return;
-    toast("Your model is now the session model");
-    B.start = clone(B.st); B.undo = []; B.redo = []; DRAFT = B; B = null; showWB(false); G.used = null; if ($("gx-new")) newButton();
+    const b = B;
+    if (!b?.st || b.error || b.applying || b.context !== context() || b.st.comps.some(c => c.on !== false && !ready(c))) return;
+    const state = payload();
+    state.context = b.serverContext;
+    b.applying = true; b.actionError = null; draw();
+    R().querySelectorAll("button,input,select").forEach(el => el.disabled = true);
+    try {
+      // A POST starts a cell. A 200 response alone does not establish that it succeeded.
+      let st = await call("/api/model", { action: "recipe", state });
+      const started = st.cells.at(-1)?.start;
+      let cell = st.cells.find(c => c.start === started);
+      setState(st);
+      while (cell?.running) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        st = await call("/api/state");
+        cell = st.cells.find(c => c.start === started);
+        setState(st);
+      }
+      if (!cell || cell.out.some(x => x.kind === "err") || st.error) throw new Error(st.error || "Applying the model failed.");
+      B = DRAFT = null; G.used = null; showWB(false); buttons(); toast("Model applied");
+    } catch (e) {
+      if (B !== b) return;
+      b.applying = false; b.actionError = e.message; draw();
+    }
   }
 
   document.addEventListener("keydown", (e) => {
-    if (!B || !B.st) return;
+    if (!B || B.applying) return;
+    if (e.key === "Tab") {
+      const focusable = [...R().querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled),summary,[tabindex='0']")].filter(el => el.getClientRects().length);
+      const first = focusable[0], last = focusable.at(-1);
+      if (first && e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (last && !e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    if (!B.st) { if (e.key === "Escape") close(); return; }
     if (e.key === "Escape") {
       const P = $("mb-pick"); if (P && !P.classList.contains("hidden")) return P.classList.add("hidden");
       if (B.add) { B.add = false; return draw(); }
@@ -606,5 +815,5 @@ window.MB = (() => {
   });
   window.addEventListener("resize", () => { if (B) plot(); else if (page === "model" && G.data) renderGallery(); });
 
-  return { render, open, openCurrent: () => open(S.model ? { model: true } : {}, S.model ? "the current model" : "empty") };
+  return { render, open, openCurrent, openNew, updateContext, confirmReplace };
 })();

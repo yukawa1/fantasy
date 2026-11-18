@@ -17,6 +17,129 @@ EXAMPLES = os.path.join(HERE, "data")             # test spectra (classes/: down
 needs_templates = pytest.mark.skipif(not {"emiles", "galaxev"} <= set(fa.templates.available()),
                                      reason="run fa.templates.download('emiles') and ('galaxev') to test the stellar host")
 
+
+def _measurement_fixture(model, wave, values, mask=None):
+    """An exact result for testing derived measurements independently of the optimizer."""
+    from fantasy_agn.result import FitResult
+    for name, value in values.items():
+        model.set(name, value)
+    full = np.array([p.value for p in model.params])
+    spec = fa.Spectrum(wave, np.ones_like(wave), np.ones_like(wave), rest_frame=True, z=0.1, flux_unit=1e-17)
+    if mask is None:
+        mask = np.ones_like(wave, bool)
+    return FitResult(spec, model, mask, full, np.zeros((len(full), len(full))), None,
+                     1., 1, 1, True, "", [], 1., 0., "covariance")
+
+
+@pytest.mark.parametrize("observed, hb_flux", [(True, 0.), (False, 120.)])
+def test_broad_line_catalog_skips_zero_or_unobserved_hbeta(observed, hb_flux):
+    wave = np.arange(4400 if observed else 6300, 6801, 2.)
+    model = fa.Model(fa.PowerLaw(), fa.Lines("blr", ["Ha", "Hb"], role="broad", fwhm=3500.))
+    r = _measurement_fixture(model, wave, {"blr.Hb.flux": hb_flux, "blr.Ha.flux": 370.})
+    hb = r.measure("Hb")
+    assert hb["flux"] == 0 if observed else np.isnan(hb["flux"])
+    assert all(np.isnan(hb[key]) for key in ("fwhm", "sigma", "shift", "shift_err"))
+    assert np.isnan(r.bh_mass("Hb")["log_mbh"]) and r.main_sequence()["population"] == ""
+    assert np.isnan(r.balmer_decrement()[0])
+    for name in ("fwhm", "shift"):
+        assert np.isnan(r.lines.set_index("line").loc["Hb", name])
+    catalog = r.key_results().set_index("quantity")
+    assert catalog.loc["broad Ha FWHM", "value"] == pytest.approx(3500, rel=1e-4)
+    assert "broad Hb FWHM" not in catalog.index and "broad Ha/Hb" not in catalog.index
+    assert catalog.loc["log M_BH", "value"] == pytest.approx(r.bh_mass("Ha")["log_mbh"])
+    assert set(r.bh_masses().line) == {"Ha"}
+
+
+@pytest.mark.parametrize("profile", ["lorentzian", "voigt"])
+def test_damping_wings_use_total_flux_and_explicit_dispersion_aperture(profile):
+    model = fa.Model(fa.PowerLaw(), fa.FeII(), fa.Lines("broad", ["Hb", "Ha"], role="broad", profile=profile,
+                                                        fwhm=8000., fwhm_l=6000.))
+    r = _measurement_fixture(model, np.arange(4300., 6902., 2.), {"broad.Hb.flux": 300., "broad.Ha.flux": 750.})
+    m = r.measure("Hb")
+    assert m["flux"] == pytest.approx(300.) and m["ew"] == pytest.approx(300. / r.continuum(4862.68)[0], rel=1e-4)
+    assert np.isnan(m["sigma"]) and m["damping_wings"]
+    for name in ("db20_sigma", "db20_sigma_l5100"):
+        assert np.isnan(r.bh_mass("Hb", recipe=name)["log_mbh"])
+    assert np.isfinite(r.bh_mass("Hb", recipe="db20")["log_mbh"])
+    inner, outer = [r.measure("Hb", moment_window=w) for w in [(-5000, 5000), (-12000, 12000)]]
+    assert 0 < inner["sigma"] < outer["sigma"] and inner["moment_window"] == (-5000., 5000.)
+    assert inner["flux"] == outer["flux"] == 300. and m["fwhm"] == inner["fwhm"]
+    assert r.balmer_decrement()[0] == pytest.approx(2.5)
+    fe = r.feii()
+    assert fe["flux"] > 0 and fe["r_feii"] == pytest.approx(fe["flux"] / 300.)
+
+
+@pytest.mark.parametrize("template, interval", [("uv", (2650., 3050.)), ("uv_extended", (2200., 3090.))])
+def test_mgii_ratio_records_template_band_and_fitted_pixel_coverage(template, interval):
+    model = fa.presets.mgii(feii=template, balmer_continuum=False)
+    wave = np.arange(2150., 3151., 1.)
+    r = _measurement_fixture(model, wave, {"broad.MgII2798.flux": 600.})
+    f = r.feii()
+    assert f["band"] == interval and f["reference"] == "MgII2798" and f["coverage"] == pytest.approx(1.)
+    assert f["ratio_label"] == f"FeII{interval[0]:g}-{interval[1]:g}/MgII2798"
+    assert f["r_feii"] == pytest.approx(f["flux"] / 600.)
+    cat = r.key_results().set_index("quantity")
+    assert "R_FeII" not in cat.index and cat.loc[f["ratio_label"], "value"] == pytest.approx(f["r_feii"])
+    unsupported = (2200., 3090.) if template == "uv" else (2150., 3050.)
+    full = r.feii(band=unsupported)
+    assert full["covered"] and not full["template_supported"] and np.isnan(full["r_feii"])
+    r.mask &= ~((wave > 2860) & (wave < 3010))
+    f = r.feii()
+    assert not f["covered"] and f["coverage"] < 0.95
+    assert np.isnan(f["flux"]) and np.isnan(f["ew"]) and np.isnan(f["r_feii"])
+    r2 = _measurement_fixture(model, wave[r.mask], {"broad.MgII2798.flux": 600.})
+    assert r2.feii()["coverage"] == pytest.approx(f["coverage"])
+
+
+@pytest.mark.parametrize("wave", [np.r_[2100., np.arange(3050., 3200.)], np.r_[np.arange(2500., 2651.), 3650.]])
+def test_feii_coverage_excludes_gaps_next_to_isolated_endpoints(wave):
+    r = _measurement_fixture(fa.presets.mgii(), wave, {})
+    f = r.feii()
+    assert f["coverage"] == pytest.approx(0.5 / 400.) and not f["covered"] and np.isnan(f["flux"])
+
+
+def test_joint_fit_active_zero_bound_has_no_broad_mass():
+    wave = np.arange(4400., 5300., 2.)
+    spec = fa.Spectrum(wave, 10 * (wave / 5100.) ** -1.5, np.ones_like(wave), rest_frame=True, z=.1, flux_unit=1e-17)
+    model = fa.Model(fa.PowerLaw(), fa.Lines("broad", ["Hb", "Hg"], fwhm=(4500., 1000., 9000.), role="broad"))
+    model.tie("broad.Hg.flux", "broad.Hb.flux", factor=.4)
+    joint = fa.fit_epochs([spec, spec], model, shared=(), intercalibrate=False, errors=None, n_jobs=1, verbose=False)
+    for r in joint.epochs:
+        assert "broad.Hb.flux" in r.at_zero
+        m = r.measure("Hb")
+        assert m["flux"] == 0 and np.isnan(m["fwhm"]) and np.isnan(m["shift"])
+        assert np.isnan(r.bh_mass("Hb")["log_mbh"]) and r.bh_masses().empty
+        assert not r.main_sequence()["population"] and "log M_BH" not in set(r.key_results().quantity)
+
+
+def test_zero_bound_propagates_through_ties_but_retains_live_fluxes():
+    model = fa.Model(fa.PowerLaw(), fa.Lines("broad", ["Ha", "Hb", "Hg", "Hd"], fwhm=4000.,
+                                            max_ratios={"Hg": ("Hb", 2.)}, role="broad", flux_max=200.))
+    model.tie("broad.Hd.flux", "broad.Hg.flux", factor=0.5)
+    r = _measurement_fixture(model, np.arange(4000., 6800., 2.),
+                             {"broad.Hg.flux": 1e-12, "broad.Hd.flux": 5e-13,
+                              "broad.Ha.flux": 200., "broad.Hb.excess": 20.})
+    r.at_zero = ["broad.Hg.flux", "broad.Ha.flux", "broad.Hb.excess"]
+    model["broad.Hb.excess"].min = 20.
+    assert r.measure("Hg")["flux"] == r.measure("Hd")["flux"] == 0.
+    assert r.measure("Ha")["flux"] == 200. and r.measure("Hb")["flux"] == 20.
+    assert np.isnan(r.lines.set_index("line").loc["Hd", "fwhm"])
+    i = model.params.index("broad.Hg.flux")
+    r.full[i] = 0.
+    r.unconstrained = ["broad.Hg.flux"]
+    assert np.isnan(r.measure("Hg")["flux"]) and np.isnan(r.measure("Hd")["flux"])
+    assert r.measure("Hb")["flux"] == 20.
+    r.full[i] = 3.
+    assert np.isnan(r.measure("Hb")["flux"])  # nonzero flux from an unobservable source
+    r.unconstrained = []
+    r.full[i] = 1e-12
+    # A serialized affine tie can carry an offset, even though current constructors
+    # disallow adding offsets between linear amplitudes.
+    model["broad.Hd.flux"].tie = ("broad.Hg.flux", 0.5, 10.)
+    r.full[model.params.index("broad.Hd.flux")] += 10.
+    assert r.measure("Hd")["flux"] == 10.
+
+
 def test_air_vacuum_roundtrip():
     lam = np.linspace(2000, 11000, 50)
     assert np.allclose(air_to_vac(vac_to_air(lam)), lam, atol=1e-8)
@@ -975,6 +1098,110 @@ def test_classify_seyfert1_with_broad_wing():
     assert c.label.startswith("type1"), c
 
 
+@needs_templates
+def test_classify_cropped_sdss_sample(tmp_path):
+    spec = fa.read(fa.examples.path("seyfert2")).to_rest_frame().crop(4000, 5500)
+    path = tmp_path / "blue_sdss.txt"
+    np.savetxt(path, np.column_stack((vac_to_air(spec.wave), spec.flux, spec.err)))
+    sample = fa.fit_sample([str(path)], z=0, deredden=False, refine=False, n_jobs=1, verbose=False)
+    assert sample.failed.empty, sample.table
+    row = sample.table.iloc[0]
+    assert row.cls == "seyfert2" and row.cls_uncertain and row.preset.startswith("seyfert2(")
+    assert "EW(Ha) narrow" not in sample.table and "BPT class" not in sample.table
+
+
+@needs_templates
+def test_classify_masked_ha_pre_and_post_fit():
+    spec = _synthetic_galaxy(-0.6, -0.3, -0.5, -1.6).mask((6510, 6620))
+    preliminary = fa.classify(spec)
+    # This model includes H-alpha, despite its masked core.
+    result = fa.fit(spec, fa.presets.type2(), verbose=False)
+    for cls in (preliminary, fa.classify_fit(result)):
+        assert cls.label == "unknown" and cls.uncertain
+        assert not cls.measurements["ha_covered"] and np.isnan(cls.measurements["ew_ha"])
+        assert np.isnan(cls.measurements["ha_snr"]) and np.isfinite(cls.measurements["log_oiii_hb"])
+        assert "H-alpha" in cls.reason
+    assert "EW(Ha) narrow" not in set(result.diagnostics().quantity)
+
+
+@needs_templates
+def test_classify_uses_detected_broad_hbeta_when_broad_halpha_is_absent():
+    spec = _synthetic_galaxy(-0.3, 0.2, -0.5, -1.4)
+    broad = fa.Lines("broad", ["Hb", "Ha"], role="broad", fwhm=(4200, 1200, 12000))
+    hb = broad.evaluate(spec.wave, np.array([13000., 0., 0., 4200.]), spec.context)[0]
+    spec = spec.copy(flux=spec.flux + hb)
+    preliminary = fa.classify(spec)
+    model = fa.presets.type2().add(broad)
+    final = fa.classify_fit(fa.fit(spec, model, verbose=False))
+    for cls in (preliminary, final):
+        assert cls.label.startswith("type1"), cls
+        assert cls.measurements["broad_line"] == "Hb" and cls.measurements["broad_snr"] > 5
+
+
+def test_classify_broad_line_without_flux_uncertainty():
+    spec = _toy_spectrum(np.random.default_rng(7))
+    result = fa.fit(spec, _toy_model(), errors=None, verbose=False)
+    cls = fa.classify_fit(result)
+    assert cls.label == "unknown" and cls.uncertain
+    assert cls.measurements["broad_flux"] > 0 and np.isnan(cls.measurements["broad_snr"])
+    assert "broad Hb" in cls.reason and "uncertainty" in cls.reason
+
+
+def test_diagnostics_include_physical_outflow_flux_and_covariance():
+    narrow = fa.Lines("core", ["Ha", "Hb", "[NII]6583"], role="narrow")
+    wing = fa.Lines("wing", ["Ha", "[NII]6583"], role="outflow",
+                    max_ratios={"[NII]6583": ("Ha", 3.0)})
+    model = fa.Model(fa.PowerLaw(), narrow, wing)
+    model.fix("continuum.index", 0).fix("continuum.amp", 2.0)
+    model.fix("core.fwhm", 250).fix("wing.fwhm", 1000)
+    model.fix("core.shift", 0).fix("wing.shift", -150)
+    model.set("core.Ha.flux", 60).set("core.Hb.flux", 18).set("core.[NII]6583.flux", 30)
+    model.set("wing.Ha.excess", 8).set("wing.[NII]6583.flux", 18)
+    wave = np.r_[np.arange(4800., 4930.), np.arange(6420., 6690.)]
+    spec = fa.Spectrum(wave, np.ones_like(wave), np.full_like(wave, 0.02), rest_frame=True)
+    flux = model.evaluate(wave, spec.context) + np.random.default_rng(2).normal(0, spec.err)
+    r = fa.fit(spec.copy(flux=flux), model, verbose=False)
+    d = r.diagnostics().set_index("quantity")
+    core = r.diagnostics(outflow=False).set_index("quantity")
+    i = r.model.params.index
+    ha = r.full[i("core.Ha.flux")] + r.full[i("wing.Ha.excess")] + r.full[i("wing.[NII]6583.flux")] / 3
+    nii = r.full[i("core.[NII]6583.flux")] + r.full[i("wing.[NII]6583.flux")]
+    assert d.loc["log [NII]6583/Ha", "value"] == pytest.approx(np.log10(nii / ha))
+    assert d.loc["narrow Ha/Hb", "value"] == pytest.approx(ha / r.full[i("core.Hb.flux")])
+    assert d.loc["EW(Ha) narrow", "value"] == pytest.approx(ha / 2)
+    assert core.loc["EW(Ha) narrow", "value"] == pytest.approx(r.full[i("core.Ha.flux")] / 2)
+    grad = np.zeros_like(r.full)
+    grad[i("core.Ha.flux")] = grad[i("wing.Ha.excess")] = 0.5
+    grad[i("wing.[NII]6583.flux")] = 1 / 6
+    assert d.loc["EW(Ha) narrow", "error"] == pytest.approx(np.sqrt(grad @ r.cov @ grad))
+
+
+def test_whan_uses_observed_line_and_continuum_with_dust():
+    wave = np.arange(6460., 6670., 0.5)
+    ha = fa.line_wavelength("Ha")
+    model = fa.Model(fa.PowerLaw(), fa.Lines("narrow", ["Ha"]), fa.Extinction())
+    model.fix("continuum.index", 0).fix("continuum.amp", 2)
+    model.fix("narrow.shift", 0).fix("narrow.fwhm", 300).set("narrow.Ha.flux", 6)
+    model.fix("extinction.ebv", 0.5)
+    spec = fa.Spectrum(wave, np.ones_like(wave), np.full_like(wave, 0.01), rest_frame=True)
+    fit = fa.fit(spec.copy(flux=model.evaluate(wave, spec.context)), model, verbose=False)
+    d = fit.diagnostics().set_index("quantity")
+    assert d.loc["EW(Ha) narrow", "value"] == pytest.approx(3.0, rel=0.001)
+
+    # Dust exempts the host. A narrow foreground trough also attenuates the line
+    # core more than its wings, and acts on both the host and the gas.
+    model.add(fa.HostGalaxy(n_components=1)).fix("host.c0", 1)
+    model.add(fa.Absorption([(ha, 150., 1.)]))
+    model.fix("absorption.*")
+    parts = model.evaluate(wave, spec.context, components=True)
+    observed_ha = parts["narrow"].sum() * 0.5
+    continuum = np.interp(ha + np.array([-60., 60.]), wave, parts["continuum"] + parts["host"]).mean()
+    fit = fa.fit(spec.copy(flux=sum(parts.values())), model, verbose=False)
+    ew = fit.diagnostics().set_index("quantity").loc["EW(Ha) narrow", "value"]
+    assert ew == pytest.approx(observed_ha / continuum, rel=0.001)
+    assert ew < 2.5
+
+
 def test_bpt_boundaries():
     from fantasy_agn.classify import kauffmann03, kewley01, kewley06
     assert kauffmann03(-0.5) < kewley01(-0.5)                  # composite region exists
@@ -1025,7 +1252,7 @@ def test_app_prune_feii_step():
     assert 100 < row["resolution"] < 200 and row["resolution_varies"] and 60 < row["pixel_kms"] < 80
     assert not s.prepared_state()["resolution_given"] and "with_resolution" not in s.cells[-1].code
     code = s.wf_prepare_code(extinction="none", wmin=4150, wmax=5550, resolution="2000", resolution_unit="R")
-    assert ".with_resolution(R=2000)" in code and s.wf["prepare"]["resolution"] == 2000
+    assert ".with_resolution(R=2000)" in code
     assert ".with_resolution(150)" in s.wf_prepare_code(extinction="none", resolution=150)
     for bad in ({"resolution": "abc"}, {"resolution": -1}, {"resolution": 10, "resolution_unit": "R"},
                 {"resolution": 9000}, {"resolution": 100, "resolution_unit": "A"}):
@@ -1033,12 +1260,13 @@ def test_app_prune_feii_step():
             s.wf_prepare_code(extinction="none", **bad)
     s.run_step(code, "# prepare")
     _wait(s)
-    assert s.error is None and s.prepared_state()["resolution_given"] and abs(s.prepared_state()["resolution"] - 149.9) < 0.1
+    assert s.error is None and s.wf["prepare"]["resolution"] == 2000
+    assert s.prepared_state()["resolution_given"] and abs(s.prepared_state()["resolution"] - 149.9) < 0.1
     s.run_step(s.wf_prepare_code(extinction="none", wmin=4150, wmax=5550), "# prepare")
     _wait(s)
     assert not s.prepared_state()["resolution_given"] and s.wf["prepare"]["resolution"] == "file"
     code = s.wf_prepare_code(z_source="median", extinction="none")
-    assert "z = float(np.median([s.z for s in raw if s.z]))" in code and ".to_rest_frame(z=z)" in code
+    assert "z = float(np.median([s.z for s in raw if s.z is not None" in code and ".to_rest_frame(z=z)" in code
     with pytest.raises(ValueError):
         s.wf_prepare_code(z_source="nonsense")
     s.run_cell("spec = spectra[0]\n" + s.preset_code("hbeta", broad_components=1, outflow=False))
@@ -1185,6 +1413,90 @@ def test_app_server_requires_token():
         server.server_close()
 
 
+def test_app_download_menu_and_mobile_fit_footer(tmp_path):
+    import csv
+    import threading
+    from pathlib import Path
+    import pandas as pd
+    from fantasy_agn.app.server import Handler, make_server
+    from fantasy_agn.sample import SampleResult
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as pw:
+        exe = os.environ.get("FANTASY_CHROMIUM", pw.chromium.executable_path)
+        if not Path(exe).is_file():
+            pytest.skip("install Chromium for Playwright or set FANTASY_CHROMIUM")
+        browser = pw.chromium.launch(executable_path=exe)
+        server = make_server(port=0)
+        sess = Handler.session
+        sess.ns["sample"] = SampleResult(pd.DataFrame([
+            dict(name="measured", cls="type1", rchi2=1.03, error=None),
+            dict(name="missing", cls=None, rchi2=None, error="no spectrum")]))
+        sess.wf.update(mode="sample", fit_kind="sample")
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            page.route("**/api/update*", lambda route: route.abort())
+            url = f"http://127.0.0.1:{server.server_port}"
+            page.goto(url + "/#results")
+            trigger = page.locator("#dlbtn")
+            trigger.focus()
+            page.keyboard.press("Enter")
+            catalog = page.locator("#dl-sample")
+            assert catalog.inner_text().startswith("Sample catalog (CSV)")
+            assert catalog.evaluate("el => el === document.activeElement")
+            assert page.locator("#dl-lines").is_hidden()
+            assert trigger.get_attribute("aria-expanded") == "true"
+            page.keyboard.press("End")
+            assert page.evaluate("document.activeElement.innerText.startsWith('Project')")
+            page.keyboard.press("ArrowDown")
+            assert catalog.evaluate("el => el === document.activeElement")
+            with page.expect_download() as received:
+                page.keyboard.press("Space")
+            archived = received.value
+            assert archived.suggested_filename == "fantasy_catalog.csv"
+            archived.save_as(tmp_path / archived.suggested_filename)
+            with (tmp_path / archived.suggested_filename).open() as f:
+                rows = list(csv.DictReader(f))
+            assert [(r["name"], r["cls"], r["error"]) for r in rows] == [
+                ("measured", "type1", ""), ("missing", "", "no spectrum")]
+            assert trigger.evaluate("el => el === document.activeElement")
+            page.keyboard.press("ArrowUp")
+            page.keyboard.press("Escape")
+            assert trigger.get_attribute("aria-expanded") == "false"
+            page.keyboard.press("Enter")
+            page.keyboard.press("Tab")
+            assert page.locator("#dlmenu").is_hidden() and not trigger.evaluate("el => el === document.activeElement")
+            # A failed epoch keeps its model export disabled; arrows pass over it.
+            page.evaluate("""() => {
+                S.wf.fit = {kind: 'fits', epochs: [{k: 0, failed: true}, {k: 1}]};
+                rk = 0; renderDownloads();
+            }""")
+            trigger.click()
+            assert page.locator("#dl-sample").is_hidden() and page.locator("#dl-comp").is_disabled()
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("ArrowDown")
+            assert page.locator("#dl-plots").evaluate("el => el === document.activeElement")
+            page.locator("#page-results h1").click()
+            assert page.locator("#dlmenu").is_hidden()
+
+            page.locator("#stepper [data-go=fit]").click()
+            page.locator("#runfit").wait_for(state="visible")
+            page.evaluate("""() => {
+                document.querySelector('#runfit').textContent = '▶ Run the joint fit of 120 epochs again';
+                document.querySelector('#runnote').textContent = 'The settings changed since the last run.';
+            }""")
+            for width in (390, 360, 320):
+                page.set_viewport_size({"width": width, "height": 844})
+                for item in ("backmodel", "runnote", "runfit", "toresults"):
+                    box = page.locator("#" + item).bounding_box()
+                    assert 0 <= box["x"] and box["x"] + box["width"] <= width
+                    assert page.locator("#" + item).evaluate("el => el.scrollWidth <= el.clientWidth + 1")
+        finally:
+            browser.close()
+            server.shutdown()
+            server.server_close()
+
+
 def test_app_static_links_versioned():
     import os
     import re
@@ -1219,13 +1531,161 @@ def test_app_static_links_versioned():
     assert re.search(r'"/static/mb\.js\?v=\d+"', out)
     with open(os.path.join(STATIC, "mb.js"), encoding="utf-8") as fh:
         mbjs = fh.read()
-    for el in ('id="galcard"', 'id="gx-body"', 'id="gx-new"', 'id="mb"', 'id="openmb"'):
+    for el in ('id="galcard"', 'id="gx-body"', 'id="mbdraft"', 'id="mbdiscard"', 'id="usepreset"', 'id="mb"', 'id="openmb"'):
         assert el in html
     for path in ("/api/wf/gallery", "/api/mb/gallery", "/api/mb/fit", "/api/mb/build", "/api/mb/preview",
                  "/api/mb/decompose", "/api/wf/mbtypes", "/api/wf/mblines", '"recipe"', '"presetkw"'):
         assert path in mbjs, path
-    assert "MB.render()" in js and "MB.openCurrent()" in js
+    assert "MB.render()" in js and "MB.openCurrent(selComp)" in js and "MB.openNew()" in js
+    for old_editor in ("gx-new", "adddlg", "paramtbl", "kinsel"):
+        assert f'id="{old_editor}"' not in html
     assert "#dg-scope button" in js and "function drawDegen" in js and 'rv === "degen"' in js and "/api/wf/degeneracy" in js
+
+
+def test_app_comparison_scroll_during_poll_and_selection(monkeypatch):
+    import threading
+    from pathlib import Path
+    from fantasy_agn.app.builder import card
+    from fantasy_agn.app.server import Handler, make_server
+    playwright = pytest.importorskip("playwright.sync_api")
+    monkeypatch.setenv("FANTASY_AUTOSAVE", "0")
+    with playwright.sync_playwright() as pw:
+        exe = os.environ.get("FANTASY_CHROMIUM", pw.chromium.executable_path)
+        if not Path(exe).is_file():
+            pytest.skip("install Chromium for Playwright or set FANTASY_CHROMIUM")
+        browser = pw.chromium.launch(executable_path=exe)
+        server = make_server(port=0)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            spec = _toy_spectrum(np.random.default_rng(12))
+            model = _toy_model()
+            measured = card(fa.fit(spec, model, verbose=False), n=80)
+            code = "model = fa.Model()\n" + "\n".join(f"# parameter {k}" for k in range(90))
+
+            def candidate(i):
+                return dict(measured, key="base" if i == 0 else f"fit{i}", title=f"Candidate {i}",
+                            bic=measured["bic"] + i, code=code, time=1.)
+
+            sess = Handler.session
+            sess.ns.update(raw=[spec], spectra=[spec], spec=spec, model=model)
+            gallery = dict(spec=spec, cands=[candidate(i) for i in range(20)],
+                           running=True, total=21, pending=["last fit"])
+            sess._gallery = gallery
+            page = browser.new_page(viewport={"width": 1000, "height": 600})
+            page.route("**/api/update*", lambda route: route.abort())
+            page.goto(f"http://127.0.0.1:{server.server_port}/#model")
+            page.locator('#gx-tabs [data-t="code"]').click()
+            code_box = page.locator("#gx-tab pre")
+            code_box.evaluate("el => {el.scrollTop = 150;}")
+            page.evaluate("refresh()")
+            assert code_box.evaluate("el => el.scrollTop") == 150
+            page.locator("#gx-alld summary").click()
+            row = page.locator('#gx-all tr[data-k="fit12"]')
+            row.evaluate("el => el.scrollIntoView({block: 'center'})")
+            main = page.locator("#main")
+            top = main.evaluate("el => el.scrollTop")
+            assert top > 600
+            page.evaluate("refresh()")  # same state as the recurring three-second poll
+            assert main.evaluate("el => el.scrollTop") == pytest.approx(top, abs=2)
+
+            # A new best fit is inserted above the visible rows as the worker finishes.
+            y = row.bounding_box()["y"]
+            gallery["cands"].append(dict(candidate(20), bic=measured["bic"] - 30))
+            gallery.update(running=False, pending=[])
+            playwright.expect(page.locator("#gx-all tbody tr")).to_have_count(21, timeout=8000)
+            assert row.bounding_box()["y"] == pytest.approx(y, abs=2)
+            row.click()
+            playwright.expect(page.locator("#gx-detail h4")).to_have_text("Candidate 12")
+            # Allow time for the old smooth-scroll animation to move the selected row.
+            page.wait_for_timeout(700)
+            assert row.bounding_box()["y"] == pytest.approx(y, abs=2)
+        finally:
+            browser.close()
+            server.shutdown()
+            server.server_close()
+
+
+def test_app_model_editor_draft_workflow(monkeypatch):
+    """Follow the visible editor controls against a real session, including a fitted gallery draft."""
+    import threading
+    from pathlib import Path
+    from fantasy_agn.app.server import Handler, make_server
+    playwright = pytest.importorskip("playwright.sync_api")
+    monkeypatch.setenv("FANTASY_AUTOSAVE", "0")
+    monkeypatch.setenv("FANTASY_NO_DOWNLOAD", "1")
+    with playwright.sync_playwright() as pw:
+        exe = os.environ.get("FANTASY_CHROMIUM", pw.chromium.executable_path)
+        if not Path(exe).is_file():
+            pytest.skip("install Chromium for Playwright or set FANTASY_CHROMIUM")
+        browser = pw.chromium.launch(executable_path=exe)
+        server = make_server(port=0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            s = Handler.session
+            spec = _toy_spectrum(np.random.default_rng(12))
+            original = _toy_model()
+            fit = fa.fit(spec, original, verbose=False)
+            s.ns.update(spec=spec, raw=[spec], spectra=[spec], model=original, r=fit)
+            s.wf.update(mode="single", fit_kind="single")
+            page = browser.new_page()
+            page.route("**/api/update*", lambda route: route.abort())
+            page.on("dialog", lambda dialog: dialog.accept())
+            page.goto(f"http://127.0.0.1:{server.server_port}/#model")
+            get = page.locator
+            expect = playwright.expect
+            get('#startseg [data-s="preset"]').click()
+            get("#presetsel").select_option("hbeta")
+            get('#comps [data-c="narrow"]').click()
+            get("#openmb").click()
+            expect(get("#mb-iname")).to_have_value("narrow")
+
+            def rename(name):
+                get("#mb-iname").fill(name)
+                get("#mb-iname").press("Tab")
+                expect(get("#mb-code pre")).to_contain_text(name)
+
+            rename("narrow_trial")
+            get("#mb-close").click()
+            expect(get("#openmb")).to_have_text("Resume draft")
+            assert s.model is original and s.result is fit and len(s.cells) == 1
+            get("#openmb").click()
+            expect(get("#mb-iname")).to_have_value("narrow_trial")
+            get("#mb-drop").click()
+            expect(get("#mb")).to_be_hidden()
+            get("#openmb").click()
+            expect(get("#mb-iname")).to_have_value("narrow")
+            rename("narrow_final")
+
+            get("#mb-title").fill("reviewed draft")
+            get("#mb-fit").click()
+            get("#mb-close").click()
+            expect(get("#gx-cust")).to_be_visible(timeout=30000)
+            assert s.model is original and s.result is fit and len(s.cells) == 1
+            get("#gx-cust").click()
+            expect(get("#mb-code pre")).to_contain_text("narrow_final")
+            get("#mb-use").click()
+            get('#mb.hidden, #mb [role="alert"]').first.wait_for(state="attached")
+            assert not get('#mb [role="alert"]').all_text_contents()
+            expect(get('#comps [data-c="narrow_final"]')).to_be_visible()
+            assert s.model is not original and s.result is None and len(s.cells) == 2
+            replay = {"fa": fa}
+            exec(s.cells[-1].code, replay)
+            assert replay["model"].to_dict() == s.model.to_dict()
+            assert s.model["narrow_final.[OIII]4959.flux"].tie[0] == "narrow_final.[OIII]5007.flux"
+
+            active = s.model
+            get('#startseg [data-s="custom"]').click()
+            get("#startempty").click()
+            expect(get("#mb-iname")).to_have_value("continuum")
+            expect(get("#mb-stack .mb-row")).to_have_count(1)
+            get("#mb-drop").click()
+            assert s.model is active and len(s.cells) == 2
+        finally:
+            browser.close()
+            server.shutdown()
+            thread.join()
+            server.server_close()
 
 
 def test_app_model_editor_code():
@@ -1419,6 +1879,122 @@ def test_galactic_dereddening(monkeypatch):
     a = s.deredden(ebv=0.05).to_rest_frame()
     b = s.to_rest_frame().deredden(ebv=0.05)
     assert np.allclose(a.flux, b.flux) and np.allclose(a.wave, b.wave)
+
+
+@pytest.mark.parametrize("source", ["desi", "sdss"])
+def test_app_read_switches_sample_source_atomically(source, monkeypatch):
+    from fantasy_agn.app.session import Session
+    monkeypatch.setenv("FANTASY_AUTOSAVE", "0")
+    base = fa.Spectrum([4400., 4410., 4420.], [1., 2., 1.], [1.] * 3, name="same-name")
+    monkeypatch.setattr(fa, "read", lambda f: base.copy(meta={"from": f}))
+    module = getattr(fa, source)
+    monkeypatch.setattr(module, "fetch", lambda *ids: base.copy(meta={"target": ids}))
+    args = {"targetid": "11,12"} if source == "desi" else {"sdss": "101-50000-1,101-50000-2"}
+    s = Session()
+
+    def run(code):
+        s.run_step(code)
+        _wait(s)
+        assert s.error is None, s.error
+
+    # Equal counts and identical object names cannot identify which source is active.
+    run(s.wf_read_code("sample", paths=["a/file.txt", "b/file.txt"]))
+    run(s.wf_read_code("sample", **args))
+    assert s.wf_input_files() is None and s.ns["files"] is None
+    assert s.ns["read_source"] == source and s.loaded_state()["n"] == 2
+    assert all(row["path"] is None for row in s.loaded_state()["rows"])
+    assert all("target" in sp.meta for sp in s.raw)
+    assert "fa.fit_sample(raw," in s.wf_fit_code(sample_model="hbeta", out="out")
+    # Older project files had no source field; their last actual Read distinguishes archive inputs.
+    old = Session()
+    old.ns.update(raw=s.ns["raw"], files=["a/file.txt", "b/file.txt"])
+    old.cells.append(type(old.cells[0])("# read\nraw = [fa." + source + ".fetch(t) for t in ids]"))
+    assert old.wf_input_files() is None
+    selected = s.loaded_state()["id"]
+    run(s.wf_remove_code([0], selected))
+    assert len(s.raw) == 1
+    with pytest.raises(ValueError, match="changed"):
+        s.wf_remove_code([0], selected)
+    ns = {}
+    exec(s.script(), ns)
+    assert [p.meta["target"] for p in ns["raw"]] == [s.raw[0].meta["target"]]
+    assert ns["files"] is None
+    # A failed new read cannot combine old objects with new paths or clear the current options.
+    previous = s.ns["raw"]
+    monkeypatch.setattr(fa, "read", lambda f: (_ for _ in ()).throw(OSError("failed read")))
+    s.run_step(s.wf_read_code("single", paths=["bad.dat"], format="text"))
+    _wait(s)
+    assert s.error and s.ns["raw"] is previous
+    assert s.wf["mode"] == "sample" and s.wf_input_files() is None
+    assert "bad.dat" not in s.script() and "bad.dat" not in s.notebook()
+    run(s.wf_remove_code([0], s.loaded_state()["id"]))
+    assert s.loaded_state() is None and s.ns["sample"] is None
+
+
+def test_app_remove_from_full_manifest_and_reselect(monkeypatch):
+    from fantasy_agn.app.session import Session
+    monkeypatch.setenv("FANTASY_AUTOSAVE", "0")
+    spec = fa.Spectrum([4400., 4410., 4420.], [1., 2., 1.], [1.] * 3, name="same-name")
+    monkeypatch.setattr(fa, "read", lambda f, **kw: spec.copy(meta={"file": f}))
+    paths = [f"dir_{k}/identical.txt" for k in range(27)]
+    s = Session()
+
+    def run(code):
+        s.run_step(code)
+        _wait(s)
+        assert s.error is None, s.error
+
+    run(s.wf_read_code("sample", paths=paths, format="text"))
+    selection = s.loaded_state()
+    assert (selection["n"], selection["shown"]) == (27, 20)
+    with pytest.raises(ValueError, match="preview"):
+        s.wf_remove_code([22], selection["id"])
+    with pytest.raises(ValueError, match="single"):
+        s.wf_reselect_code("single", selection["id"])
+    run(s.wf_remove_code([1, 3], selection["id"]))
+    expected = [f for k, f in enumerate(paths) if k not in (1, 3)]
+    assert s.wf_input_files() == expected
+    assert [row["path"] for row in s.loaded_state()["rows"]] == expected[:20]
+    run(s.wf_reselect_code("classify", s.loaded_state()["id"]))
+    assert len(s.raw) == 25 and s.wf["mode"] == "classify"
+    run(s.wf_reselect_code("sample", s.loaded_state()["id"]))
+    run(s.wf_remove_code(list(range(20)), s.loaded_state()["id"]))
+    assert s.wf_input_files() == expected[20:] and s.loaded_state()["n"] == 5
+    restored = Session()
+    restored.load_project(s.save_project())
+    assert restored.wf_input_files() == expected[20:]
+    ns = {}
+    exec(s.script(), ns)
+    assert ns["files"] == expected[20:]
+    assert [p.meta["file"] for p in ns["raw"]] == expected[20:]
+
+
+def test_app_large_glob_replay_checks_input_membership(tmp_path, monkeypatch):
+    from fantasy_agn.app.session import Session
+    spec = fa.Spectrum([4000., 4100., 4200.], [1.] * 3, [1.] * 3)
+    monkeypatch.setattr(fa, "read", lambda _: spec)
+    for k in range(41):
+        (tmp_path / f"spec-{k}.dat").touch()
+    s = Session()
+    code = s.wf_read_code("sample", pattern=str(tmp_path / "*.dat"))
+    assert "glob.glob(" in code and "spec-40.dat" not in code
+    exec(code, s.ns)
+    assert len(s.wf_input_files()) == 41 and len(s.raw) == 20
+    (tmp_path / "added.dat").touch()
+    previous = s.ns["raw"]
+    with pytest.raises(ValueError, match="pattern changed"):
+        exec(code, s.ns)
+    assert s.ns["raw"] is previous and len(s.wf_input_files()) == 41
+
+
+def test_app_uploaded_files_with_identical_names_keep_both_inputs(tmp_path, monkeypatch):
+    from pathlib import Path
+    from fantasy_agn.app import session
+    monkeypatch.setattr(session, "UPLOADS", str(tmp_path))
+    s = session.Session()
+    a, b = [Path(s.save_upload(data, "same.fits", "batch")) for data in (b"first", b"second")]
+    assert a.name == b.name == "same.fits" and a != b
+    assert (a.read_bytes(), b.read_bytes()) == (b"first", b"second")
 
 
 def test_app_read_options():
@@ -1818,6 +2394,118 @@ def test_diagnostics_seyfert2():
     assert np.isfinite(k.loc["log [OIII]/Hb", "error"]) and np.isfinite(k.loc["[OIII]5007 flux", "error"])
 
 
+def test_exported_parallel_sample_script_runs_only_in_parent(tmp_path):
+    import subprocess
+    import sys
+    from fantasy_agn.app.session import Cell, Session
+    # The worker imports the same script under __mp_main__ on spawn platforms.
+    # Force spawn on Linux too; each process that enters the body leaves an observable line.
+    counter = tmp_path / "reads.txt"
+    cell = Cell(f"""import multiprocessing
+multiprocessing.set_start_method('spawn', force=True)
+with open({str(counter)!r}, 'a') as fh:
+    fh.write('read\\n')
+source_text = '''first line
+second line'''
+assert source_text.splitlines() == ['first line', 'second line']
+sample = fa.fit_sample(['missing-one.fits', 'missing-two.fits'], n_jobs=2, verbose=False)
+assert len(sample.failed) == 2
+""")
+    cell.n = 2
+    session = Session()
+    session.cells.append(cell)
+    script = tmp_path / "sample_session.py"
+    script.write_text(session.script())
+    subprocess.run([sys.executable, str(script)], check=True, timeout=60,
+                   env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)})
+    assert counter.read_text().splitlines() == ["read"]
+
+
+def test_app_sample_replays_prepare_for_preview_and_remaining_files(tmp_path, monkeypatch):
+    from fantasy_agn.app.session import Session
+    monkeypatch.setenv("FANTASY_AUTOSAVE", "0")
+    monkeypatch.setattr(fa.presets, "hbeta", lambda: fa.Model(fa.PowerLaw()))
+    paths = []
+    wave = np.arange(4900., 5850., 2.)
+    for i in range(21):
+        path = tmp_path / f"row{i}.spectrum"
+        np.savetxt(path, np.column_stack([wave, 5 + wave / 5000, np.full(len(wave), .1)]))
+        paths.append(str(path))
+    paths.append(str(tmp_path / "unreadable.spectrum"))
+    session = Session()
+
+    def run(code, marker):
+        session.run_step(code, marker)
+        _wait(session)
+        assert session.error is None, session.error
+
+    run(session.wf_read_code("sample", paths=paths, format="text"), "# read")
+    assert len(session.raw) == 20
+    opts = dict(z_source="manual", z=.123456789, extinction="value", ebv=.03, ra=120, dec=20,
+                resolution="2100", resolution_unit="R", flux_unit=1e-17, telluric=False, sky_lines=True,
+                wmin=4450, wmax=5180, masks=[(4990.125, 5000.75)], absorption=True)
+    run(session.wf_prepare_code(**opts), "# prepare")
+    for row, change in [(0, {"resolution": 3000, "flux_unit": 1e-16}),
+                        (1, {"rest_frame": False, "z": 0, "wmin": 5000, "wmax": 5400}),
+                        (2, {"rest_frame": False})]:
+        run(session.wf_prepare_code(**dict(opts, **change), apply_to=row), "# prepare")
+    assert session.wf["prepare"]["resolution"] == 2100
+    assert session.wf["prepare_rows"]["0"]["resolution"] == 3000
+    assert session.wf["prepare_rows"]["1"]["z"] == 0
+    assert len([c for c in session.cells if c.code.startswith("# prepare")]) == 4
+    expected = session.spectra
+    code = session.wf_fit_code(sample_model="hbeta", n_jobs=1, out=str(tmp_path / "out"))
+    assert "prepared=spectra" in code and "prepare=sample_prepare" in code and "format='text'" in code
+    # Replay all exported cells, including the four Prepare actions, in a fresh namespace.
+    ns = {"__name__": "__main__"}
+    exec(session.script() + "\n" + code, ns)
+    sm = ns["sample"]
+    assert list(sm.failed.index) == [2, 21]
+    assert "rest wavelengths" in sm.table.iloc[2]["error"] and sm.table.iloc[21]["path"] == paths[21]
+    assert not sm.load(1).spectrum.rest_frame and sm.load(1).spectrum.z == 0
+    assert sm.load(0).spectrum.flux_unit == 1e-16
+    for index, preview in [(0, 0), (1, 1), (3, 3), (20, 3)]:
+        got, want = sm.load(index).spectrum, expected[preview]
+        assert sm.table.iloc[index]["path"] == paths[index]
+        for field in ("wave", "flux", "err", "user_mask"):
+            np.testing.assert_array_equal(getattr(got, field), getattr(want, field))
+        assert (got.z, got.rest_frame, got.flux_unit, got.resolution, got.ra, got.dec, got.meta["ebv"]) == (
+            want.z, want.rest_frame, want.flux_unit, want.resolution, want.ra, want.dec, want.meta["ebv"])
+    assert sm.load(20).spectrum.z == opts["z"]
+    # A restored pre-recipe session can recover the shared chain independently of later edits.
+    session.ns.pop("sample_prepare")
+    session.cells[-4].code = session.cells[-4].code.split("from operator import methodcaller")[0]
+    recovered = session.wf_fit_code(sample_model="hbeta", n_jobs=1)
+    exec(recovered.split("sample = fa.fit_sample")[0], ns)
+    tail = ns["raw"][3]
+    for step in ns["sample_prepare"]:
+        tail = step(tail)
+    np.testing.assert_array_equal(tail.flux, expected[3].flux)
+    assert tail.resolution == expected[3].resolution
+
+
+def test_app_sample_uses_prepared_remote_spectra(tmp_path, monkeypatch):
+    from fantasy_agn.app.session import Session
+    monkeypatch.setattr(fa.presets, "hbeta", lambda: fa.Model(fa.PowerLaw()))
+    raw = _toy_spectrum(np.random.default_rng(10)).copy(z=.1, name="remote")
+    monkeypatch.setattr(fa.sdss, "fetch", lambda *args: raw.copy())
+    s = Session()
+    read = s.wf_read_code("sample", sdss="1059-52618-453,1059-52618-454")
+    s.run_step(read, "# read")
+    _wait(s)
+    assert s.error is None
+    prep = s.wf_prepare_code(extinction="value", ebv=.02, rest_frame=False, flux_unit=1e-16)
+    exec(prep, s.ns)
+    fit = s.wf_fit_code(sample_model="hbeta", n_jobs=1, out=str(tmp_path / "out"))
+    replay = {"fa": fa}
+    exec("\n".join((read, prep, fit)), replay)
+    sm = replay["sample"]
+    assert sm.failed.empty and len(sm.table) == 2
+    assert sm.table["path"].isna().all() and sm.table["saved"].nunique() == 2
+    assert all(sm.load(k).spectrum.flux_unit == 1e-16 for k in range(2))
+    np.testing.assert_array_equal(sm.load(1).spectrum.flux, replay["spectra"][1].flux)
+
+
 def test_fit_sample(tmp_path):
     import matplotlib
     matplotlib.use("Agg")
@@ -1864,6 +2552,97 @@ def _rm_epochs(lag=10.0, n=40, seed=3):
     me = fa.fit_epochs(spectra, _toy_model(), reference=0, n_jobs=1, verbose=False)
     me._sim_continuum = (tg, 50.0 * (1 + x))
     return me
+
+
+def test_rms_isolates_target_transition_within_and_across_broad_components():
+    from fantasy_agn.rm import rms_spectrum
+    base = np.arange(4640., 5040., 1.)
+    rest = fa.line_wavelength("Hb")
+    epochs, expected = [], []
+    for k, (medium, offset) in enumerate([("air", 90.), ("vacuum", -120.), ("air", 0.)]):
+        native_rest = vac_to_air(rest) if medium == "air" else rest
+        scale = native_rest / vac_to_air(rest) * (1 + offset / 299792.458)
+        wave = base * scale
+        sp = fa.Spectrum(wave, np.zeros_like(wave), np.full_like(wave, 0.01 / scale),
+                         medium=medium, rest_frame=True, mjd=50000. + k,
+                         resolution_curve=(wave[[0, -1]], [360., 780.]))
+        model = fa.Model(fa.PowerLaw(), fa.Lines("narrow", ["Hb"]),
+                         fa.Lines("broad", ["Hb", "HeI4922"], fwhm=2400.),
+                         fa.Lines("wing", ["Hb"], role="broad", fwhm=4700.),
+                         fa.Lines("helium", ["HeII4686"], role="broad", fwhm=7000.),
+                         fa.Extinction())
+        model.set("*.shift", offset).set("continuum.amp", 10.).set("narrow.Hb.flux", 100.)
+        model.set("broad.Hb.flux", 170. + 70.*k).set("wing.Hb.flux", 80. + 10.*k)
+        model.set("broad.HeI4922.flux", 900.*(k+1)).set("helium.HeII4686.flux", 1250.*(3-k))
+        residual = (1 + k) * np.exp(-0.5 * ((base - 4820.) / 4.)**2)
+        sp.flux = model.evaluate(wave, sp.context) + residual
+        r = fa.FitResult(sp, model, sp.good, model.params.full_values(), None, None,
+                         chi2=1, dof=1, nfev=1, success=True, message="", at_limit=[],
+                         error_scale=1., time=0., error_method=None)
+        if offset:                                  # older and independent fits have no offset attribute
+            r.offset = offset
+        epochs.append(r)
+        target = model.copy()
+        target.set("continuum.amp", 0.).set("narrow.Hb.flux", 0.)
+        target.set("broad.HeI4922.flux", 0.).set("helium.HeII4686.flux", 0.)
+        expected.append((target.evaluate(wave, sp.context) + residual) * scale)
+
+    rms = rms_spectrum(epochs, "Hb", window=13000., n_boot=8)
+    velocity = (base / vac_to_air(rest) - 1) * 299792.458
+    used = np.abs(velocity) <= 13000.
+    ref = np.array(expected)[:, used]
+    np.testing.assert_allclose(rms["velocity"], velocity[used], atol=1e-9)
+    np.testing.assert_allclose(rms["mean"], ref.mean(axis=0), atol=1e-10)
+    np.testing.assert_allclose(rms["rms"], np.sqrt(np.maximum(ref.var(axis=0) - 0.01**2, 0)), atol=1e-10)
+
+
+def test_rms_reference_coverage_and_masked_gaps():
+    from fantasy_agn.rm import rms_spectrum
+    wave = np.arange(4740., 5000.)
+
+    def epoch(w, amplitude):
+        model = fa.Model(fa.Lines("broad", ["Hb"], role="broad", fwhm=2700.))
+        model.set("broad.Hb.flux", amplitude)
+        s = fa.Spectrum(w, np.zeros_like(w), np.full_like(w, 0.01), rest_frame=True)
+        s.flux = model.evaluate(w, s.context)
+        return fa.FitResult(s, model, s.good, model.params.full_values(), None, None,
+                            chi2=1, dof=1, nfev=1, success=True, message="", at_limit=[],
+                            error_scale=1., time=0., error_method=None)
+
+    zero = epoch(wave + 0.5, 0.)
+    detected = epoch(wave, 140.)
+    empty = epoch(wave, 300.)
+    empty.mask[:] = False
+    away = epoch(wave + 1500., 700.)
+    gap = (wave >= 4830) & (wave <= 4845)
+    zero.mask[(zero.spectrum.wave >= 4829.) & (zero.spectrum.wave <= 4846.)] = False
+    segmented = epoch(wave[~gap], 280.)
+    rms = rms_spectrum([empty, away, zero, detected, segmented], "Hb", n_boot=0)
+    # A nondetection contributes flux, while the later detection defines the grid and window.
+    np.testing.assert_array_equal(rms["wave"], wave[np.isin(wave, rms["wave"])])
+    middle = rms["wave"] == 4863.
+    assert middle.any()
+    assert rms["mean"][middle].item() == pytest.approx(detected.spectrum.flux[wave == 4863.].item())
+    # Only the detected epoch measured this interval. Mask and detector gaps cannot supply variance.
+    inside = (rms["wave"] >= 4830.) & (rms["wave"] <= 4845.)
+    np.testing.assert_allclose(rms["mean"][inside], detected.spectrum.flux[gap])
+    assert np.isnan(rms["rms"][inside]).all()
+    isolated = epoch(np.r_[4800., np.arange(4850., 5000.)], 280.)
+    edge = rms_spectrum([detected, isolated], "Hb", n_boot=0)
+    assert np.isnan(edge["rms"][(edge["wave"] > 4800.) & (edge["wave"] < 4850.)]).all()
+    for fits in ([], [empty, away], [detected, empty]):
+        with pytest.raises(ValueError, match="at least two"):
+            rms_spectrum(fits, "Hb")
+    blue, red = epoch(wave, 100.), epoch(wave, 200.)
+    blue.mask &= wave < 4860.
+    red.mask &= wave > 4865.
+    with pytest.raises(ValueError, match="overlapping fitted pixels"):
+        rms_spectrum([blue, red], "Hb")
+    with pytest.raises(ValueError, match="specify a window"):
+        rms_spectrum([zero, zero], "Hb")
+    assert len(rms_spectrum([zero, zero], "Hb", window=3000., n_boot=0)["wave"]) > 1
+    with pytest.raises(ValueError, match="finite positive"):
+        rms_spectrum([zero, detected], "Hb", window=np.nan)
 
 
 def test_rms_spectrum_width():
@@ -2149,6 +2928,22 @@ def test_fit_sample_can_prune_feii():
     assert np.isfinite(row["R_FeII all groups"]) and np.isfinite(row["broad Hb FWHM all groups"])
     assert abs(row["R_FeII"] - row["R_FeII all groups"]) < 0.1 and row["R_FeII"] != row["R_FeII all groups"]
 
+
+
+def test_pruned_uv_sample_keeps_the_named_ratio_before_pruning(tmp_path):
+    model = fa.presets.mgii(balmer_continuum=False)
+    wave = np.arange(2640., 3061.)
+    model.set("broad.MgII2798.flux", 600.)
+    flux = model.evaluate(wave, {"medium": "air"})
+    path = tmp_path / "uv.txt"
+    np.savetxt(path, np.c_[wave, flux + np.random.default_rng(21).normal(0, .01, wave.size),
+                           np.full_like(wave, .01)])
+    row = fa.fit_sample([str(path)], model=("mgii", {"balmer_continuum": False}), z=0., deredden=False,
+                        prune_feii=True, n_jobs=1, verbose=False).table.iloc[0]
+    assert "error" not in row, row.get("trace")
+    label = "FeII2650-3050/MgII2798"
+    assert np.isfinite(row[label]) and np.isfinite(row[label + " all groups"])
+    assert "R_FeII all groups" not in row and "broad Hb FWHM all groups" not in row
 
 
 def test_simulation_check_recovers_a_sound_fit_and_repeats_the_pruning():
@@ -3686,6 +4481,38 @@ def test_relation_over_epochs_recovers_a_power_law():
     assert np.ptp(fig.axes[0].get_ylim()) < 2                                 # the range follows the points
 
 
+def test_app_results_use_selected_flux_unit_and_mass_recipes(tmp_path):
+    from copy import copy
+    import pandas as pd
+    from fantasy_agn.app.session import Session
+    from fantasy_agn.sample import SampleResult
+
+    spec = _toy_spectrum(np.random.default_rng(12)).copy(z=0.1, flux_unit=1e-16)
+    known = fa.fit(spec, _toy_model(), verbose=False)
+    unknown = copy(known)
+    unknown.spectrum = spec.copy(flux_unit=None)
+    s = Session()
+    s.ns.update(spectra=[unknown.spectrum, spec], fits=[unknown, known])
+    s.wf["fit_kind"] = "fits"
+    assert s.wf_result(0)["flux_unit"] is None
+    assert s.wf_result(1)["flux_unit"] == spec.flux_unit
+    assert s.wf_result_more(0)["bh"] == []
+    expected = s.wf_result_more(1)
+    mass = next(q for q in expected["key"] if q["name"] == "log M_BH")
+    assert mass["scatter"] == pytest.approx(0.43)
+    assert {"vp06", "db20_sigma"} <= {q["recipe"] for q in expected["bh"]}
+
+    paths = [str(tmp_path / f"fit_{k}.fantasy") for k in range(2)]
+    for fit, path in zip([unknown, known], paths):
+        fa.save(fit, path)
+    s.wf["fit_kind"] = "sample"
+    s.ns["sample"] = SampleResult(pd.DataFrame({"saved": paths}))
+    assert s.sample_view(0)["flux_unit"] is None and s.sample_view(0)["bh"] == []
+    sample = s.sample_view(1)
+    assert sample["flux_unit"] == spec.flux_unit
+    assert sample["key"] == expected["key"] and sample["bh"] == expected["bh"]
+
+
 def test_app_sample_results_say_what_to_check_and_why_spectra_failed():
     import pandas as pd
     from fantasy_agn.app.session import Session
@@ -3706,6 +4533,55 @@ def test_app_sample_results_say_what_to_check_and_why_spectra_failed():
     at = s.wf_atlas()
     assert at["kind"] == "sample" and len(at["cards"]) == 4
     assert "fewer than 10 usable pixels" in at["cards"][2]["error"] and "out=folder" in at["cards"][0]["error"]
+
+
+def test_uv_ratios_stay_separate_in_epoch_and_sample_results():
+    from io import StringIO
+    import pandas as pd
+    from fantasy_agn.app.session import Session
+    from fantasy_agn.correlations import plain_label
+    from fantasy_agn.sample import SampleResult
+
+    r = _measurement_fixture(fa.presets.mgii(), np.arange(2650., 3051.),
+                             {"broad.MgII2798.flux": 600.})
+    label = "FeII2650-3050/MgII2798"
+    epochs = fa.epoch_table([r, r], n_jobs=1)
+    assert np.isfinite(epochs[label]).all() and "R_FeII" not in epochs
+    assert plain_label(label) == "Fe II 2650–3050 Å / Mg II"
+
+    values = r.key_results().set_index("quantity").value.to_dict()
+    # Rows of a mixed catalog also carry the other objects' columns, filled with NaN.
+    values = {"broad Hb FWHM": np.nan, **values}
+    session = Session()
+    session.ns["sample"] = SampleResult(pd.DataFrame([dict(name="UV", **values)]))
+    headings = {col["key"]: col["label"] for col in session.sample_state()["columns"]}
+    assert headings[label] == plain_label(label)
+    assert session.sample_points()["r_feii"] is None
+    old = pd.DataFrame([{"name": "old UV", "R_FeII": 2.2, "broad MgII2798 FWHM": 4100.}])
+    session.ns["sample"] = SampleResult(old)
+    legacy_cols = {c["key"] for c in session.sample_state()["columns"]}
+    assert "legacy_uv_feii" in legacy_cols and "R_FeII" not in legacy_cols
+    assert old.loc[0, "R_FeII"] == 2.2  # inspecting a saved catalog does not rewrite it
+    mixed = pd.DataFrame([
+        {"name": "old UV", "broad MgII2798 FWHM": 4100., "R_FeII": 2.2, "R_FeII err": 0.3,
+         "R_FeII all groups": 2.4},
+        {"name": "optical", "broad Hb FWHM": 3800., "R_FeII": 0.7, "R_FeII err": 0.06,
+         "R_FeII all groups": 0.8},
+        {"name": "current UV", "broad MgII2798 FWHM": 3400., label: 1.7}])
+    session.ns["sample"] = SampleResult(mixed)
+    exported = pd.read_csv(StringIO(session.sample_csv())).set_index("name")
+    for suffix in ("", " err", " all groups"):
+        assert exported.at["old UV", "legacy_uv_feii" + suffix] == mixed.at[0, "R_FeII" + suffix]
+        assert np.isnan(exported.at["old UV", "R_FeII" + suffix])
+        assert exported.at["optical", "R_FeII" + suffix] == mixed.at[1, "R_FeII" + suffix]
+    assert exported.at["current UV", label] == 1.7 and np.isnan(exported.at["current UV", "legacy_uv_feii"])
+    assert mixed.at[0, "R_FeII"] == 2.2 and "legacy_uv_feii" not in mixed
+    atlas = session._atlas_card(r, kv=values)
+    assert atlas["bline"] == "MgII2798" and atlas["rfeii"] is None
+    assert atlas["fwhm"] == pytest.approx(values["broad MgII2798 FWHM"])
+    assert not atlas["width_limits"]
+    r.at_limit.append("broad.fwhm")
+    assert session._atlas_card(r, kv=values)["width_limits"] == ["broad.fwhm"]
 
 
 def test_app_atlas_card_of_a_kept_sample_fit(tmp_path):
@@ -3852,8 +4728,16 @@ def test_app_catalog_lookup_of_a_sample_and_of_one_object(monkeypatch):
     assert st["catalog"]["flagged"] == 1 and st["catalog"]["flags"] == [2, 0] and labels[labels.index("Class") + 1] == "Catalogs say"
     assert "classified here as passive" in st["notes"][0]
     assert "catalog_class" in s.sample_csv().splitlines()[0]
+    # The Results sample stays in fitting order; Read catalog rows keep the lookup order.
+    s.ns.update(raw=[_rest_spectrum(4000, 6000, name=name, ra=ra, dec=dec)
+                     for name, ra, dec in zip(t.name, t.ra, t.dec)])
+    s.wf.update(mode="sample", fit_kind="sample")
+    s.ns["catalogs"] = s.ns["catalogs"].iloc[::-1]
+    assert s.sample_state()["catalog"]["flags"] == [2, 0]
+    assert s.wf_catalog_row(0)["name"] == "b" and s.wf_catalog_row(0)["cls"] == "uv_mgii"
     s.ns["catalogs"] = s.ns["catalogs"].iloc[:1]                 # made for other spectra: not shown
     assert s.sample_state()["catalog"] is None
+    assert s.wf_catalog()["loaded_rows"] == [None, 0] and s.wf_catalog_row(0)["cls"] == "uv_mgii"
     o = Session()
     assert o.wf_catalog() is None
     o.ns["raw"] = [_rest_spectrum(2100, 5050)]
@@ -3871,6 +4755,52 @@ def test_app_catalog_lookup_of_a_sample_and_of_one_object(monkeypatch):
     assert "classified here as passive" in v["disagreements"].iloc[0] and v["n_disagreements"].iloc[0] >= 1
     o.ns["raw"] = [_rest_spectrum(2100, 5050, ra=10.0, dec=20.0, name="other")]    # other spectra: not shown
     assert o.wf_catalog()["done"] is False
+
+
+def test_app_catalog_classification_follows_target_and_current_fit(monkeypatch):
+    from importlib import import_module
+    from fantasy_agn.app.session import Session
+    from fantasy_agn.classify import Classification
+    _fake_catalogs(monkeypatch)
+    # Different sky positions can have the same generic spectrum name.
+    a = _toy_spectrum(np.random.default_rng(4)).copy(name="target", ra=10., dec=20.)
+    b = a.copy(ra=30., dec=40.)
+    ra = fa.fit(a, _toy_model(), verbose=False)
+    rb = fa.fit(b, _toy_model(), verbose=False)
+    replacement = fa.fit(b, _toy_model(), verbose=False)
+    labels = {ra: "type1", rb: "passive", replacement: "liner"}
+
+    def classified(r, preliminary=None):
+        return Classification(r.spectrum, labels[r], False, "", {}, None, None)
+    monkeypatch.setattr(import_module("fantasy_agn.classify"), "classify_fit", classified)
+    s = Session()
+    s.wf.update(mode="multi", fit_kind="fits")
+    cat = fa.lookup_catalogs([a, b])
+    s.ns.update(raw=[a, b], spectra=[a, b], fits=[ra, rb], catalogs=cat)
+    assert s.classify_state(0)["label"] == "type1"
+    assert s.wf_catalog_row(1)["cls"] == "passive"
+    cat.sort_values("ra", ascending=False, inplace=True)
+    assert s.wf_catalog()["loaded_rows"] == [1, 0]
+    assert s.wf_catalog_row(0)["ra"] == 30 and s.wf_catalog_row(0)["cls"] == "passive"
+    s.ns["catalogs"] = cat.iloc[:1]
+    assert s.wf_catalog()["loaded_rows"] == [None, 0]
+    assert s.wf_catalog_row(0)["cls"] == "passive"
+    s.ns["fits"] = [ra, replacement]
+    assert "cls" not in s.wf_catalog_row(0)
+    assert s.classify_state(1)["label"] == "liner"
+    assert s.wf_catalog_row(0)["cls"] == "liner"
+
+    # A new input/lookup without a fit must not inherit a final label. A new
+    # classification-only run still supplies preliminary labels for the correct rows.
+    s.reset()
+    s.wf.update(mode="classify", fit_kind="classify")
+    s.ns.update(raw=[a, b], spectra=[a, b], catalogs=cat)
+    assert "cls" not in s.wf_catalog_row(0)
+    s.ns["classes"] = [Classification(a, "composite", False, "", {}, None, None)]
+    assert "cls" not in s.wf_catalog_row(0)
+    assert s.wf_catalog_row(1)["cls"] == "composite"
+    s.ns["raw"] = [a]
+    assert not s.wf_catalog()["done"]  # the remaining table also contains a different sky position
 
 
 def test_sky_image_tries_the_next_survey(monkeypatch):
@@ -4040,6 +4970,90 @@ def test_model_builder_recipes():
     assert [k for k, *_ in mb.ladder("civ", {})] == ["base", "b1", "b3"]
 
 
+def test_model_editor_preserves_calibration_and_affine_per_line_ties():
+    from fantasy_agn.app import builder
+    model = fa.Model(fa.PowerLaw(), fa.Calibration((4500., 5300.), name="response"),
+                     fa.Lines("broad", ["Hb", "Hg"], role="broad", tie_kinematics=False))
+    model.set("broad.Hg.shift", value=17., min=-90., max=300.)
+    model.tie("broad.Hg.shift", "broad.Hb.shift", factor=.7, offset=17.)
+    state = builder.decompose(model)
+    record = state["params"]["broad.Hg.shift"]
+    assert record["tie"] == ["broad.Hb.shift", .7, 17.]
+    code, dropped = builder.code_of(state)
+    copy = builder.run_code(code)
+    assert not dropped and copy.to_dict()["params"] == model.to_dict()["params"]
+    assert np.array_equal(copy.components[1].wave_range, (4500., 5300.))
+    assert 'offset=17' in code
+    assert "Calibration" in {t["type"] for t in builder.types()}
+
+    class CustomContinuum(fa.PowerLaw):
+        def __init__(self, name="special"):
+            super().__init__(name)
+
+    with pytest.raises(ValueError, match="custom component in a session cell"):
+        builder.decompose(fa.Model(CustomContinuum()))
+
+
+def test_model_editor_split_apply_invalidates_old_fit_and_replays():
+    from fantasy_agn.app import builder
+    from fantasy_agn.app.session import Session
+    s = Session()
+    s.ns["spec"] = _toy_spectrum(np.random.default_rng(4))
+    s.ns["spectra"] = [s.ns["spec"]]
+    s.ns["model"] = fa.Model(fa.PowerLaw(), fa.Lines("narrow", ["Hb", "Ha", "Hg"]))
+    state = s.mb_decompose({"model": True})["state"]
+    out = s.mb_decompose({"state": state, "split": {"component": "narrow", "lines": ["Ha"], "name": "red"}})
+    assert [c["kw"]["name"] for c in out["state"]["comps"]] == ["continuum", "narrow", "red"]
+    assert "red.fwhm" in builder.run_code(out["code"]).params
+    assert len(s.model.components) == 2
+    s.ns.update(r=object(), fits=[], resid=object())
+    code = s.recipe_code(out["state"])
+    exec(code, s.ns)
+    assert s.ns["r"] is s.ns["fits"] is s.ns["resid"] is None
+    assert len(s.model.components) == 3
+    out["state"]["context"] = s.mb_decompose({"model": True})["context"]
+    s.model.set("continuum.amp", 10.)  # same object, different settings in another session client
+    with pytest.raises(ValueError, match="changed"):
+        s.recipe_code(out["state"])
+
+
+def test_model_editor_and_gallery_follow_multi_epoch_reference():
+    from fantasy_agn.app.session import Session
+    s = Session()
+    first, second = [_toy_spectrum(np.random.default_rng(seed)) for seed in (1, 2)]
+    second = second.copy(wave=second.wave * .56)
+    s.ns["spectra"] = [first, second]
+    s.wf.update(mode="multi", reference=0)
+    assert s.spec is None and s._mb_spec() is first
+    a = s.mb_decompose({"empty": True})
+    assert a["state"]["wave_range"] == [np.ceil(first.wave.min()), np.floor(first.wave.max())]
+    assert "Hb" in {x["name"] for x in s.mb_lines()["lines"]}
+    s._gallery = {"spec": first, "cands": ["first"], "running": False, "pending": []}
+    assert s.wf_gallery()["cands"] == ["first"]
+    s.ns["spec"] = first  # a previous trial fit
+    s.wf["reference"] = 1
+    assert s._mb_spec() is second and not s.wf_gallery()["cands"]
+    assert "Hb" not in {x["name"] for x in s.mb_lines()["lines"]}
+    assert s.mb_decompose({"empty": True})["context"] != a["context"]
+    a["state"]["context"] = a["context"]
+    with pytest.raises(ValueError, match="changed"):
+        s.recipe_code(a["state"])
+
+
+def test_app_replacing_consecutive_model_choices_clears_fit_on_replay():
+    from fantasy_agn.app.session import Session
+    s = Session()
+    s.run_cell("r = 'previous fit'")
+    _wait(s)
+    for preset in ("mgii", "civ"):
+        s.run_step(s.preset_kw_code(preset, {}), "model = fa.")
+        _wait(s)
+    assert s.ns["r"] is None and len(s.cells) == 3
+    ns = {}
+    exec(s.script(), ns)
+    assert ns["r"] is None and ns["model"].to_dict() == s.model.to_dict()
+
+
 def test_app_model_gallery_and_builder():
     from fantasy_agn.app.session import Session
     import time
@@ -4054,7 +5068,7 @@ def test_app_model_gallery_and_builder():
     assert s.mb_build(out["state"])["nfree"] == out["nfree"]
     code = s.recipe_code(out["state"])
     assert code.endswith("\nmodel") and s._preset_made is None
-    assert s.preset_kw_code("optical", {"host": True}) == "model = fa.presets.optical(host=True)\nmodel"
+    assert s.preset_kw_code("optical", {"host": True}).splitlines()[0] == "model = fa.presets.optical(host=True)"
     with pytest.raises(ValueError):
         s.preset_kw_code("optical", {"nothing": 1})
     # a model of the builder fitted in the background joins the gallery

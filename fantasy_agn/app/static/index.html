@@ -12,7 +12,7 @@
 <header class="top">
   <a class="brand" href="#read" data-go="read" title="FANTASY">
     <img src="/static/img/mark.png" srcset="/static/img/mark@2x.png 2x" alt="" class="mark">
-    <span class="brandtext"><span class="wordmark">FANTASY</span>
+    <span class="brandtext"><span class="wordmark">FANTASY<sup class="sq" title="version 2">2</sup></span>
       <span class="tagline">Fully Automated pythoN Tool for AGN Spectra analYsis</span></span>
   </a>
   <span class="grow"></span>
@@ -29,17 +29,67 @@
   <button id="stopbtn" class="btn stopbtn hidden" title="Stop the running step: parallel workers are ended and the step is interrupted; its results are incomplete">■ Stop</button>
   <button id="newbtn" class="btn">New analysis</button>
   <div class="menuwrap">
-    <button id="morebtn" class="btn icon" title="More" aria-haspopup="true">⋯</button>
-    <div id="moremenu" class="menu hidden" role="menu">
-      <button data-act="open-project" role="menuitem">Open project (.fantasy)…</button>
-      <a data-dl="/api/project.fantasy" role="menuitem">Save project (.fantasy)</a>
-      <a data-dl="/api/session.py" role="menuitem">Download script (.py)</a>
-      <a data-dl="/api/session.ipynb" role="menuitem">Download notebook (.ipynb)</a>
+    <button id="morebtn" class="btn icon" aria-label="More" title="More" aria-haspopup="menu" aria-controls="moremenu" aria-expanded="false">⋯</button>
+    <div id="moremenu" class="menu hidden" role="menu" aria-labelledby="morebtn">
+      <button data-act="open-project" role="menuitem" tabindex="-1">Open project (.fantasy)…</button>
+      <button type="button" data-dl="/api/project.fantasy" role="menuitem" tabindex="-1">Save project (.fantasy)</button>
+      <button type="button" data-dl="/api/session.py" role="menuitem" tabindex="-1">Download script (.py)</button>
+      <button type="button" data-dl="/api/session.ipynb" role="menuitem" tabindex="-1">Download notebook (.ipynb)</button>
       <hr>
-      <button data-act="check-update" role="menuitem">Check for updates <span class="muted mono" id="curver"></span></button>
+      <button data-act="check-update" role="menuitem" tabindex="-1">Check for updates <span class="muted mono" id="curver"></span></button>
       <hr>
+      <button data-act="cite" role="menuitem" tabindex="-1">How to cite FANTASY</button>
     </div>
     <input type="file" id="projectfile" accept=".fantasy" hidden>
+  <dialog id="citedlg" class="citedlg" aria-labelledby="citettl">
+    <div class="cite-head"><h3 id="citettl">How to cite FANTASY</h3>
+      <button class="btn icon" type="button" id="citeclose" aria-label="Close">✕</button></div>
+    <p>If you publish results obtained with FANTASY, please cite the FANTASY paper and the two papers it builds on:</p>
+    <ol class="cite-list">
+      <li><b>Ilić, D., Rakić, N. &amp; Popović, L. Č. 2023</b>, ApJS, 267, 19 <span class="muted">· the FANTASY paper</span><br>
+        <a href="https://ui.adsabs.harvard.edu/abs/2023ApJS..267...19I/abstract" target="_blank" rel="noopener">ADS</a> ·
+        <a href="https://doi.org/10.3847/1538-4365/acd783" target="_blank" rel="noopener">doi:10.3847/1538-4365/acd783</a></li>
+      <li><b>Rakić, N. 2022</b>, MNRAS, 516, 1624<br>
+        <a href="https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract" target="_blank" rel="noopener">ADS</a> ·
+        <a href="https://doi.org/10.1093/mnras/stac2259" target="_blank" rel="noopener">doi:10.1093/mnras/stac2259</a></li>
+      <li><b>Ilić, D. et al. 2020</b>, A&amp;A, 638, A13<br>
+        <a href="https://ui.adsabs.harvard.edu/abs/2020A%26A...638A..13I/abstract" target="_blank" rel="noopener">ADS</a> ·
+        <a href="https://doi.org/10.1051/0004-6361/202037532" target="_blank" rel="noopener">doi:10.1051/0004-6361/202037532</a></li>
+    </ol>
+    <p class="cite-say">For example: <i>“The spectra were fitted with FANTASY<span id="citever"></span> (Ilić et al. 2020; Rakić 2022; Ilić, Rakić &amp; Popović 2023).”</i></p>
+    <p class="muted small">If you fit the host galaxy with stellar templates, cite them too (E-MILES: Vazdekis et al. 2016); <code>fa.templates.TEMPLATE_SETS</code> gives the reference of each template set.</p>
+    <div class="cite-bibhead"><b>BibTeX</b><button class="btn" type="button" id="citecopy">Copy BibTeX</button></div>
+    <pre id="citebib">@ARTICLE{2023ApJS..267...19I,
+  author  = {{Ili{\'c}}, Dragana and {Raki{\'c}}, Nemanja and {Popovi{\'c}}, Luka {\v{C}}.},
+  title   = "{Fantastic Fits with fantasy of Active Galactic Nuclei Spectra: Exploring the Fe II Emission near the H{\ensuremath{\alpha}} Line}",
+  journal = {ApJS},
+  year    = 2023,
+  volume  = {267},
+  pages   = {19},
+  doi     = {10.3847/1538-4365/acd783}
+}
+
+@ARTICLE{2022MNRAS.516.1624R,
+  author  = {{Raki{\'c}}, Nemanja},
+  title   = "{Kinematics of the H{\ensuremath{\alpha}} and H{\ensuremath{\beta}} broad-line region in an SDSS sample of type-1 AGNs}",
+  journal = {MNRAS},
+  year    = 2022,
+  volume  = {516},
+  pages   = {1624},
+  doi     = {10.1093/mnras/stac2259}
+}
+
+@ARTICLE{2020A&amp;A...638A..13I,
+  author  = {{Ili{\'c}}, D. and others},
+  title   = "{A flare in the optical spotted in the changing-look Seyfert NGC 3516}",
+  journal = {A\&amp;A},
+  year    = 2020,
+  volume  = {638},
+  pages   = {A13},
+  doi     = {10.1051/0004-6361/202037532}
+}</pre>
+    <p class="muted small">The full author lists are in the ADS records (Export → BibTeX).</p>
+  </dialog>
   </div>
 </header>
 
@@ -51,6 +101,28 @@
 
   <!-- ================================================================ 1 READ -->
   <section class="page" id="page-read" data-step="read">
+    <section class="hero" id="hero" data-example="__FANTASY_EXAMPLE__" aria-label="A real FANTASY fit of an SDSS Seyfert 1 galaxy, replayed">
+      <div class="hero-copy">
+        <div class="hero-brand">
+          <img src="/static/img/mark@2x.png" alt="">
+          <div><b>FANTASY<sup class="sq" title="version 2">2</sup></b><small>Fully Automated pythoN Tool for AGN Spectra analYsis</small></div>
+        </div>
+        <div class="hero-kicker">A real fit, replayed</div>
+        <h2>From the light of a galaxy to the black hole at its heart.</h2>
+        <p>One SDSS fiber, one spectrum of a Seyfert 1. FANTASY fits the starlight of the host galaxy, the accretion disk, Fe II and the broad and narrow lines together, and weighs the black hole.</p>
+        <div class="hero-stats" id="herostats"></div>
+        <div class="hero-actions">
+          <button class="btn primary" id="herotry" type="button">Fit this galaxy yourself →</button>
+          <button class="btn" id="heroreplay" type="button" title="Play the decomposition again">↻ Replay</button>
+        </div>
+      </div>
+      <div class="hero-plot">
+        <div class="hero-top"><span class="hero-stage" id="herostage"></span><span class="hero-obj" id="heroobj"></span></div>
+        <canvas aria-hidden="true"></canvas>
+        <div class="hero-read" id="heroread"></div>
+        <div class="hero-legend" id="herolegend"></div>
+      </div>
+    </section>
     <div class="pagehead"><h1>Read spectra</h1><code class="hint" id="read-hint">fa.read(…)</code></div>
     <div id="restorebox" class="restorebox hidden"></div>
     <h3 class="label">What are you analysing?</h3>
@@ -251,18 +323,13 @@
       </div>
       <div class="ccbtns" id="ccbtns"></div>
     </div>
-    <div class="card galcard hidden" id="galcard">
-      <div class="plothead"><b>Compare models on this spectrum</b><code class="hint">fa.fit · BIC = χ² + k ln n</code><span class="grow"></span>
-        <span class="muted small" id="gx-draft"></span><button class="btn small gx-newbtn" id="gx-new">+ Your own model</button></div>
-      <div id="gx-body"></div>
-    </div>
     <div class="card optbar" id="optbar">
       <div><label class="lbl">Start from</label>
-        <div class="seg" id="startseg"><button data-s="preset" class="on">A preset</button><button data-s="custom">Your own model</button><button data-s="saved">A saved model</button></div></div>
+        <div class="seg" id="startseg"><button data-s="preset" class="on">A preset</button><button data-s="custom">From scratch</button><button data-s="saved">A saved model</button></div></div>
       <div class="optrow" id="presetopts">
         <div><label class="lbl" for="presetsel">Preset</label><select id="presetsel"></select></div>
         <div id="broadbox"><label class="lbl">Broad components</label>
-          <div class="stepperin"><button id="bminus">−</button><span id="bcount" class="mono">2</span><button id="bplus">+</button></div></div>
+          <div class="stepperin"><button id="bminus" aria-label="Fewer broad components">−</button><span id="bcount" class="mono">2</span><button id="bplus" aria-label="More broad components">+</button></div></div>
         <div id="hostbox"><label class="lbl" for="hostsel">Host galaxy</label><select id="hostsel"></select></div>
         <div id="contbox"><label class="lbl" for="contsel">Continuum</label><select id="contsel">
           <option value="powerlaw">power law</option><option value="broken">broken power law</option></select></div>
@@ -271,6 +338,7 @@
         <label class="check" id="o-coronal"><input type="checkbox" data-opt="coronal"> Coronal lines</label>
         <label class="check" id="o-oi6046"><input type="checkbox" data-opt="oi6046"> O I 6046</label>
         <label class="check" id="o-red"><input type="checkbox" data-opt="red"> Red side to 7500 Å</label>
+        <button class="btn" id="usepreset">Use preset</button>
       </div>
       <div class="optrow hidden" id="savedopts">
         <div><label class="lbl" for="savedsel">Saved model</label><select id="savedsel"></select></div>
@@ -281,42 +349,27 @@
           and listed here; a model file from someone else can be loaded with <b>From a file</b>.</p>
       </div>
       <div class="optrow hidden" id="customopts">
-        <p class="note" id="customnote">Start with a power-law continuum and add the lines, templates and continuum components the spectrum
-          needs with <b>Add component</b>. You can also start from a preset and change it: every model can be edited.</p>
-        <button class="btn primary" id="startempty">Start a new model</button>
+        <p class="note">Start with a power-law continuum. Apply your edits when the model is ready to fit.</p>
+        <button class="btn" id="startempty">Create in editor…</button>
       </div>
     </div>
     <div class="modelgrid" id="modelgrid">
       <div class="card complist">
-        <div class="cardhead"><b>Components</b><span class="grow"></span><span class="muted mono small" id="nfree"></span></div>
-        <div class="savebar"><button class="btn small" id="savemodel" title="Keep this model (components, limits, fixed and tied parameters) to use it again">Save model…</button>
-          <button class="btn small ghost" id="dlmodel" title="Download the model as a JSON file to share it">Download</button></div>
-        <ul id="comps"></ul>
-        <div class="addfoot"><button class="btn addbtn" id="addcomp">+ Add component</button>
-          <button class="btn small" id="openmb" title="Edit every component and parameter of this model in the model builder">Open in the model builder</button></div>
+        <div class="cardhead"><b>Active model</b><span class="grow"></span><span class="muted mono small" id="nfree"></span></div>
+        <div class="model-actions">
+          <button class="btn primary" id="openmb">Edit model…</button>
+          <span class="note small" id="mbdraft" role="status"></span>
+          <button class="btn small ghost hidden" id="mbdiscard">Discard draft</button>
+        </div>
+        <ul id="comps" aria-label="Highlight a component in the initial guess"></ul>
+        <div class="savebar"><button class="btn small" id="savemodel">Save model…</button>
+          <button class="btn small ghost" id="dlmodel" title="Download the active model as JSON">Download JSON</button></div>
       </div>
       <div class="modelright">
         <div class="card plotcard">
           <div class="plothead"><b id="gtitle">Initial guess</b><span class="grow"></span>
             <span class="mono muted small" id="ghl"></span></div>
           <div class="plot" id="gplot"></div>
-        </div>
-        <div class="card flush" id="compcard">
-          <div class="compbar">
-            <div class="comptitle"><span class="sw" id="csw"></span><b class="mono" id="ptabtitle"></b><span class="muted small" id="cdesc"></span></div>
-            <span class="grow"></span>
-            <button class="btn small ghost" id="rmcomp">Remove</button>
-          </div>
-          <div class="compctl" id="compctl">
-            <div id="profbox"><label class="lbl">Line profile</label>
-              <div class="seg small" id="profseg"></div></div>
-            <div id="kinbox"><label class="lbl" for="kinsel">Shift and width</label>
-              <select id="kinsel" class="small"></select>
-              <p class="note small hidden" id="kintie"></p></div>
-          </div>
-          <p class="note small pnote">Initial values and limits of the selected component. Line fluxes are solved exactly, so they have no
-            bounds. Any single parameter can be fixed or tied to another one in the last columns.</p>
-          <table class="tbl params" id="paramtbl"></table>
         </div>
         <div class="card hidden" id="sharecard">
           <div class="plothead"><b>The same in all epochs, or one per epoch?</b><code class="hint">fa.fit_epochs(spectra, model, shared=…)</code><span class="grow"></span>
@@ -328,6 +381,10 @@
           <p class="note" id="sharenote"></p>
         </div>
       </div>
+    </div>
+    <div class="card galcard hidden" id="galcard">
+      <div class="plothead"><b>Compare models on this spectrum</b><code class="hint">fa.fit · BIC = χ² + k ln n</code></div>
+      <div id="gx-body"></div>
     </div>
     <footer class="pagefoot">
       <button class="btn" data-go="prepare">← Prepare</button><span class="grow"></span>
@@ -441,18 +498,20 @@
   <section class="page hidden" id="page-results" data-step="results">
     <div class="pagehead"><h1>Results</h1><code class="hint" id="res-hint">r.plot() · r.lines</code>
       <span class="grow"></span>
+      <button class="btn" type="button" data-act="cite" title="The papers to cite when you publish these results">How to cite</button>
       <div class="menuwrap" id="dlwrap">
-        <button class="btn" id="dlbtn" aria-haspopup="true">Download <span aria-hidden="true">▾</span></button>
-        <div class="menu dlmenu hidden" id="dlmenu" role="menu">
-          <a data-dl="/api/wf/lines.csv" id="dl-lines" role="menuitem"><b>Fitted lines</b><small>CSV: flux, FWHM, shift and EW with errors</small></a>
-          <a data-dl="/api/wf/lines.fits" id="dl-fits" role="menuitem"><b>Fitted lines (FITS)</b><small>The same table as a FITS file</small></a>
-          <a id="dl-comp" role="menuitem"><b>Model and components</b><small>CSV of the shown fit: data, model, every component, host, AGN</small></a>
-          <a data-dl="/api/wf/plots.pdf" id="dl-plots" role="menuitem"><b>Fit figures</b><small>PDF, one page per spectrum</small></a>
-          <a data-dl="/api/report.html" id="dl-report" role="menuitem"><b>Report</b><small>One HTML file: the figure, key numbers, the checks run and their outcome, the settings and code</small></a>
+        <button class="btn" id="dlbtn" aria-haspopup="menu" aria-controls="dlmenu" aria-expanded="false">Download <span aria-hidden="true">▾</span></button>
+        <div class="menu dlmenu hidden" id="dlmenu" role="menu" aria-labelledby="dlbtn">
+          <button type="button" data-dl="/api/sample.csv" id="dl-sample" role="menuitem" tabindex="-1"><b>Sample catalog (CSV)</b><small>One row per spectrum with its classification, fit measurements and any recorded error</small></button>
+          <button type="button" data-dl="/api/wf/lines.csv" id="dl-lines" role="menuitem" tabindex="-1"><b>Fitted lines</b><small>CSV: flux, FWHM, shift and EW with errors</small></button>
+          <button type="button" data-dl="/api/wf/lines.fits" id="dl-fits" role="menuitem" tabindex="-1"><b>Fitted lines (FITS)</b><small>The same table as a FITS file</small></button>
+          <button type="button" id="dl-comp" role="menuitem" tabindex="-1"><b>Model and components</b><small>CSV of the shown fit: data, model, every component, host, AGN</small></button>
+          <button type="button" data-dl="/api/wf/plots.pdf" id="dl-plots" role="menuitem" tabindex="-1"><b>Fit figures</b><small>PDF, one page per fitted spectrum</small></button>
+          <button type="button" data-dl="/api/report.html" id="dl-report" role="menuitem" tabindex="-1"><b>Report</b><small>One HTML file: the figure, key numbers, the checks run and their outcome, the settings and code</small></button>
           <hr>
-          <a data-dl="/api/session.py" role="menuitem"><b>Python script</b><small>Every step of this analysis, to run again</small></a>
-          <a data-dl="/api/session.ipynb" role="menuitem"><b>Notebook</b><small>The same as a Jupyter notebook</small></a>
-          <a data-dl="/api/project.fantasy" role="menuitem"><b>Project</b><small>Open it again in FANTASY (More ⋯ › Open project)</small></a>
+          <button type="button" data-dl="/api/session.py" role="menuitem" tabindex="-1"><b>Python script</b><small>Every step of this analysis, to run again</small></button>
+          <button type="button" data-dl="/api/session.ipynb" role="menuitem" tabindex="-1"><b>Notebook</b><small>The same as a Jupyter notebook</small></button>
+          <button type="button" data-dl="/api/project.fantasy" role="menuitem" tabindex="-1"><b>Project</b><small>Open it again in FANTASY (More ⋯ › Open project)</small></button>
         </div>
       </div></div>
     <div class="epochtabs" id="etabs"></div>
@@ -978,15 +1037,6 @@
     <img id="classdlgimg" class="figimg" alt="classification figure">
   </div>
 </div>
-<div id="adddlg" class="docs hidden" role="dialog" aria-label="Add a component">
-  <div class="docsbox addbox2">
-    <div class="addhead"><b>Add a component</b><span class="grow"></span><button class="btn icon" id="closeadd" title="Close">×</button></div>
-    <div class="addgrid">
-      <ul class="addtypes" id="addtypes"></ul>
-      <form class="addform" id="addform" autocomplete="off"></form>
-    </div>
-  </div>
-</div>
 <div id="savedlg" class="docs hidden" role="dialog" aria-label="Save the model">
   <form class="docsbox savebox" id="saveform" autocomplete="off">
     <div class="addhead"><b>Save the model</b><span class="grow"></span><button class="btn icon" type="button" id="closesave" title="Close">×</button></div>
@@ -1007,6 +1057,7 @@
 <div id="toast" class="toast hidden"></div>
 <div class="mb hidden" id="mb"></div>
 <script src="/static/wf.js"></script>
+<script src="/static/hero.js"></script>
 <script src="/static/mb.js"></script>
 </body>
 </html>

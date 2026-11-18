@@ -12,7 +12,9 @@ the components with their constructor arguments (as in ``Model.to_dict``), plus 
 overrides on top of what the components set themselves. :func:`code_of` turns a state into
 FANTASY code; the code is run to get the model, so what is shown is exactly what is fitted.
 """
+import hashlib
 import inspect
+import json
 import math
 import threading
 import time
@@ -25,7 +27,7 @@ from .. import presets
 from .._threads import SINGLE_THREADED, environment
 
 TYPES = ["PowerLaw", "BrokenPowerLaw", "Blackbody", "Polynomial", "BalmerContinuum",
-         "StellarPopulation", "HostGalaxy", "FeII", "HighOrderBalmer", "Lines", "Absorption", "Extinction"]
+         "StellarPopulation", "HostGalaxy", "FeII", "HighOrderBalmer", "Lines", "Absorption", "Extinction", "Calibration"]
 POSITIONAL = {"Lines": ["name", "lines"], "Absorption": ["troughs"], "Calibration": ["wave_range"]}
 CHOICES = {"profile": ["gaussian", "lorentzian", "voigt", "gauss-hermite", "stratified"],
            "role": ["narrow", "broad", "outflow"], "kind": ["optical", "uv", "uv_extended"],
@@ -57,8 +59,8 @@ def _tuples(v):
 
 def _cls(name):
     import fantasy_agn as fa
-    if name not in TYPES + ["Calibration"]:
-        raise ValueError(f"unknown component type {name!r}")
+    if name not in TYPES:
+        raise ValueError(f"The model editor cannot reconstruct {name!r}. Edit this custom component in a session cell.")
     return getattr(fa, name)
 
 
@@ -130,15 +132,10 @@ def _override_code(m, overrides):
             continue
         p = m.params[name]
         tie = o.get("tie")
-        if tie:
-            to, factor = tie[0], float(tie[1] if len(tie) > 1 else 1.0)
-            if to not in m.params.names:
-                dropped.append(name)
-                continue
-            if not (p.tie and p.tie[0] == to and abs(p.tie[1] - factor) < 1e-12):
-                lines.append(f"model.tie({name!r}, {to!r}" + (f", factor={lit(factor)}" if factor != 1 else "") + ")")
+        if tie and tie[0] not in m.params.names:
+            dropped.append(name)
             continue
-        if p.tie and "tie" in o:
+        if p.tie and "tie" in o and not tie:
             lines.append(f"model.untie({name!r})")
         new = {}
         for k in ("value", "min", "max"):
@@ -156,6 +153,13 @@ def _override_code(m, overrides):
             lines.append(f"model.fix({name!r}" + (f", {lit(new['value'])}" if "value" in new else "") + ")")
         elif new:
             lines.append(f"model.set({name!r}, " + ", ".join(f"{k}={lit(v)}" for k, v in new.items()) + ")")
+        if tie:
+            target = tie[0]
+            factor = float(tie[1]) if len(tie) > 1 else 1.0
+            offset = float(tie[2]) if len(tie) > 2 else 0.0
+            if p.tie != (target, factor, offset) or fixed is False and p.fixed:
+                args = (f", factor={lit(factor)}" if factor != 1 else "") + (f", offset={lit(offset)}" if offset else "")
+                lines.append(f"model.tie({name!r}, {target!r}{args})")
     return lines, dropped
 
 
@@ -199,13 +203,15 @@ def decompose(model):
         o = {k: _plain(getattr(p, k)) for k in ("value", "min", "max") if getattr(p, k) != getattr(q, k)}
         if p.fixed != q.fixed:
             o["fixed"] = bool(p.fixed)
-        if (p.tie and p.tie[:2]) != (q.tie and q.tie[:2]):
-            o["tie"] = None if p.tie is None else [p.tie[0], float(p.tie[1])]
+        if p.tie != q.tie:
+            o["tie"] = None if p.tie is None else list(p.tie)
         if o:
             params[p.name] = o
     state = {"comps": comps, "params": params, "wave_range": _plain(model.wave_range)}
     rebuilt = run_code(code_of(state)[0])
-    if rebuilt.to_dict()["params"] != d["params"]:
+    if rebuilt.to_dict()["params"] != d["params"] or any(
+            getattr(a, "role", None) != getattr(b, "role", None) or getattr(a, "profile", None) != getattr(b, "profile", None)
+            for a, b in zip(model.components, rebuilt.components)):
         raise ValueError("this model cannot be taken apart into components exactly")
     return state
 
@@ -237,7 +243,7 @@ def describe(m):
                       "params": [{"name": p.name, "value": _plain(p.value), "min": _plain(p.min), "max": _plain(p.max),
                                   "fixed": bool(p.fixed), "linear": bool(p.linear), "unit": p.unit,
                                   "description": p.description, "free": bool(p.free),
-                                  "tie": None if p.tie is None else [p.tie[0], float(p.tie[1])]} for p in own]})
+                                  "tie": None if p.tie is None else list(p.tie)} for p in own]})
     return {"components": comps, "nfree": int(sum(p.free for p in m.params)), "nparams": len(m.params.names),
             "wave_range": _plain(m.wave_range)}
 
@@ -394,10 +400,14 @@ class BuilderMixin:
     """Model gallery and model builder of the Model step (mixed into Session)."""
 
     # ------------------------------------------------------------- builder
-    def _mb_spec(self):
-        if self.spec is None:
+    def _mb_spec(self, required=True):
+        spectra = self.spectra
+        spec = self.spec if self.wf.get("mode") != "multi" else None
+        if spectra:
+            spec = spectra[self.wf_reference()]
+        if spec is None and required:
             raise ValueError("prepare a spectrum first")
-        return self.spec
+        return spec
 
     def mb_types(self):
         return types()
@@ -422,11 +432,32 @@ class BuilderMixin:
                 sets[key] = {"label": label, "lines": list(ls)}
         return {"lines": sorted(out, key=lambda d: d["wave"]), "sets": sets, "range": [lo, hi]}
 
+    def _mb_context(self):
+        """A draft belongs to this spectrum and this revision of the active model."""
+        m = self.model
+        if m is None:
+            fingerprint = None
+        else:
+            try:
+                shape = m.to_dict()
+            except (TypeError, ValueError):
+                shape = self.model_state()     # custom components can still be replaced with a new model
+            fingerprint = hashlib.sha256(json.dumps(shape, sort_keys=True).encode()).hexdigest()
+        return {"spectrum": id(self.ns.get("spectra")), "reference": id(self._mb_spec()), "model": id(m) if m else None,
+                "settings": fingerprint}
+
     def mb_decompose(self, source):
         """State to start the builder from: {'model': true} (the session model), {'empty': true}, or {'preset', 'kw'}."""
         import fantasy_agn as fa
         source = source or {}
-        if source.get("model"):
+        context = self._mb_context()
+        if source.get("split"):
+            m = run_code(code_of(source["state"])[0])
+            split = source["split"]
+            m.split_lines(split["component"], split["lines"], split["name"])
+        elif source.get("state"):
+            m = run_code(code_of(source["state"])[0])
+        elif source.get("model"):
             if self.model is None:
                 raise ValueError("create a model first")
             m = self.model
@@ -437,7 +468,7 @@ class BuilderMixin:
             m = fa.Model(fa.PowerLaw(), wave_range=(float(np.ceil(spec.wave.min())), float(np.floor(spec.wave.max()))))
         st = decompose(m)
         code, _ = code_of(st)
-        return {"state": st, "code": code, **describe(run_code(code))}
+        return {"state": st, "code": code, "context": context, **describe(run_code(code))}
 
     def mb_build(self, state):
         code, dropped = code_of(state)
@@ -452,9 +483,17 @@ class BuilderMixin:
     def recipe_code(self, state):
         """Code for the session that makes the builder's model (Use this model)."""
         self._mb_spec()
+        expected = state.get("context")
+        if expected is not None and expected != self._mb_context():
+            raise ValueError("The spectrum or active model changed. Reopen the model editor.")
         code, _ = code_of(state)
+        run_code(code)                             # validate every override before scheduling the session cell
         self._preset_made = None                   # an edited model: fitted as it is
-        return code + "\nmodel"
+        return self._model_choice_code(code)
+
+    def _model_choice_code(self, code):
+        # Consecutive choices replace one session cell, so replay must always clear the old fit.
+        return code + "\nr = fits = me = rm = resid = epoch_classes = None  # results from the previous model\nmodel"
 
     def preset_kw_code(self, name, kw):
         """Code for a gallery candidate made from a preset (Use this model)."""
@@ -465,39 +504,51 @@ class BuilderMixin:
         if bad:
             raise ValueError(f"{name} has no option {bad[0]!r}")
         self._preset_made = (name, dict(kw))
-        return _preset_code(name, kw) + "\nmodel"
+        return self._model_choice_code(_preset_code(name, kw))
 
     # ------------------------------------------------------------- gallery
+    def _gallery_classification(self, spec):
+        from .steps import _epoch_key
+        if spec is None:
+            return None
+        return next((c for c in self._classifications() or [] if _epoch_key(c.spectrum) == _epoch_key(spec)), None)
+
     def _gallery_base(self):
-        """The preset the candidates vary: the classification's recommendation, else the optical preset."""
-        from ..classify import Classification
-        c = getattr(self, "classification", None)
+        """The reference spectrum's classification or an available preset covering its lines."""
+        from ..classify import Classification, _uv_choice
+        spec = self._mb_spec()
+        c = self._gallery_classification(spec)
         if c is not None and c.label in Classification.RECOMMENDED:
             name, kw = Classification.RECOMMENDED[c.label]
             return name, dict(kw)
-        lo, hi = self.spec.wave.min(), self.spec.wave.max()
-        if hi < 5200:
-            return ("mgii", {}) if hi > 2900 else ("civ", {})
-        return "optical", {}
+        uv = _uv_choice(spec)
+        if uv is not None:
+            name, kw = Classification.RECOMMENDED[uv.label]
+            return name, dict(kw)
+        available = presets.available(spec)
+        return next(((name, {}) for name in ("optical", "hbeta", "halpha", "mgii", "civ") if name in available),
+                    ("optical", {}))
 
     def wf_gallery(self):
         """The gallery of the current spectrum: candidates fitted so far, and whether more are coming."""
         g = self.__dict__.get("_gallery")
-        if g is None or self.spec is None or g["spec"] is not self.spec:
-            c = getattr(self, "classification", None)
+        spec = self._mb_spec(required=False)
+        if g is None or g["spec"] is not spec:
+            c = self._gallery_classification(spec)
             return {"cands": [], "running": False, "pending": [], "label": c.label if c is not None else None}
         return {k: v for k, v in g.items() if k != "spec"}
 
     def gallery_run(self, preset=None, kw=None):
         """Fit the candidate models of the current spectrum in the background."""
         spec = self._mb_spec()
-        self._need_rest_frame()
+        if not spec.rest_frame:
+            raise ValueError("prepare the reference spectrum in the rest frame first")
         g = self.__dict__.get("_gallery")
         if g is not None and g["spec"] is spec and g["running"]:
             return
         name, base = (preset, dict(kw or {})) if preset else self._gallery_base()
         cands = ladder(name, base)
-        c = getattr(self, "classification", None)
+        c = self._gallery_classification(spec)
         g = {"spec": spec, "running": True, "preset": name, "base_kw": base, "name": spec.name,
              "label": c.label if c is not None else None, "reason": c.reason if c is not None else None,
              "cands": [], "pending": [t for _, t, _, _ in cands], "total": len(cands), "error": None}
@@ -551,11 +602,16 @@ class BuilderMixin:
     def gallery_fit(self, state, title="", change=""):
         """Fit a model of the builder on the current spectrum (in the background) and add it to the gallery."""
         spec = self._mb_spec()
-        self._need_rest_frame()
+        if not spec.rest_frame:
+            raise ValueError("prepare the reference spectrum in the rest frame first")
+        if "context" in state:
+            if state["context"] != self._mb_context():
+                raise ValueError("The spectrum or active model changed. Reopen the model editor.")
+            state = {k: v for k, v in state.items() if k != "context"}
         code, _ = code_of(state)
         g = self.__dict__.get("_gallery")
         if g is None or g["spec"] is not spec:
-            c = getattr(self, "classification", None)
+            c = self._gallery_classification(spec)
             g = self._gallery = {"spec": spec, "running": False, "preset": None, "base_kw": {}, "name": spec.name,
                                  "label": c.label if c is not None else None, "reason": c.reason if c is not None else None,
                                  "cands": [], "pending": [], "total": 0, "error": None}

@@ -16,6 +16,7 @@ namespace, so the session panel (and the downloaded script) repeats it:
 """
 import datetime
 import glob
+import hashlib
 import io
 import os
 import re
@@ -25,9 +26,25 @@ import pandas as pd
 
 from ..spectrum import date_from_name, mjd_to_date
 
+# the papers to cite, in the headers of the downloaded script and notebook (the app's How to cite)
+CITE_REFS = ("Ilić, Rakić & Popović 2023, ApJS 267, 19 (the FANTASY paper); Rakić 2022, MNRAS 516, 1624; "
+             "Ilić et al. 2020, A&A 638, A13")
+CITE_COMMENT = f"# If you publish these results, please cite FANTASY: {CITE_REFS}.\n"
+CITE_MARKDOWN = f"If you publish these results, please cite FANTASY: {CITE_REFS}."
+
 MODES = ("single", "sample", "multi", "classify")
 MAX_POINTS = 4000
 TELLURIC_NAMES = ("B", "H₂O", "A")         # Spectrum.TELLURIC, in order
+
+
+def _target_key(obj):
+    """Catalog identity from the input spectrum, including the position queried."""
+    return (str(obj.name), *(None if pd.isna(v) else float(v)
+                             for v in (getattr(obj, "ra", None), getattr(obj, "dec", None))))
+
+
+def _epoch_key(spec):
+    return _target_key(spec), (None if pd.isna(spec.mjd) else spec.mjd)
 
 
 def _num(v):
@@ -36,7 +53,7 @@ def _num(v):
 
 def _g(v):
     """Short repr of a number for generated code."""
-    return f"{float(v):g}"
+    return repr(float(v)).removesuffix(".0")
 
 
 def _stride(n, max_points=MAX_POINTS):
@@ -118,7 +135,9 @@ class StepsMixin:
 
     def _wf_reset(self):
         self.wf = {"mode": "single", "group": "auto", "fit_kind": None}
+        self._read_revision = getattr(self, "_read_revision", 0) + 1
         self._wf_cache = {}
+        self._final_kept = self._catalog_kept = self._sample_cat = None
 
     # ----------------------------------------------------------- objects
     def _list(self, name):
@@ -156,40 +175,35 @@ class StepsMixin:
         """The classifications to show: those of the classification mode, else the one made by
         'Suggest from classification' (``c``), which stays available after modelling and fitting."""
         from ..classify import Classification
-        if self.classes is not None:
-            return self.classes
-        c, sp = self.ns.get("c"), self.spectra or []
-        names = {s.name for s in sp}
-        # every epoch (multi-epoch 'Suggest from classification'), while they are the spectra read
-        ep = self.ns.get("epoch_classes")
-        if (isinstance(ep, list) and len(ep) > 1 and all(isinstance(x, Classification) for x in ep)
-                and {x.spectrum.name for x in ep} == names):
-            return ep
-        # only while it belongs to one of the spectra read (not one from an earlier object)
-        ok = isinstance(c, Classification) and c.spectrum.name in names
-        return [c] if ok else None
+        sp = self.spectra or self.raw or ([self.spec] if self.spec is not None else [])
+        current = {_epoch_key(s) for s in sp}
+        classes = self.classes or self.ns.get("epoch_classes")
+        if isinstance(classes, list):
+            matched = [c for c in classes if isinstance(c, Classification) and _epoch_key(c.spectrum) in current]
+            if matched:
+                return matched
+        c = self.ns.get("c")
+        return [c] if isinstance(c, Classification) and _epoch_key(c.spectrum) in current else None
 
-    def _final_classifications(self):
-        """
-        The final classes: ``fa.classify_fit`` of each fit of the workflow (from the fitted
-        values; the preliminary ``fa.classify`` uses its own quick fits). None without a fit.
-        Cached by fit, outside ``_wf_cache`` (one fit takes a second or two).
-        """
+    def _final_classifications(self, cached_only=False):
+        """Current final classifications. Polling a catalog uses only an already computed result."""
         if self.wf.get("fit_kind") not in ("single", "joint", "fits"):
             return None
         res = [x for x in (self.wf_results() or []) if x[2] is not None]
         if not res:
             return None
-        prelim = {c.spectrum.name: c for c in (self._classifications() or [])}
-        key = (tuple(id(r) for _, _, r, _ in res), tuple(id(c) for c in prelim.values()))
-        kept = self.__dict__.get("_final_kept")
+        prelim = {_epoch_key(c.spectrum): c for c in (self._classifications() or [])}
+        key = (tuple(r for _, _, r, _ in res), tuple(prelim.values()))
+        kept = self._final_kept
         if kept is not None and kept[0] == key:
             return kept[1]
+        if cached_only:
+            return None
         from ..classify import classify_fit
         out = []
         for _, _, r, _ in res:
             try:
-                out.append(classify_fit(r, preliminary=prelim.get(r.spectrum.name)))
+                out.append(classify_fit(r, preliminary=prelim.get(_epoch_key(r.spectrum))))
             except Exception:                        # noqa: BLE001  (a fit that cannot be classified)
                 pass
         out = out or None
@@ -204,12 +218,33 @@ class StepsMixin:
 
     def run_step(self, code, marker=None):
         """Run workflow code; a repeated action replaces its own previous cell."""
+        if marker == "# prepare" and code.startswith("# prepare row "):
+            marker = code.partition("\n")[0] + "\n"
         index = self._replace_last(marker) if marker else None
         return self.run_cell(code, index)
 
     # -------------------------------------------------------------- 1 Read
+    def wf_input_files(self):
+        """Complete ordered local input paths, or None when the current spectra were fetched."""
+        files = self.ns.get("files")
+        if not isinstance(files, list) or not files:
+            return None
+        source = self.ns.get("read_source")
+        if source is not None:
+            return files if source == "files" else None
+        # Older saved sessions could keep a previous file list after an archive fetch.
+        # Use the last completed Read cell, independent of display names and input count.
+        for cell in reversed(self.cells):
+            if cell.code.startswith("# read\n") and not any(kind == "err" for _, kind in cell.out):
+                if "fa.sdss.fetch(" in cell.code or "fa.desi.fetch(" in cell.code:
+                    return None
+                if "fa.read(" in cell.code:
+                    return files
+        # For user-written code without a Read cell, the loaded objects are authoritative.
+        return None
+
     def wf_read_code(self, mode="single", paths=None, pattern=None, targetid=None, sdss=None,
-                     group="auto", format="auto"):
+                     group="auto", format="auto", _files_expr=None):
         if mode not in MODES:
             raise ValueError(f"unknown mode {mode!r}")
         if group not in ("auto", "date", "mjd", "order"):
@@ -217,38 +252,36 @@ class StepsMixin:
         format = format or "auto"
         if format not in ("auto", "sdss", "desi", "ozdes", "ozdes-ssa", "gama", "fits1d", "text"):
             raise ValueError(f"unknown file format {format!r}")
-        self.wf.update(mode=mode, group=group, fit_kind=None, format=format)
+        if sum(bool(v) for v in (paths, pattern, targetid, sdss)) != 1:
+            raise ValueError("choose exactly one input source: files, path, DESI TARGETID or SDSS plate-mjd-fiber")
         read = "fa.read(f)" if format == "auto" else f"fa.read(f, format={format!r})"
-        for key in ("prepare", "reference"):          # settings of the previous spectra
-            self.wf.pop(key, None)
         lines = []
-        if targetid:
-            ids = [int(t) for t in re.split(r"[\s,;]+", str(targetid).strip()) if t]
-            if mode == "single" and len(ids) > 1:
-                raise ValueError("one TARGETID for a single spectrum (or choose Sample / Multi-epoch)")
-            lines.append(f"raw = [fa.desi.fetch(t) for t in {ids!r}]   # DESI DR1 via SPARCL")
-        elif sdss:
-            ids = []
-            for item in re.split(r"[\s,;]+", str(sdss).strip()):
-                parts = [p for p in re.split(r"[-/]", item) if p]
-                if len(parts) != 3 or not all(p.isdigit() for p in parts):
-                    raise ValueError(f"SDSS spectra as plate-mjd-fiber, e.g. 1059-52618-453 (got {item!r})")
-                ids.append(tuple(int(p) for p in parts))
-            if mode == "single" and len(ids) > 1:
-                raise ValueError("one plate-mjd-fiber for a single spectrum (or choose Sample / Multi-epoch)")
-            lines.append(f"raw = [fa.sdss.fetch(*pmf) for pmf in {ids!r}]   # SDSS DR17 (plate, mjd, fiber)")
+        if targetid or sdss:
+            source = "desi" if targetid else "sdss"
+            items = [t for t in re.split(r"[\s,;]+", str(targetid or sdss).strip()) if t]
+            if targetid:
+                ids = [int(t) for t in items]
+                fetch = f"[fa.desi.fetch(t) for t in {ids!r}]   # DESI DR1 via SPARCL"
+            else:
+                ids = []
+                for item in items:
+                    parts = re.split(r"[-/]", item)
+                    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+                        raise ValueError(f"SDSS spectra as plate-mjd-fiber, e.g. 1059-52618-453 (got {item!r})")
+                    ids.append(tuple(int(p) for p in parts))
+                fetch = f"[fa.sdss.fetch(*pmf) for pmf in {ids!r}]   # SDSS DR17"
+            if mode == "multi" and group == "date":
+                raise ValueError("archive spectra use MJD or input order; filenames are unavailable")
+            lines += [f"_read_raw = {fetch}", "_read_files = None"]
+            count = len(ids)
         else:
+            source = "files"
             glob_expr = None
             if pattern:
                 files, glob_expr = resolve_pattern(pattern)
-            elif paths:
-                files = [os.path.expanduser(str(p).strip()) for p in paths if str(p).strip()]
             else:
-                raise ValueError("choose files, give a path or pattern, a DESI TARGETID or an SDSS plate-mjd-fiber")
-            if mode == "single" and len(files) > 1:
-                raise ValueError(f"{len(files)} files for a single spectrum: choose Sample or Multi-epoch")
-            if mode == "multi" and len(files) < 2:
-                raise ValueError("a multi-epoch fit needs at least two spectra")
+                files = [os.path.expanduser(str(p).strip()) for p in paths if str(p).strip()]
+            count = len(files)
             if mode == "multi" and group in ("auto", "date"):
                 dated = [date_from_name(f) for f in files]
                 if all(dated):
@@ -259,48 +292,122 @@ class StepsMixin:
                                      ", ".join(os.path.basename(f) for f, d in zip(files, dated) if not d)
                                      + ": choose 'automatic' (MJD from the headers) or file order")
                 else:
-                    group = "mjd"                     # e.g. SDSS spec-PLATE-MJD-FIBER files
-            if glob_expr and len(files) > 40:
-                lines += ["import glob", f"files = sorted(glob.glob({glob_expr!r}))"]
-            elif len(files) == 1:
-                lines.append(f"files = [{files[0]!r}]")
+                    group = "mjd"
+            if _files_expr:
+                lines.append(f"_read_files = {_files_expr}")
+            elif glob_expr and count > 40:
+                lines += ["import glob, hashlib, os",
+                          f"_read_files = sorted(f for f in glob.glob({glob_expr!r}) if os.path.isfile(f))"]
             else:
-                lines.append("files = [" + ",\n         ".join(repr(f) for f in files) + "]")
-            if mode == "sample" and len(files) > 20:
-                lines.append(f"raw = [{read} for f in files[:20]]   # a few to look at; the fit reads all")
+                lines.append("_read_files = [" + ",\n               ".join(repr(f) for f in files) + "]")
+            if mode == "multi" and group == "date" and (_files_expr or glob_expr and count > 40):
+                lines.append("_read_files.sort(key=fa.spectrum.date_from_name)")
+            if glob_expr and count > 40:
+                stamp = hashlib.sha256("\0".join(files).encode()).hexdigest()
+                lines += [f"if hashlib.sha256(chr(0).join(_read_files).encode()).hexdigest() != {stamp!r}:",
+                          "    raise ValueError('the files matching the original input pattern changed; read the sample again')"]
+            if mode == "sample" and count > 20:
+                lines.append(f"_read_raw = [{read} for f in _read_files[:20]]   # preview; the fit reads every file")
             else:
-                lines.append(f"raw = [{read} for f in files]")
+                lines.append(f"_read_raw = [{read} for f in _read_files]")
             if mode == "multi" and group == "date":
-                lines += ["for s, f in zip(raw, files):          # observation dates from the file names",
+                lines += ["for s, f in zip(_read_raw, _read_files):   # dates from the file names",
                           "    s.mjd = fa.spectrum.mjd_from_name(f)"]
+        if not count:
+            raise ValueError("choose at least one spectrum")
+        if mode == "single" and count > 1:
+            raise ValueError(f"{count} spectra for a single spectrum: choose Sample or Multi-epoch")
+        if mode == "multi" and count < 2:
+            raise ValueError("a multi-epoch fit needs at least two spectra")
         if mode == "multi" and group in ("auto", "mjd"):
-            lines += ["# epochs in time order (MJD from the file headers)",
-                      "order = sorted(range(len(raw)), key=lambda k: raw[k].mjd if raw[k].mjd is not None else float('inf'))",
-                      "raw = [raw[k] for k in order]"]
-            if not (targetid or sdss):
-                lines.append("files = [files[k] for k in order]")
-            lines.append('missing = [s.name for s in raw if s.mjd is None]\n'
-                         'if missing:\n    print("no MJD in the header of", ", ".join(missing), "(kept at the end)")')
-        # the model is kept (e.g. after removing an epoch); preparation and fits start again
-        lines.append("spectra = r = me = fits = classes = catalogs = None")
-        lines.append('print(len(raw), "spectra:", ", ".join(s.name for s in raw[:8]))')
-        return "# read\n" + "\n".join(ln for ln in lines if ln)
+            lines += ["# epochs in time order (missing dates last)",
+                      "order = sorted(range(len(_read_raw)), key=lambda k: _read_raw[k].mjd if _read_raw[k].mjd is not None else float('inf'))",
+                      "_read_raw = [_read_raw[k] for k in order]"]
+            if source == "files":
+                lines.append("_read_files = [_read_files[k] for k in order]")
+            lines += ['missing = [s.name for s in _read_raw if s.mjd is None]',
+                      'if missing:\n    print("no MJD in the header of", ", ".join(missing), "(kept at the end)")']
+        # Only publish the new input once every read and ordering operation has succeeded.
+        options = {"mode": mode, "group": group, "format": format}
+        lines += [f"raw, files, read_source, read_options = _read_raw, _read_files, {source!r}, {options!r}",
+                  "del _read_raw, _read_files", self._clear_read_results(),
+                  'print(len(raw), "spectra:", ", ".join(s.name for s in raw[:8]))']
+        return "# read\n" + "\n".join(lines)
+
+    @staticmethod
+    def _clear_read_results():
+        return ("spec = spectra = sample_prepare = r = me = fits = sample = rm = None\n"
+                "c = epoch_classes = classes = catalogs = None")
+
+    def _loaded_id(self):
+        # A distinct revision survives allocator reuse after reads and session resets.
+        return f"{self._read_revision}/{id(self.ns.get('raw'))}"
+
+    def wf_remove_code(self, indices, loaded_id):
+        """Drop selected preview rows from the current complete input; keep the other rows in order."""
+        raw = self.raw
+        if not raw or loaded_id != self._loaded_id():
+            raise ValueError("the loaded spectra changed; select the rows again")
+        if (not isinstance(indices, list) or not indices or
+                any(type(k) is not int or not 0 <= k < len(raw) for k in indices)):
+            raise ValueError("select rows in the current preview")
+        drop = set(indices)
+        files = self.wf_input_files()
+        count = len(files) if files is not None else len(raw)
+        n = count - len(drop)
+        if not n:
+            return ("# remove spectra\nraw = files = read_source = None\n" + self._clear_read_results())
+        mode = self.wf["mode"]
+        if mode == "multi" and n < 2:
+            raise ValueError("a multi-epoch fit needs at least two spectra")
+        if mode == "single" and n != 1:
+            raise ValueError("choose Sample to keep multiple spectra")
+        if files is not None:
+            keep = [f for k, f in enumerate(files) if k not in drop]
+            return self.wf_read_code(mode, paths=keep, group=self.wf.get("group", "auto"),
+                                     format=self.wf.get("format", "auto"),
+                                     _files_expr=f"[f for k, f in enumerate(files) if k not in {sorted(drop)!r}]")
+        # Archive data are already in memory. Append this cell after the fetch so it can be replayed.
+        return ("# remove spectra\n" +
+                f"raw = [s for k, s in enumerate(raw) if k not in {sorted(drop)!r}]\n"
+                "files = None\n" + self._clear_read_results())
+
+    def wf_reselect_code(self, mode, loaded_id, group="auto"):
+        """Reuse all current inputs with another read mode or ordering."""
+        raw = self.raw
+        if not raw or loaded_id != self._loaded_id():
+            raise ValueError("the loaded spectra changed; select them again")
+        files = self.wf_input_files()
+        if files is not None:
+            return self.wf_read_code(mode, paths=files, group=group, format=self.wf.get("format", "auto"),
+                                     _files_expr="list(files)")
+        if mode not in MODES or group not in ("auto", "mjd", "order"):
+            raise ValueError("choose an analysis mode and MJD or input order for archive spectra")
+        if mode == "single" and len(raw) != 1 or mode == "multi" and len(raw) < 2:
+            raise ValueError("read the required number of spectra for this mode")
+        expr = "sorted(raw, key=lambda s: s.mjd if s.mjd is not None else float('inf'))" if (
+            mode == "multi" and group != "order") else "list(raw)"
+        options = {"mode": mode, "group": group, "format": "auto"}
+        return ("# select spectra\n" +
+                f"raw, files, read_options = {expr}, None, {options!r}\n" + self._clear_read_results())
 
     def loaded_state(self):
         raw = self.raw
         if raw is None:
             return None
-        key = ("loaded", id(self.ns.get("raw")), len(raw))
+        key = ("loaded", self._loaded_id(), len(raw))
         if key in self._wf_cache:
             return self._wf_cache[key]
-        files = self.ns.get("files") if isinstance(self.ns.get("files"), list) else None
+        files = self.wf_input_files()
         rows = []
         for k, s in enumerate(raw):
             path = files[k] if files and k < len(files) else s.meta.get("path") or s.name
             fname = os.path.basename(str(path))
             date = mjd_to_date(s.mjd) or date_from_name(fname)
             ext = fname.lower().rsplit(".", 1)[-1] if "." in fname else ""
-            if ext in ("txt", "dat", "csv", "ascii", "asc", "tsv"):
+            if self.ns.get("read_source") in ("sdss", "desi"):
+                fmt = self.ns["read_source"].upper()
+            elif ext in ("txt", "dat", "csv", "ascii", "asc", "tsv"):
                 fmt = f"{ext} · λ, flux" + (", err" if not s.meta.get("err_estimated") else " (err estimated)")
             elif ext in ("fits", "fit", "fts"):
                 try:
@@ -324,7 +431,7 @@ class StepsMixin:
                          "flux_unit_source": s.meta.get("flux_unit_source")
                          or (f"{fmt} header" if s.flux_unit else None)})
         n_all = len(files) if files else len(raw)
-        out = {"rows": rows, "n": n_all, "shown": len(raw), "id": id(self.ns.get("raw"))}
+        out = {"rows": rows, "n": n_all, "shown": len(raw), "id": self._loaded_id()}
         self._wf_cache[key] = out
         return out
 
@@ -336,7 +443,7 @@ class StepsMixin:
         raw = self.raw
         if raw is None:
             raise ValueError("read the spectra first (step 1)")
-        chain = []
+        steps = []
         if flux_unit not in (None, "", "file"):
             try:
                 unit = _num(flux_unit)
@@ -344,7 +451,7 @@ class StepsMixin:
                 unit = None
             if unit is None or not 0 < unit < 1:
                 raise ValueError("flux unit: give the value of one flux unit in erg/s/cm2/A, e.g. 1e-16")
-            chain.append(f".with_flux_unit({unit:g})")
+            steps.append(("with_flux_unit", _g(unit)))
         res_val = None
         if resolution not in (None, "", "file"):
             try:
@@ -358,75 +465,84 @@ class StepsMixin:
                                  "R (e.g. 2000), or take it from the file")
             if resolution_unit == "R" and res_val < 60 or resolution_unit == "kms" and res_val >= 5000:
                 raise ValueError("instrumental resolution: the FWHM must be below 5000 km/s (R above 60)")
-            chain.append(f".with_resolution({'R=' if resolution_unit == 'R' else ''}{res_val:g})")
+            steps.append(("with_resolution", ("R=" if resolution_unit == "R" else "") + _g(res_val)))
         if ra not in (None, "") or dec not in (None, ""):
             from ..spectrum import parse_coordinates
             parse_coordinates(ra, dec)
             pos = lambda v: repr(float(v)) if _is_number(v) else repr(str(v).strip())
-            chain.append(f".with_coordinates({pos(ra)}, {pos(dec)})")
+            steps.append(("with_coordinates", f"{pos(ra)}, {pos(dec)}"))
         if extinction == "value":
             if ebv in (None, ""):
                 raise ValueError("give E(B-V), or choose 'From coordinates'")
-            chain.append(f".deredden(ebv={_g(ebv)})")
+            steps.append(("deredden", f"ebv={_g(ebv)}"))
         elif extinction == "coords":
-            chain.append(".deredden()")
+            steps.append(("deredden", ""))
         elif extinction != "none":
             raise ValueError("unknown extinction choice")
         if telluric or sky_lines:
             opts = [] if telluric else ["telluric=False"]
             opts += [] if sky_lines else ["sky_lines=False"]
-            chain.append(f".mask_sky({', '.join(opts)})")
+            steps.append(("mask_sky", ", ".join(opts)))
         if z_source not in ("file", "manual", "median"):
             raise ValueError("unknown redshift choice")
         zval = _num(z) if z_source == "manual" else None
         if z_source == "manual" and zval is None:
             raise ValueError("give the redshift z, or take it from the file")
-        if z_source == "median" and not any(s.z for s in raw):
+        if z_source == "median" and not any(s.z is not None and np.isfinite(s.z) for s in raw):
             raise ValueError("these files have no redshift: enter z")
+        redshift = "z=z" if z_source == "median" else f"z={_g(zval)}" if zval is not None else ""
         if rest_frame:
-            chain.append(".to_rest_frame(z=z)" if z_source == "median" else
-                         f".to_rest_frame({'z=' + _g(zval) if zval is not None else ''})")
-            if z_source == "file" and any(s.z is None for s in raw):
+            steps.append(("to_rest_frame", redshift))
+            check = raw if apply_to in ("all", None, "") else raw[int(apply_to):int(apply_to)+1]
+            if z_source == "file" and any(s.z is None and not s.rest_frame for s in check):
                 raise ValueError("these files have no redshift: enter z")
+        elif redshift:
+            steps.append(("copy", redshift))
         lo, hi = _num(wmin), _num(wmax)
         if lo is not None or hi is not None:
             if lo is not None and hi is not None and lo >= hi:
                 raise ValueError("λ min must be below λ max")
-            chain.append(f".crop({_g(lo) if lo is not None else 'None'}, {_g(hi) if hi is not None else 'None'})")
+            steps.append(("crop", f"{_g(lo) if lo is not None else 'None'}, {_g(hi) if hi is not None else 'None'}"))
         ranges = []
         for m in masks or ():
             a, b = sorted(float(v) for v in m)
-            ranges.append(f"({a:.0f}, {b:.0f})")
+            ranges.append(f"({_g(a)}, {_g(b)})")
         if ranges:
-            chain.append(f".mask({', '.join(ranges)})")
+            steps.append(("mask", ", ".join(ranges)))
         if absorption:
-            chain.append(".mask_absorption()")
-        expr = "s" + "".join(chain)
-        if len(expr) > 60:
-            expr = "s" + "\n            ".join(chain)
+            steps.append(("mask_absorption", ""))
+        calls = [f".{method}({args})" for method, args in steps]
+        chain = ("\n            " if sum(map(len, calls)) > 60 else "").join(calls)
         lines = ["# prepare"]
-        if z_source == "median" and rest_frame:
-            lines.append("z = float(np.median([s.z for s in raw if s.z]))      # one redshift for all spectra")
+        if z_source == "median":
+            lines += ["import numpy as np",
+                      "z = float(np.median([s.z for s in raw if s.z is not None and np.isfinite(s.z)]))"]
         if apply_to not in ("all", None, ""):
             k = int(apply_to)
             if not 0 <= k < len(raw):
                 raise ValueError(f"epoch {k} does not exist")
             if self.spectra is None or len(self.spectra) != len(raw):
                 raise ValueError("prepare all spectra once before changing one epoch")
-            lines.append(f"spectra[{k}] = {expr.replace('s.', f'raw[{k}].', 1) if expr.startswith('s.') else f'raw[{k}]' + expr[1:]}")
+            lines[0] = f"# prepare row {k}"
+            lines.append(f"spectra = [*spectra[:{k}], (raw[{k}]{chain}), *spectra[{k + 1}:]]")
         else:
-            lines.append(f"spectra = [{expr}\n           for s in raw]" if "\n" in expr else f"spectra = [{expr} for s in raw]")
+            lines.append(f"spectra = [s{chain}\n           for s in raw]" if "\n" in chain else f"spectra = [s{chain} for s in raw]")
+            if self.wf.get("mode") == "sample":
+                lines.append("from operator import methodcaller")
+                recipe = [f"methodcaller({method!r}{', ' + args if args else ''})" for method, args in steps]
+                lines.append("sample_prepare = [" + ",\n                  ".join(recipe) + "]")
         if self.wf.get("mode") == "single" or (self.wf.get("mode") == "classify" and len(raw) == 1):
             lines.append("spec = spectra[0]")
         lines.append('print(len(spectra), "spectra · z =", spectra[0].z, "· E(B-V) =", '
                      'spectra[0].meta.get("ebv"), spectra[0].meta.get("ebv_source", ""))')
-        self.wf["prepare"] = {"z": zval, "z_source": z_source, "rest_frame": bool(rest_frame),
-                              "extinction": extinction, "ebv": _num(ebv), "ra": ra, "dec": dec,
-                              "wmin": lo, "wmax": hi, "telluric": bool(telluric), "sky_lines": bool(sky_lines),
-                              "absorption": bool(absorption), "masks": [list(map(float, m)) for m in masks or ()],
-                              "flux_unit": flux_unit if flux_unit not in (None, "") else "file",
-                              "resolution": res_val if res_val is not None else "file",
-                              "resolution_unit": resolution_unit if res_val is not None else "kms"}
+        options = {"z": zval, "z_source": z_source, "rest_frame": bool(rest_frame),
+                   "extinction": extinction, "ebv": _num(ebv), "ra": ra, "dec": dec,
+                   "wmin": lo, "wmax": hi, "telluric": bool(telluric), "sky_lines": bool(sky_lines),
+                   "absorption": bool(absorption), "masks": [list(map(float, m)) for m in masks or ()],
+                   "flux_unit": flux_unit if flux_unit not in (None, "") else "file",
+                   "resolution": res_val if res_val is not None else "file",
+                   "resolution_unit": resolution_unit if res_val is not None else "kms"}
+        lines.append(f"_prepare_form = {options!r}")
         return "\n".join(lines)
 
     # ------------------------------------------------- finding the redshift
@@ -538,7 +654,7 @@ class StepsMixin:
             return None
         k = self.wf_reference() if k in (None, "") else min(max(int(k), 0), len(sp) - 1)
         s = sp[k]
-        sig = (id(self.ns.get("spectra")), k,
+        sig = (id(s), id(m), k, m.wave_range and tuple(m.wave_range),
                tuple((p.name, p.value, p.min, p.max, p.fixed, p.tie) for p in m.params),
                tuple(c.name for c in m.components))
         key = ("guess", sig)
@@ -803,13 +919,52 @@ class StepsMixin:
                 names.append(p.name)
         return names
 
+    def _legacy_sample_preparation(self):
+        """Recover the all-row chain from a pre-recipe session, accepting only generated calls."""
+        import ast
+        methods = {"with_flux_unit", "with_resolution", "with_coordinates", "deredden", "mask_sky",
+                   "to_rest_frame", "crop", "mask", "mask_absorption"}
+        for cell in reversed(self.cells):
+            code = cell.code
+            if code.startswith("# read"):
+                break
+            if not code.startswith("# prepare\n") or "spectra = [" not in code:
+                continue
+            try:
+                tree = ast.parse(code)
+                comp = next(n.value for n in tree.body if isinstance(n, ast.Assign)
+                            and isinstance(n.targets[0], ast.Name) and n.targets[0].id == "spectra")
+                if not isinstance(comp, ast.ListComp) or len(comp.generators) != 1:
+                    break
+                source = comp.generators[0]
+                if source.ifs or source.is_async or ast.unparse(source.iter) != "raw" or ast.unparse(source.target) != "s":
+                    break
+                node, calls = comp.elt, []
+                while isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in methods:
+                    args = [repr(ast.literal_eval(arg)) for arg in node.args]
+                    for kw in node.keywords:
+                        if kw.arg == "z" and ast.unparse(kw.value) == "z" and "z = float(np.median([s.z for s in raw if s.z]))" in code:
+                            args.append("z=float(np.median([s.z for s in raw if s.z]))")
+                        else:
+                            args.append(f"{kw.arg}={ast.literal_eval(kw.value)!r}")
+                    calls.append(f"methodcaller({', '.join([repr(node.func.attr), *args])})")
+                    node = node.func.value
+                if isinstance(node, ast.Name) and node.id == "s":
+                    return ["from operator import methodcaller", "import numpy as np",
+                            "sample_prepare = [" + ", ".join(reversed(calls)) + "]"]
+            except (SyntaxError, ValueError, IndexError, StopIteration, TypeError):
+                pass
+            break
+        raise ValueError("repeat Prepare for all spectra to record how to prepare the files beyond the preview")
+
     def _wf_sample_code(self, sample_model, n_jobs, out, prune_feii=False):
         from .session import MODELS
-        files = self.ns.get("files")
-        if not isinstance(files, list) or not files:
-            raise ValueError("a sample is fitted from files: read them with Files or Path / glob")
-        p = self.wf.get("prepare") or {}
+        if self.raw is None:
+            raise ValueError("read the spectra first (step 1)")
+        files = self.wf_input_files()
+        source = "files" if files else "raw"
         args = []
+        lines = ["# fit"]
         if out is None:
             out = os.path.join(os.path.expanduser("~"), ".fantasy_agn", "sample_fits",
                                f"sample_{datetime.datetime.now():%Y%m%d_%H%M%S}")
@@ -817,23 +972,23 @@ class StepsMixin:
         if sample_model not in ("auto", None, ""):
             name, kw = MODELS[sample_model]
             args.append(f"model={(name, kw)!r}" if kw else f"model={name!r}")
-        ext = p.get("extinction", "coords")
-        if ext == "none":
-            args.append("deredden=False")
-        elif ext == "value" and p.get("ebv") is not None:
-            args.append(f"ebv={p['ebv']:g}")
-        if p.get("z_source") == "manual" and p.get("z") is not None:
-            args.append(f"z={p['z']:g}")
-        if p.get("absorption"):
-            args.append("mask_absorption=True")
-        if p and not (p.get("telluric") or p.get("sky_lines")):
-            args.append("mask_sky=False")
+        prepared = self.spectra
+        if prepared is not None:
+            args.append("prepared=spectra")
+            if files and len(files) > len(prepared):
+                if self.ns.get("sample_prepare") is None:
+                    lines.extend(self._legacy_sample_preparation())
+                args.append("prepare=sample_prepare")
+        fmt = self.wf.get("format", "auto")
+        if files and fmt != "auto":
+            args.append(f"format={fmt!r}")
         if prune_feii:
             args.append("prune_feii=True")
         args.append(f"n_jobs={int(n_jobs)}")
         self.wf["fit_kind"] = "sample"
-        return ("# fit\nsample = fa.fit_sample(files, " + ", ".join(args) + ")\n"
-                'sample.table[[c for c in ("name", "cls", "preset", "rchi2") if c in sample.table]]')
+        lines += [f"sample = fa.fit_sample({source}, " + ", ".join(args) + ")",
+                  'sample.table[[c for c in ("name", "cls", "preset", "rchi2") if c in sample.table]]']
+        return "\n".join(lines)
 
     # ------------------------------------------------------------ results
     def wf_results(self):
@@ -1012,10 +1167,10 @@ class StepsMixin:
             flags = []
             if flux_p in r.unconstrained:
                 flags.append(("outside range", "muted"))
-            elif flux_p in r.at_zero or not (row.flux > 0):
-                flags.append(("not detected", "muted"))
-            elif flux_p in r.unmeasured_fluxes:
+            elif not np.isfinite(row.flux) or flux_p in r.unmeasured_fluxes:
                 flags.append(("not measured", "warn"))
+            elif flux_p in r.at_zero or row.flux <= 0:
+                flags.append(("not detected", "muted"))
             elif np.isfinite(row.flux_err) and row.flux_err > 0 and row.flux < 2 * row.flux_err:
                 flags.append(("weak (<2σ)", "muted"))
             if fwhm_p in params.names and params[fwhm_p].tie:
@@ -1041,7 +1196,7 @@ class StepsMixin:
                          "fwhm": float(row.fwhm), "fwhm_err": float(row.fwhm_err),
                          "shift": float(row.shift), "shift_err": float(row.shift_err),
                          "ew": float(row.ew), "ew_err": float(row.ew_err),
-                         "detected": not any(f[0] in ("not detected", "outside range") for f in flags),
+                         "detected": not any(f[0] in ("not detected", "outside range", "not measured", "weak (<2σ)") for f in flags),
                          "flags": [{"text": a, "kind": b} for a, b in flags]})
         return rows
 
@@ -1099,7 +1254,7 @@ class StepsMixin:
                 kv = dict(zip(kr["quantity"], kr["value"]))
             except Exception:
                 pass
-        fw = next((q for q in kv if q.startswith("broad ") and q.endswith(" FWHM")), None)
+        fw = next((q for q in kv if q.startswith("broad ") and q.endswith(" FWHM") and num(kv[q]) is not None), None)
         bline = fw.split()[1] if fw else None
         mbh, lum, edd = kv.get("log M_BH"), None, None
         try:                 # Eddington ratio with bolometric corrections 9.26 (5100 A) and 5.15 (3000 A)
@@ -1113,7 +1268,12 @@ class StepsMixin:
         return {"z": num(getattr(s, "z", None)), "mjd": num(s.mjd) if s.mjd is not None else None,
                 "rchi2": num(r.rchi2), "limits": list(r.at_limit),
                 "fwhm": num(kv.get(fw)) if fw else None, "bline": bline, "bflux": num(kv.get(f"broad {bline} flux")) if bline else None,
-                "rfeii": num(kv.get("R_FeII")), "mbh": num(mbh), "lum": num(lum), "edd": num(edd),
+                "rfeii": num(kv.get("R_FeII")) if bline == "Hb" else None,
+                "width_limits": [p for p in r.at_limit if p.endswith(".fwhm")
+                                 and any(c.role == "broad" and bline in c.line_names and
+                                         p in (f"{c.name}.fwhm", f"{c.name}.{bline}.fwhm")
+                                         for c in r._line_components())],
+                "mbh": num(mbh), "lum": num(lum), "edd": num(edd),
                 "o3hb": num(kv.get("log [OIII]/Hb", kv.get("log [OIII]5007/Hb"))),
                 "struct": float(np.max(np.abs(run))), "w0": float(w[0]), "w1": float(w[-1]),
                 "scale": float(np.nanpercentile([v for v in flux_b if v is not None] or [1.0], 99)) or 1.0,
@@ -1260,6 +1420,7 @@ class StepsMixin:
         if r is None:
             out["error"] = "this spectrum could not be fitted"
             return out
+        out["flux_unit"] = r.spectrum.flux_unit
         out["plot"] = self._series(r)
         out["lines"] = self._line_rows(r)
         out["params"] = self._param_rows(r)
@@ -1278,7 +1439,8 @@ class StepsMixin:
         r = next((e[2] for e in self.wf_results() or [] if e[2] is not None), None)
         if r is None or not hasattr(r, "_feii_components"):
             return False
-        return bool(r._feii_components()) and any(c.role == "broad" and "Hb" in c.line_names for c in r._line_components())
+        return any(r._feii_band(c)["reference"] == "Hb" for c in r._feii_components()) and any(
+            c.role == "broad" and "Hb" in c.line_names for c in r._line_components())
 
     def wf_main_sequence(self):
         """Every epoch's position on the quasar main sequence (R_FeII, FWHM of broad H-beta) and the grid."""
@@ -1335,32 +1497,36 @@ class StepsMixin:
             return {"key": []}
         key = ("key", id(r))
         if key not in self._wf_cache:
-            rows = []
-            try:
-                for q in r.key_results().itertuples():
-                    rows.append({"name": q.quantity, "value": _fmt_err(q.value, q.error), "unit": q.unit or ""})
-            except Exception:
-                pass
-            bh = []
-            try:
-                for q in r.bh_masses().itertuples():
-                    bh.append({"line": q.line, "recipe": q.recipe, "reference": q.reference, "width": q.width,
-                               "luminosity": q.luminosity, "value": _fmt_err(q.log_mbh, q.log_mbh_err),
-                               "scatter": q.scatter_dex})
-            except Exception:
-                pass
-            # a black-hole mass has two errors: that of the fit, and the scatter of the recipe (0.3-0.6 dex)
-            main = bh[0]["line"] if bh else None
-            first = {}
-            for b in bh:
-                first.setdefault(b["line"], b["scatter"])
-            for row in rows:
-                if row["name"].startswith("log M_BH"):
-                    line = row["name"][row["name"].index("(") + 1:-1] if "(" in row["name"] else main
-                    if line in first:
-                        row["scatter"] = float(first[line])
-            self._wf_cache[key] = {"key": rows, "bh": bh}
+            self._wf_cache[key] = self._result_quantities(r)
         return self._wf_cache[key]
+
+    @staticmethod
+    def _result_quantities(r):
+        """Main results and mass calibrations for a fitted spectrum in either Results view."""
+        rows = []
+        try:
+            for q in r.key_results().itertuples():
+                rows.append({"name": q.quantity, "value": _fmt_err(q.value, q.error), "unit": q.unit or ""})
+        except Exception:
+            pass
+        bh = []
+        try:
+            for q in r.bh_masses().itertuples():
+                bh.append({"line": q.line, "recipe": q.recipe, "reference": q.reference, "width": q.width,
+                           "luminosity": q.luminosity, "value": _fmt_err(q.log_mbh, q.log_mbh_err),
+                           "scatter": q.scatter_dex})
+        except Exception:
+            pass
+        main = bh[0]["line"] if bh else None
+        first = {}
+        for b in bh:
+            first.setdefault(b["line"], b["scatter"])
+        for row in rows:
+            if row["name"].startswith("log M_BH"):
+                line = row["name"][row["name"].index("(") + 1:-1] if "(" in row["name"] else main
+                if line in first:
+                    row["scatter"] = float(first[line])
+        return {"key": rows, "bh": bh}
 
     # ------------------------------------------------------------- residuals
     def wf_residuals_code(self, scope="all", nsigma=4.0):
@@ -1513,6 +1679,9 @@ class StepsMixin:
 
     @staticmethod
     def _pretty(text):
+        if text.startswith("FeII") and text.endswith("/MgII2798"):
+            from ..correlations import plain_label
+            return plain_label(text)
         for a, b in (("[OIII]5007", "[O III] \u03bb5007"), ("R_FeII", "R(Fe II)"), ("Hb", "H\u03b2"), ("Ha", "H\u03b1"), ("MgII2798", "Mg II"), ("CIV1549", "C IV")):
             text = text.replace(a, b)
         return text
@@ -1796,9 +1965,10 @@ class StepsMixin:
             try:
                 f = x.feii()
                 out.update(flux=num(f["flux"]), flux_err=num(f["flux_err"]), r_feii=num(f["r_feii"]),
-                           r_feii_err=num(f["r_feii_err"]), reference=f["reference"])
-                if f["reference"]:
-                    broad = [c.name for c in x._line_components() if c.role == "broad" and f["reference"] in c.line_names]
+                           r_feii_err=num(f["r_feii_err"]), reference=f["reference"],
+                           ratio_label=self._pretty(f["ratio_label"]), band_label=f["line"])
+                broad = [c.name for c in x._line_components() if c.role == "broad" and f["reference"] in c.line_names]
+                if broad:
                     m = x.measure(f["reference"], broad)
                     out.update(line_flux=num(m["flux"]), line_flux_err=num(m["flux_err"]),
                                line_fwhm=num(m["fwhm"]), line_fwhm_err=num(m["fwhm_err"]))
@@ -1974,7 +2144,7 @@ class StepsMixin:
 
     def wf_correlations_data(self):
         """The epoch table for the browser, which computes the correlations and fits itself (sent once)."""
-        from ..correlations import _use_log, default_columns, plain_label, quantity_columns
+        from ..correlations import _is_feii_ratio, _use_log, default_columns, plain_label, quantity_columns
         ep = self._epoch_table()
         if ep is None:
             return None
@@ -1984,7 +2154,7 @@ class StepsMixin:
         arr = lambda c: [float(v) if np.isfinite(v) else None for v in ep[c].to_numpy(float)] if c in ep else [None] * len(ep)
         cols = quantity_columns(ep)
         lines = default_columns(ep)
-        extra = [c for c in cols if c == "R_FeII" or c.startswith("[")]
+        extra = [c for c in cols if _is_feii_ratio(c) or c.startswith("[")]
         shift = [c for c in cols if c.endswith("_shift") and c.replace("_shift", "_flux") in lines]
         out = {"id": id(ep), "t": arr("mjd"), "names": [str(v) for v in ep["name"]],
                "dates": [mjd_to_date(v) for v in ep["mjd"].to_numpy(float)],
@@ -2354,7 +2524,7 @@ class StepsMixin:
             for dk, q in (("nii", "log [NII]6583/Ha"), ("sii", "log [SII]6716,6731/Ha"), ("oi", "log [OI]6300/Ha")):
                 x, xe = get(q)
                 pts[dk] = None if x is None or y is None else {"x": x, "y": y, "xerr": xe, "yerr": ye, "fit": True}
-            out[r.spectrum.name] = pts
+            out[_epoch_key(r.spectrum)] = pts
         self._wf_cache[("fitbpt", key)] = out
         return key, out
 
@@ -2383,11 +2553,12 @@ class StepsMixin:
 
     def wf_catalogs_code(self):
         """Code of the catalog lookup of what was read: every file of a sample, or the one object."""
-        raw, files = self.raw, self.ns.get("files")
+        raw, files = self.raw, self.wf_input_files()
         if not raw:
             raise ValueError("read a spectrum first")
         if self.wf.get("mode") == "sample" and isinstance(files, list) and len(files) > len(raw):
-            return "# catalogs\ncatalogs = fa.lookup_catalogs(files)\ncatalogs"
+            return ('# catalogs\ncatalogs = fa.lookup_catalogs(files)\n'
+                    'catalogs.attrs["source_files"] = tuple(files)\ncatalogs')
         if self.wf.get("mode") in ("sample", "classify") and len(raw) > 1:
             return "# catalogs\ncatalogs = fa.lookup_catalogs(raw)\ncatalogs"
         if raw[0].ra is None or raw[0].dec is None:
@@ -2399,28 +2570,46 @@ class StepsMixin:
         cat, raw = self.ns.get("catalogs"), self.raw
         if not raw or not isinstance(cat, pd.DataFrame) or cat.empty or "name" not in cat:
             return None
-        if str(cat["name"].iloc[0]) != str(raw[0].name):
-            return None
+        targets = tuple(_target_key(row) for row in cat.itertuples(index=False))
+        loaded = {_target_key(s) for s in raw}
+        files = self.wf_input_files()
+        large_sample = self.wf.get("mode") == "sample" and isinstance(files, list) and len(files) > len(raw)
         sm = self.sample if self.wf.get("fit_kind") == "sample" else None
-        if sm is not None and self._sample_catalogs(sm) is not None:
-            return self._sample_catalogs(sm)
-        cl = self.__dict__.get("_final_kept", (None, None))[1] or self._classifications()   # final classes once computed
-        key = (id(cat), id(cl[0]) if cl else 0, len(cl) if cl else 0)
-        kept = self.__dict__.get("_catalog_kept")
-        if kept is None or kept[0] != key:
-            view = cat
-            if cl and len(cl) >= len(cat):
-                from ..catalogs import with_fit_classes
-                view = with_fit_classes(cat, None, [c.label for c in cl[:len(cat)]])
-            kept = self._catalog_kept = (key, view)
-        return kept[1]
+        if not set(targets) <= loaded:
+            # A large sample displays a preview, while its lookup reads all files.
+            if not large_sample:
+                return None
+            if cat.attrs.get("source_files") != tuple(files):
+                # Legacy projects have no file provenance; use the fitted sample's file paths.
+                if sm is None or "path" not in sm.table or set(sm.table.path) != set(files):
+                    return None
+                return self._sample_catalogs(sm, catalog_order=True)
+        if sm is not None:
+            sample_view = self._sample_catalogs(sm, catalog_order=True)
+            if sample_view is not None:
+                return sample_view
+
+        labels = {}
+        for classes in (self._classifications(), self._final_classifications(cached_only=True)):
+            stage = {}
+            for c in classes or ():
+                stage.setdefault(_target_key(c.spectrum), set()).add(c.label)
+            # Repeated spectra of one target can have conflicting classifications.
+            labels.update({k: next(iter(v)) if len(v) == 1 else None for k, v in stage.items()})
+        aligned = tuple(labels.get(key) for key in targets)
+        kept = self._catalog_kept
+        if kept is None or kept[0] is not cat or kept[1] != (targets, aligned):
+            from ..catalogs import with_fit_classes
+            view = with_fit_classes(cat, cls=aligned) if any(aligned) else cat.copy(deep=False)
+            kept = self._catalog_kept = (cat, (targets, aligned), view)
+        return kept[2]
 
     def wf_catalog(self):
         """For the state: what the lookup of the loaded spectra found, in short."""
         raw = self.raw
         if not raw:
             return None
-        files = self.ns.get("files")
+        files = self.wf_input_files()
         n = len(files) if self.wf.get("mode") == "sample" and isinstance(files, list) else (
             len(raw) if self.wf.get("mode") in ("sample", "classify") else 1)
         out = {"n": n, "has_coords": any(s.ra is not None and s.dec is not None for s in raw), "done": False}
@@ -2431,7 +2620,11 @@ class StepsMixin:
         found = int(cat["catalog_name"].notna().sum()) if "catalog_name" in cat else 0
         out.update(done=True, stamp=id(cat), n=len(cat), found=found, flagged=[{"k": int(k), "name": str(cat["name"].iloc[k])}
                                                                                for k in bad[:60]], n_flagged=len(bad))
-        if len(cat) == 1 and isinstance(cat["disagreements"].iloc[0], str):
+        positions = {}
+        for k, row in enumerate(cat.itertuples(index=False)):
+            positions.setdefault(_target_key(row), k)
+        out["loaded_rows"] = [positions.get(_target_key(s)) for s in raw]
+        if len(cat) == 1 and "disagreements" in cat and isinstance(cat["disagreements"].iloc[0], str):
             out["text"] = cat["disagreements"].iloc[0]
         return out
 
@@ -2464,7 +2657,7 @@ class StepsMixin:
         when there is a fit and ``stage`` is 'final', else the preliminary ones."""
         prelim = self._classifications()
         final = self._final_classifications() if stage == "final" else None
-        pmap = {c.spectrum.name: c for c in (prelim or [])}
+        pmap = {_epoch_key(c.spectrum): c for c in (prelim or [])}
         if final:
             return final, pmap, "final"
         return prelim, pmap, "preliminary"
@@ -2484,13 +2677,13 @@ class StepsMixin:
             if isinstance(v, (int, float, np.floating)) and not isinstance(v, bool) and np.isfinite(v):
                 rows.append({"name": name, "value": f"{v:.4g}"})
         s = c.spectrum
-        pre = pmap.get(s.name) if stage == "final" else None
+        pre = pmap.get(_epoch_key(s)) if stage == "final" else None
 
         def points(x):
             own = self._diagram_point(x.measurements)
             if stage == "final":                     # every point is a value of the fit
                 return {d: (dict(p, fit=True) if p else None) for d, p in own.items()}
-            return self._merge_points(own, fits[1].get(x.spectrum.name))
+            return self._merge_points(own, fits[1].get(_epoch_key(x.spectrum)))
         out = {"k": k, "label": c.label, "uncertain": bool(c.uncertain), "reason": str(c.reason or ""),
                "name": s.name, "stage": stage,
                "narrow_class": c.measurements.get("narrow_class") if stage == "final" else None,
@@ -2498,7 +2691,7 @@ class StepsMixin:
                                if pre is not None else None),
                "labels": [{"k": i, "name": x.spectrum.name, "label": x.label, "uncertain": bool(x.uncertain),
                            "date": mjd_to_date(x.spectrum.mjd), "points": points(x),
-                           "preliminary": pmap[x.spectrum.name].label if stage == "final" and x.spectrum.name in pmap else None}
+                           "preliminary": pmap[_epoch_key(x.spectrum)].label if stage == "final" and _epoch_key(x.spectrum) in pmap else None}
                           for i, x in enumerate(cl)],
                "rows": rows, "diagrams": self.diagram_curves(), "points": points(c)}
         # the steps of the preliminary classification (its own fits), when it was made
@@ -2564,8 +2757,8 @@ class StepsMixin:
             return None
         k = min(max(int(k), 0), len(cl) - 1)
         c = cl[k]
-        if kind != "diagrams" and stage == "final" and c.spectrum.name in pmap:
-            c = pmap[c.spectrum.name]               # the steps: those of the preliminary classification
+        if kind != "diagrams" and stage == "final" and _epoch_key(c.spectrum) in pmap:
+            c = pmap[_epoch_key(c.spectrum)]               # the steps: those of the preliminary classification
         key = ("cfig", id(c), kind, fmt, stage)
         if key in self._wf_cache:
             return self._wf_cache[key]
@@ -2616,16 +2809,13 @@ class StepsMixin:
         else:
             try:
                 r = sm.load(k)
+                out["flux_unit"] = r.spectrum.flux_unit
                 out["plot"] = self._series(r)
                 out["lines"] = self._line_rows(r)
                 out["params"] = self._param_rows(r)
                 out["continuum"] = self._param_rows(r, kinds=("continuum", "host", "template", "calibration",
                                                             "attenuation", "absorption"))
-                try:
-                    out["key"] = [{"name": q.quantity, "value": _fmt_err(q.value, q.error), "unit": q.unit or ""}
-                                  for q in r.key_results().itertuples()]
-                except Exception:
-                    out["key"] = []
+                out.update(self._result_quantities(r))
                 out["fit"] = {"chi2": float(r.chi2), "dof": int(r.dof), "rchi2": float(r.rchi2)}
             except Exception as exc:
                 out["error"] = f"{type(exc).__name__}: {exc}"
@@ -2778,7 +2968,8 @@ class StepsMixin:
             _, path = self._model_path(name)
         if not os.path.exists(path):
             raise ValueError(f"no saved model at {path}")
-        return f"model = fa.load_model({path!r})\nmodel"
+        self._preset_made = None
+        return self._model_choice_code(f"model = fa.load_model({path!r})")
 
     def store_model(self, name, text):
         """Check a model file (JSON from Model.save) and put it in the library; returns its name."""
@@ -2955,9 +3146,9 @@ class StepsMixin:
         """The session as a Jupyter notebook (.ipynb JSON)."""
         import json
         cells = [{"cell_type": "markdown", "metadata": {},
-                  "source": ["# FANTASY session\n", "Generated by the FANTASY app."]}]
+                  "source": ["# FANTASY session\n", "Generated by the FANTASY app.\n\n", CITE_MARKDOWN]}]
         for c in self.cells:
-            if not c.n:
+            if not c.replayable():
                 continue
             src = c.code.split("\n")
             cells.append({"cell_type": "code", "metadata": {}, "execution_count": None, "outputs": [],

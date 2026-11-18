@@ -147,7 +147,7 @@ GAMA files, 1D FITS spectra, and text files with columns wavelength, flux and (o
 spectrum), GAMA, 1D FITS or text when it guesses wrong.</dd>
 <dt>Group epochs by</dt><dd>(multi-epoch) the date in the file name (YYYYMMDD), the MJD in the header, or the file order;
 <i>automatic</i> tries them in that order.</dd>
-<dt>Loaded</dt><dd>the table of what was read (date, name, redshift, position); tick rows and <b>Remove selected</b> to drop them.</dd>
+<dt>Loaded</dt><dd>the table of what was read (date, name, redshift, position); tick rows and <b>Remove selected</b> to drop them. For large local samples, the table previews the first 20 files. Removing a previewed row preserves the remaining files.</dd>
 </dl>
 <p>DESI and SDSS spectra are downloaded with <b>Fetch</b> and kept under <code>~/.fantasy_agn</code>. OzDES files hold the stack and every exposure: <code>fa.read(path, epoch=4)</code> reads one exposure,
 <code>fa.ozdes.read_epochs(path, combine="night")</code> averages each night.</p>
@@ -225,7 +225,7 @@ spec.to_air()                  # vacuum to air wavelengths</pre>
 
 ("model", "The app, step by step", "3 &middot; Model", """
 <div class="lead">A model is a sum of components. Start from the recommended preset, a preset of your choice,
-an empty model or a saved model, then add, remove and tune components.</div>
+a power-law continuum or a saved model. Open <b>Edit model</b> to add, remove and tune components.</div>
 <h2>Classification card</h2>
 <p><b>Classify spectrum</b> runs <code>fa.classify</code> (starlight, broad H&alpha;, BPT diagrams; see
 <a data-doc="classify">Classification</a>) and recommends a model; <b>Use recommended model</b> applies it.</p>
@@ -247,9 +247,8 @@ Fit step.</dd>
 <p>Click a card or a row of <i>All candidates</i> to see its fit, its components, the comparison with the preset and its code.
 <b>Use this model</b> runs that code as a cell of the session; <b>Customize&hellip;</b> opens it in the model builder.</p>
 <h2>The model builder</h2>
-<p><b>+ Your own model</b> (or <b>Open in the model builder</b> under the components) opens a full-screen workspace, starting from the
-recommended model, the current model, any candidate or an empty one. The model is taken apart into its components, each with
-every argument of its constructor:</p>
+<p>Select a component in <b>Active model</b> to highlight it in the initial guess. <b>Edit model</b> opens that component
+in the editor. <b>From scratch</b> starts a draft with a power-law continuum, and <b>Customize</b> starts with a gallery candidate.</p>
 <ul>
 <li>switch a component off (it keeps its settings), duplicate it (a third broad component is one click), remove or rename it, or
 <b>+ Add component</b>: any component type, or a named line set as a new line component;</li>
@@ -260,22 +259,20 @@ the same kind;</li>
 <li>click the spectrum to see the catalogued lines there and add one to a component; the plot is the initial guess, split by
 component, and follows every edit; undo and redo with &#8984;Z and &#8679;&#8984;Z; the fit range at the top.</li>
 </ul>
-<p>The code under <b>Code</b> is exactly the model: <b>Use this model</b> runs it as a session cell, and <b>Fit and rank it</b> fits it on
-the spectrum in the background and adds it to the comparison as <i>your model</i>. <b>&larr; Back</b> (or Esc) keeps your edits:
-<b>Continue your model</b> brings them back.</p>
+<p><b>Apply model</b> runs the displayed Python code as a session cell and makes the edited model active.
+Run Fit again for measurements from that model. <b>Fit and rank it</b> compares a draft with the gallery candidates.
+Back or Esc keeps unfinished edits for this spectrum. Resume the draft from <b>Active model</b>, or select <b>Discard draft</b>.</p>
 <h2>Start from</h2>
 <dl class="params">
-<dt>A preset</dt><dd>broad components (1&ndash;3), host galaxy, outflow wing, stratified BLR, coronal lines, O&#8202;I 6046, the red side
+<dt>A preset</dt><dd>Choose the options and select <b>Use preset</b> to activate them. Options include broad components (1&ndash;3), host galaxy, outflow wing, stratified BLR, coronal lines, O&#8202;I 6046, the red side
 to 7500 &Aring;. See <a data-doc="presets">Presets</a>.</dd>
-<dt>Your own model</dt><dd>a power-law continuum, to which you add components.</dd>
+<dt>From scratch</dt><dd><b>Create in editor</b> opens a power-law draft. Add the components the spectrum needs.</dd>
 <dt>A saved model</dt><dd>one of your saved models, or a model file from someone else. See <a data-doc="saved-models">Saved models</a>.</dd>
 </dl>
 <h2>Components</h2>
-<p><b>+ Add component</b> opens one dialog for everything: emission or absorption lines from the line list (role broad,
-narrow or outflow; profile Gaussian, Lorentzian, Voigt, Gauss&ndash;Hermite or stratified; width and shift limits;
-kinematics shared, per line, or tied to another component), continua, Fe&#8202;II and high-order Balmer templates, the host
-galaxy, absorption troughs and dust. Click a component to change its profile, tie its shift and width to another one, or
-edit each parameter: initial value, limits, fixed, tied (<a data-doc="params">Parameters</a>).</p>
+<p>In the editor, <b>+ Add component</b> offers emission and absorption lines, continua, Fe&#8202;II, high-order
+Balmer templates, host starlight, absorption troughs and dust. Select a component to change its line profile or kinematics.
+Open <b>Parameters</b> for individual starting values, bounds and ties. See <a data-doc="params">Parameters</a>.</p>
 <p><b>Is a tie safe?</b> After a fit of one spectrum, the <i>Shift and width</i> choice of a component says for every possible tie
 whether it would change the result, judged on that fit where both are free, without a new fit (<code>fa.model_confidence</code>): the
 probability that the FWHM and flux of the main broad line stay within 5%. <i>safe</i> (above 95%), <i>changes it a little</i>,
@@ -283,7 +280,7 @@ probability that the FWHM and flux of the main broad line stay within 5%. <i>saf
 It is conditional on the free model being right (<a data-doc="compare">Model comparison</a>).</p>
 <p>The plot shows the <b>initial guess</b> on the reference spectrum with the selected component highlighted: if the guess
 is far off, the limits are probably wrong.</p>
-<div class="tip"><b>Save model&hellip;</b> above the component list keeps the model (with every limit and tie) to use it
+<div class="tip"><b>Save model&hellip;</b> below the component list keeps the model (with every limit and tie) to use it
 again; <b>Download</b> gives the JSON file to share.</div>
 """),
 
@@ -337,7 +334,11 @@ every other epoch's calibration.</dd>
 (<code>calibration_degree</code> 0, 1, 2): see <a data-doc="multi">Multi-epoch fitting</a>.</dd>
 </dl>
 <p>For a sample, <i>Model for each spectrum</i> is <i>automatic</i> (classify each and use the recommended model; a spectrum that ends
-too blue for H&beta; gets Mg&#8202;II or C&#8202;IV) or one model for all.</p>
+too blue for H&beta; gets Mg&#8202;II or C&#8202;IV) or one model for all. The fit uses the prepared spectra, including
+individual row changes. For a large local sample, workers apply the common preparation to files beyond the preview.
+Choosing one median redshift uses the previewed spectra to determine that value. A rest-wavelength model requires a rest-frame
+spectrum or a known zero redshift. Check the error column for rows that could not be fitted.
+In Results, choose <b>Download &rarr; Sample catalog (CSV)</b> for one row per input.</p>
 <h2>Uncertainties</h2>
 <table class="doc"><tr><th>choice</th><th>method</th><th>cost</th></tr>
 <tr><td>Fast</td><td>covariance from the Jacobian at the best fit</td><td>seconds</td></tr>
@@ -502,6 +503,8 @@ adopted lag is below 2&sigma;, when the light curves are weakly correlated (r<su
 <h2>Downloads</h2>
 <p>The fitted lines (CSV or FITS), the model and its components (data, model, every component, host, AGN, spectrum minus host
 and, with extinction, the transmission and intrinsic components), the fit figures (PDF), the script, the notebook and the project.</p>
+<p><b>How to cite</b> (also in the &#8943; menu) lists the papers to cite when you publish results, with ADS and DOI links and
+BibTeX to copy; the script and the notebook name them in their header.</p>
 <p><b>Report</b> is one HTML file of the current fit, to keep with the results or send to a colleague (it prints to PDF from the
 browser): the figure, the fit statistics and warnings, the key results, the lines (with upper limits), every check that was run on
 this fit with its outcome (residuals, robustness, comparison, Fe&#8202;II pruning, simulations; for a joint fit the calibration check,
@@ -799,14 +802,18 @@ r.measure("Hb")              # summed over all components containing H&beta;
 r.measure("Hb", ["broad", "broad2"])</pre>
 <p>For a profile P(v) on a velocity grid around the rest wavelength &lambda;<sub>0</sub>:</p>
 <dl class="params">
-<dt>Flux</dt><dd>F = &int; P d&lambda;</dd>
+<dt>Flux</dt><dd>Sum of the selected components' integrated line fluxes, including the wings.</dd>
 <dt>Shift</dt><dd>the flux-weighted centroid v&#772; = &int; v P dv / &int; P dv</dd>
 <dt>FWHM</dt><dd>between the outermost half-maximum crossings (interpolated), relative to the centroid</dd>
 <dt>Line dispersion &sigma;</dt><dd>&sigma;<sup>2</sup> = &int; (v &minus; v&#772;)<sup>2</sup> P dv / &int; P dv</dd>
 <dt>EW</dt><dd>F / F<sub>&lambda;,AGN</sub>(&lambda;<sub>c</sub>): against the AGN continuum at the line (host excluded)</dd>
 </dl>
 <p>Widths are intrinsic: the instrumental resolution was removed in the fit. Lines with several components get their FWHM from
-the sum, not from the components.</p>
+the sum. A line with zero fitted flux or outside the fitted pixels has no measured width.</p>
+<p>A Lorentzian or a Voigt profile with damping wings has no finite full-profile dispersion.
+To measure a dispersion over a stated velocity interval, use
+<code>r.measure("Hb", ["broad"], moment_window=(-10000, 10000))</code>.
+The limits are in km/s relative to the rest wavelength. Record the interval with the result.</p>
 <h2>Continuum and luminosities</h2>
 <pre>r.continuum(5100)            # AGN continuum flux density
 r.luminosity(5100)           # &lambda;L&lambda; (erg/s), needs the flux unit and the redshift
@@ -831,6 +838,8 @@ literature.</div>
 <tr><td>Mg&#8202;II</td><td><code>vo09</code> (default), <code>shen11</code>, <code>shen24</code></td><td>FWHM, L<sub>3000</sub></td><td>Vestergaard &amp; Osmer 2009; Shen et al. 2011, 2024</td></tr>
 <tr><td>C&#8202;IV</td><td><code>vp06</code> (default), <code>shen24</code></td><td>FWHM, L<sub>1350</sub></td><td>Vestergaard &amp; Peterson 2006; Shen et al. 2024</td></tr></table>
 <pre>r.bh_mass("Hb"); r.bh_mass("Hb", recipe="db20"); r.bh_masses()</pre>
+<p>The summary chooses a broad line with a measured profile. A dispersion-based mass requires a defined
+full-profile dispersion. The built-in recipes omit these masses for profiles with damping wings.</p>
 <div class="warn">The errors are statistical. The recipes scatter by 0.3&ndash;0.6 dex around reverberation masses, which is not in the
 error. Recipes with the broad-line luminosity need no host subtraction.</div>
 """),
@@ -839,8 +848,12 @@ error. Recipes with the broad-line luminosity need no host subtraction.</div>
 <div class="lead">The strength of Fe&#8202;II relative to broad H&beta; and the width of H&beta; place a quasar on the quasar main sequence
 (Sulentic et al. 2000; Marziani et al. 2018).</div>
 <div class="eq">R<sub>Fe&#8202;II</sub> = <span class="frac"><span>F(Fe&#8202;II, 4434&ndash;4684 &Aring;)</span><span>F(H&beta;<sub>broad</sub>)</span></span></div>
-<p>The band is that of Boroson &amp; Green (1992); for the UV template the band is 2200&ndash;3090 &Aring; (Tsuzuki et al. 2006) and the
-reference line broad Mg&#8202;II. Population A has FWHM(H&beta;) &lt; 4000 km/s; the spectral types A1&ndash;A4 are bins of 0.5 in
+<p>The optical band follows Boroson &amp; Green (1992). The default Mg&#8202;II preset reports
+Fe&#8202;II 2650&ndash;3050 &Aring; / broad Mg&#8202;II. The extended UV template reports
+Fe&#8202;II 2200&ndash;3090 &Aring; / broad Mg&#8202;II when fitted pixels cover at least 95% of that band.
+Use the same template, band and reference line when comparing objects. <code>r.feii()["coverage"]</code>
+gives the fitted fraction of the selected band.</p>
+<p>Population A has FWHM(H&beta;) &lt; 4000 km/s; the spectral types A1&ndash;A4 are bins of 0.5 in
 R<sub>Fe&#8202;II</sub>, and B1, B1+, B1++ bins of 4000 km/s in FWHM.</p>
 <pre>r.feii()            # flux, EW and R_FeII with errors
 r.main_sequence()   # R_FeII, FWHM(H&beta;), population, spectral type</pre>
@@ -868,6 +881,9 @@ quick fits.</div>
 needs &Delta;BIC &gt; 25, S/N &gt; 5, EW &gt; 30 &Aring; and 1200 &lt; FWHM &lt; 12&#8202;000 km/s; weaker candidates are reported as type 1.8/1.9.</li>
 <li><b>Narrow-line diagnostics.</b> BPT ([N&#8202;II], [S&#8202;II], [O&#8202;I]) and WHAN diagrams.</li>
 </ol>
+<p>When H&alpha; falls outside the useful pixels, the WHAN class is unavailable.
+Strong [O&#8202;III]/H&beta; can suggest a Seyfert candidate. The classifier marks a blue-only
+classification as uncertain and explains which lines were available.</p>
 <table class="doc"><tr><th>class</th><th>meaning</th><th>recommended model</th></tr>
 <tr><td>type1</td><td>broad lines, AGN-dominated</td><td>optical</td></tr>
 <tr><td>type1_host</td><td>broad lines, host &ge; 50% at 5100 &Aring;</td><td>optical with host</td></tr>
@@ -1002,7 +1018,10 @@ has aliases.</dd>
 included) on the side of zero where the lag is, and <code>significance</code>, its one-sided Gaussian equivalent
 (<code>fa.rm.lag_significance(lag)</code>). Below 2&sigma; FANTASY warns that the lag is not significant, and below r<sub>max</sub> = 0.5 that
 the light curves are weakly correlated.</dd>
-<dt>rms spectrum</dt><dd>the broad line alone in every epoch, noise-corrected rms (Park et al. 2012), widths with bootstrap errors.</dd>
+<dt>rms spectrum</dt><dd>Each epoch retains the observed residuals after subtracting all modeled emission
+except the selected broad transition. For example, the H&beta; rms excludes broad He&#8202;II 4686.
+Widths are measured on the noise-corrected rms at observed resolution, with bootstrap errors.
+Changes in instrumental resolution between epochs can give even a constant line an rms signal.</dd>
 <dt>Mass</dt><dd>M = f c&tau; &sigma;<sub>line</sub>(rms)<sup>2</sup>/G with f = 4.47 (Woo et al. 2015); the 0.3 dex scatter of f is not in the error.</dd>
 </dl>
 <p><code>fa.rm.component_reverberation(me, "Hb", continuum=...)</code> measures a lag and response for every component (continuum, each

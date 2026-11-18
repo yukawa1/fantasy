@@ -53,17 +53,20 @@ def default_quantities(result):
     q = {"broad " + k: v for k, v in broad_quantities(result).items() if not k.startswith(("log M_BH", "log L"))}
     comps = result._line_components()
     broad = [c for c in comps if c.role == "broad"]
-    line = next((ln for ln in ("Hb", "Ha", "MgII2798", "CIV1549") if any(ln in c.line_names for c in broad)), None)
+    line = result._primary_broad_line()
     if line:
         def shift(r):
             m = r.measure(line, [c.name for c in r._line_components() if c.role == "broad" and line in c.line_names])
             return m["shift"], m["shift_err"]
         q[f"broad {line} shift"] = shift
-    if result._feii_components() and line in ("Hb", "MgII2798"):
-        def rfe(r):
-            f = r.feii()
+    for comp in result._feii_components():
+        band = result._feii_band(comp)
+        if not any(band["reference"] in c.line_names for c in broad):
+            continue
+        def rfe(r, name=comp.name):
+            f = r.feii(name)
             return f["r_feii"], f["r_feii_err"]
-        q["R_FeII"] = rfe
+        q[band["ratio_label"]] = rfe
     if any("[OIII]5007" in c.line_names for c in comps):
         def oiii(key):
             def f(r):

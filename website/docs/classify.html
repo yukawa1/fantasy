@@ -9,7 +9,7 @@
 <div class="doc-layout"><aside><details id="contents" open><summary>Documentation menu</summary><div class="menu">
 <label for="search">Find a guide or function</label><input type="search" id="search" autocomplete="off" placeholder="e.g. prune_feii"><nav id="matches" aria-label="Search results" hidden></nav>
 <nav id="topics" aria-label="Documentation topics"><section><h3>Getting started</h3><a href="index.html">First fit</a><a href="start.html">Overview</a><a href="install.html">Installing and starting</a></section><section><h3>The app, step by step</h3><a href="read.html">1 · Read</a><a href="prepare.html">2 · Prepare</a><a href="model.html">3 · Model</a><a href="fit-step.html">4 · Fit</a><a href="results-step.html">5 · Results</a></section><section><h3>Modelling</h3><a href="components.html">Components</a><a href="feii.html">Fe II templates</a><a href="presets.html">Presets</a><a href="classes.html">Models for each class</a><a href="params.html">Parameters, limits and ties</a><a href="saved-models.html">Saved models</a><a href="stratified.html">Stratified BLR profile</a><a href="absorption.html">Absorption troughs</a></section><section><h3>Fitting</h3><a href="algorithm.html">How the fit works</a><a href="uncertainties.html">Uncertainties</a><a href="compare.html">Model comparison</a></section><section><h3>Measurements</h3><a href="measurements.html">Line measurements</a><a href="bh-mass.html">Black-hole masses</a><a href="feii-ms.html">Fe II and the main sequence</a><a href="diagnostics.html">Narrow-line diagnostics</a><a href="classify.html" aria-current="page">Classification</a></section><section><h3>Figures</h3><a href="figures.html">Figures</a></section><section><h3>Time domain and samples</h3><a href="multi.html">Multi-epoch fitting</a><a href="reverberation.html">Reverberation mapping</a><a href="sample.html">Fitting a sample</a></section><section><h3>Reference</h3><a href="save.html">Saving and reopening work</a><a href="calibration.html">How the presets were calibrated</a><a href="lines.html">Line list</a></section><section><h3>API reference</h3><a href="api-reading-data.html">Reading data</a><a href="api-classification.html">Classification</a><a href="api-models.html">Models</a><a href="api-fitting.html">Fitting</a><a href="api-results.html">Results</a><a href="api-fit-checks.html">Fit checks</a><a href="api-epochs-and-reverberation.html">Epochs and reverberation</a><a href="api-new-versions.html">New versions</a></section></nav></div></details></aside>
-<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.0.2</a> / Measurements</p>
+<main id="content" class="article"><p class="kicker"><a href="index.html">FANTASY 2.1.0</a> / Measurements</p>
 <h1>Classification</h1><div class="lead"><code>fa.classify(spec)</code> decides what kind of object a spectrum shows, before a model is chosen, with three
 quick fits.</div>
 <ol class="steps">
@@ -19,6 +19,9 @@ quick fits.</div>
 needs &Delta;BIC &gt; 25, S/N &gt; 5, EW &gt; 30 &Aring; and 1200 &lt; FWHM &lt; 12&#8202;000 km/s; weaker candidates are reported as type 1.8/1.9.</li>
 <li><b>Narrow-line diagnostics.</b> BPT ([N&#8202;II], [S&#8202;II], [O&#8202;I]) and WHAN diagrams.</li>
 </ol>
+<p>When H&alpha; falls outside the useful pixels, the WHAN class is unavailable.
+Strong [O&#8202;III]/H&beta; can suggest a Seyfert candidate. The classifier marks a blue-only
+classification as uncertain and explains which lines were available.</p>
 <div class="table-scroll"><table class="doc"><tr><th>class</th><th>meaning</th><th>recommended model</th></tr>
 <tr><td>type1</td><td>broad lines, AGN-dominated</td><td>optical</td></tr>
 <tr><td>type1_host</td><td>broad lines, host &ge; 50% at 5100 &Aring;</td><td>optical with host</td></tr>
@@ -49,4 +52,4 @@ a ratio counting when both lines have S/N &ge; 3. A broad component of the model
 (type 1.8/1.9?), is named in the reason.</li></ul>
 <p>The final class can only see what the model contains: a model without broad lines cannot give a type 1, and a model without
 H&alpha; gives no BPT class. With <code>preliminary=c</code> the reason says when the two disagree.</p>
-<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot d9021dbb6738</span></footer></main></div></body></html>
+<footer class="doc-foot"><a href="index.html">Documentation home</a><span>Source snapshot 03595d431bcb</span></footer></main></div></body></html>

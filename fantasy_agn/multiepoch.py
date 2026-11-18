@@ -912,11 +912,10 @@ def _cov_from_normal(JtJ, exclude):
 
 def _line_continuum_corr(result, line, components, at):
     """Correlation coefficient of a line flux and the continuum flux density in one fit."""
-    lam0, v, lam, profile, comps = result._line_profile_func(line, components)
-    dlam = lam[1] - lam[0]
-    _, cov = result.propagate(lambda full: np.array([profile(full).sum() * dlam,
+    flux = result._line_flux_func(line, components)
+    _, cov = result.propagate(lambda full: np.array([flux(full),
                                                      result._agn_continuum(at, full)[0]]), covariance=True,
-                              depends=result._depends(comps))
+                              depends=result._depends(components))
     d = np.sqrt(np.diag(cov))
     return float(np.clip(cov[0, 1] / (d[0] * d[1]), -1, 1)) if np.all(d > 0) else 0.0
 

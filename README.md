@@ -1,8 +1,18 @@
-![Fantasy](https://raw.githubusercontent.com/yukawa1/fantasy/main/docs/Fantasy.jpg)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/yukawa1/fantasy/main/docs/fantasy2_banner_dark.png">
+    <img alt="FANTASY²: Fully Automated pythoN Tool for AGN Spectra analYsis" width="640" src="https://raw.githubusercontent.com/yukawa1/fantasy/main/docs/fantasy2_banner.png">
+  </picture>
+</p>
 
-# FANTASY: Fully Automated pythoN tool for AGN Spectra analYsis
+# FANTASY²: Fully Automated pythoN tool for AGN Spectra analYsis
 
 *Nemanja Rakić, Dragana Ilić and Luka Č. Popović*
+
+<p align="center">
+  <img alt="A real FANTASY fit, replayed: the SDSS image of a Seyfert 1 galaxy, the fiber on its nucleus, the spectrograph, and the spectrum separated into host galaxy, AGN continuum, Fe II, broad and narrow lines" width="860" src="https://raw.githubusercontent.com/yukawa1/fantasy/main/docs/fantasy2_hero.gif">
+  <br><sub>The opening screen of the FANTASY app: a real fit of the SDSS Seyfert 1 galaxy spec-0354-51792-0617, replayed.</sub>
+</p>
 
 FANTASY fits AGN spectra with many components at once: power-law continuum, Balmer
 continuum, FeII templates, host galaxy, and any number of narrow, broad and outflow
@@ -266,7 +276,8 @@ If you use FANTASY in your research, please cite
 [Ilić et al. (2020)](https://ui.adsabs.harvard.edu/abs/2020A%26A...638A..13I/abstract),
 [Rakić (2022)](https://ui.adsabs.harvard.edu/abs/2022MNRAS.516.1624R/abstract) and
 [Ilić, Rakić & Popović (2023)](https://ui.adsabs.harvard.edu/abs/2023ApJS..267...19I/abstract).
-On GitHub, **Cite this repository** gives these references in BibTeX and APA (from `CITATION.cff`).
+On GitHub, **Cite this repository** gives these references in BibTeX and APA (from `CITATION.cff`). In the app, **⋯ → How to cite FANTASY** (and **How to cite** on the Results page) gives them with
+BibTeX to copy, and every downloaded script and notebook names them in its header.
 
 ## License
 

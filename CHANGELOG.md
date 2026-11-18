@@ -1,5 +1,49 @@
 # Changelog
 
+## 2.1.0
+
+### Added
+
+- The app opens with how a spectrum is taken and fitted: the SDSS image of a Seyfert 1 galaxy
+  (spec-0354-51792-0617, now bundled in `fantasy_agn/data/examples`), a 3″ fiber on its nucleus, a
+  spectrograph spreading the light into the FANTASY logo, whose ribbon of spectra becomes the real
+  spectrum. The spectrum moves to the rest frame
+  and separates into the fitted host galaxy (with Ca II, G band, Mg b and Na D marked), AGN continuum,
+  Fe II, broad and narrow lines, with the measured broad Hβ FWHM, black-hole mass, host fraction and
+  stellar σ*. Pointing at the plot shows what makes up the light at that wavelength; "Fit this galaxy
+  yourself" reads the spectrum. The app's wordmark is now FANTASY², for version 2.
+- How to cite FANTASY, in the app's ⋯ menu and on the Results page: the three papers with ADS and DOI
+  links, a sentence to adapt with the version, and BibTeX to copy. Downloaded scripts and notebooks
+  name the papers in their header.
+- README: the FANTASY² banner (light and dark) and a recording of the app's opening animation
+  (`docs/fantasy2_hero.gif`).
+
+### Fixed
+
+- Comparing models keeps your place in the candidate table as fits finish and when you select a row.
+- Sample reads keep the selected source and the complete file list, including rows outside the preview.
+  Sample fitting applies the preparation chosen for each spectrum, including flux units, resolution,
+  rest-frame conversion, wavelength cuts and masks.
+- Catalog results follow the current spectra when a session is reset or inputs change order.
+- The Results download menu identifies the sample catalog and supports keyboard navigation.
+  Fit actions fit within narrow screens.
+- The Model step uses one editor for presets, saved models, gallery candidates and new models.
+  Browsing presets keeps the active model intact. Applying a draft records the model in the session
+  and clears fit results from the previous model.
+
+- Catalogs choose a measured broad line for widths and single-epoch masses. A missing or zero-flux
+  broad Hβ no longer yields an 80,000 km/s width or displaces a measured Hα.
+- Broad-line rms spectra subtract neighboring transitions, including lines sharing a model component,
+  and preserve the observed residuals. A varying He II 4686 line no longer supplies the width for Hβ.
+- Classification distinguishes missing Hα coverage from a measured weak Hα. Narrow-line diagnostics
+  use physical component fluxes and their covariance, including constrained Hα outflow flux.
+- Optical Fe II/Hβ and the local (2650–3050 Å) and extended (2200–3090 Å) UV Fe II/Mg II ratios
+  have distinct catalog columns. The band measurement requires at least 95% fitted coverage.
+- Total line flux includes Lorentzian and Voigt wings. Damped profiles require an explicit velocity
+  window for line dispersion and are excluded from single-epoch dispersion-based masses.
+- Results show flux units and mass recipe scatter for the selected fit. The model gallery and sample
+  views distinguish UV and optical Fe II ratios. Atlas width flags use actual fitted parameter bounds.
+
 ## 2.0.2
 
 ### Fixed

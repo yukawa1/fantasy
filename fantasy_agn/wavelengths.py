@@ -4,6 +4,16 @@ import numpy as np
 __all__ = ("vac_to_air", "air_to_vac")
 
 
+def _sampling_gaps(steps):
+    """Indices of detector gaps and the local pixel spacing on either side."""
+    if len(steps) < 2:
+        return np.array([], dtype=int), steps[:0], steps[:0]
+    left = np.r_[steps[1], steps[:-1]]
+    right = np.r_[steps[1:], steps[-2]]
+    gaps = np.flatnonzero(steps > 3 * np.maximum(left, right))
+    return gaps, left[gaps], right[gaps]
+
+
 def _refraction_factor(lam_vac):
     sigma2 = (1e4 / np.asarray(lam_vac, dtype=float)) ** 2
     return 1 + 5.792105e-2 / (238.0185 - sigma2) + 1.67917e-3 / (57.362 - sigma2)
