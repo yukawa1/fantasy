@@ -65,13 +65,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .session import Session
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
-# the bundled Seyfert 1 galaxy of the opening screen, read by its "Fit this galaxy yourself" button
+# the bundled Seyfert 1 galaxy of the opening screen, read by its "Try it on this galaxy" button
 EXAMPLE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "examples", "spec-0354-51792-0617.fits")
 
 
 def _versioned(html):
     """Add the modification time to the stylesheet and script links, so a changed file is never served from the cache."""
-    for name in ("wf.css", "wf.js", "mb.js", "hero.js"):
+    for name in ("wf.css", "wf.js", "mb.js", "hero.js", "feii.js"):
         v = int(os.path.getmtime(os.path.join(STATIC, name)))
         html = html.replace(f'"/static/{name}"', f'"/static/{name}?v={v}"')
     return html
@@ -335,6 +335,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(s.mb_lines())
             if name == "guess":
                 return self._send(s.wf_guess(one("k", "")) or {})
+            if name == "feii":
+                return self._send(s.wf_feii_view(one("k")) or {})
             if name == "degeneracy":
                 return self._send(s.wf_degeneracy(one("k")) or {})
             if name == "atlas":
@@ -397,6 +399,9 @@ class Handler(BaseHTTPRequestHandler):
             if name == "figure_code":
                 opts = {key: v[0] for key, v in q.items() if key not in ("k", "t", "dl", "v")}
                 return self._send({"code": s.wf_figure_code(one("k"), opts)})
+            if name == "view_code":
+                opts = {key: v[0] for key, v in q.items() if key not in ("k", "t", "v", "view")}
+                return self._send({"code": s.wf_view_code(one("view", ""), one("k"), opts)})
             if name == "lines_code":
                 opts = {key: v[0] for key, v in q.items() if key not in ("k", "t", "dl", "v", "lines")}
                 lines = [ln for ln in one("lines", "").split(",") if ln]

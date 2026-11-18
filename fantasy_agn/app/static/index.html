@@ -10,7 +10,7 @@
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="#read" data-go="read" title="FANTASY">
+  <a class="brand" href="#home" data-go="home" title="FANTASY: home">
     <img src="/static/img/mark.png" srcset="/static/img/mark@2x.png 2x" alt="" class="mark">
     <span class="brandtext"><span class="wordmark">FANTASY<sup class="sq" title="version 2">2</sup></span>
       <span class="tagline">Fully Automated pythoN Tool for AGN Spectra analYsis</span></span>
@@ -99,8 +99,8 @@
 <main id="main">
   <div id="banner" class="banner hidden"></div>
 
-  <!-- ================================================================ 1 READ -->
-  <section class="page" id="page-read" data-step="read">
+  <!-- ================================================================ HOME -->
+  <section class="page" id="page-home" data-step="home">
     <section class="hero" id="hero" data-example="__FANTASY_EXAMPLE__" aria-label="A real FANTASY fit of an SDSS Seyfert 1 galaxy, replayed">
       <div class="hero-copy">
         <div class="hero-brand">
@@ -112,8 +112,10 @@
         <p>One SDSS fiber, one spectrum of a Seyfert 1. FANTASY fits the starlight of the host galaxy, the accretion disk, Fe II and the broad and narrow lines together, and weighs the black hole.</p>
         <div class="hero-stats" id="herostats"></div>
         <div class="hero-actions">
-          <button class="btn primary" id="herotry" type="button">Fit this galaxy yourself →</button>
-          <button class="btn" id="heroreplay" type="button" title="Play the decomposition again">↻ Replay</button>
+          <button class="btn primary" id="herocontinue" type="button" data-go="read" hidden>Continue your analysis →</button>
+          <button class="btn primary" id="herostart" type="button" data-go="read">Analyse your own spectra →</button>
+          <button class="btn" id="herotry" type="button" title="Read this spectrum and take it through the steps yourself">Try it on this galaxy</button>
+          <button class="btn hero-replay" id="heroreplay" type="button" title="Play the decomposition again">↻ Replay</button>
         </div>
       </div>
       <div class="hero-plot">
@@ -123,8 +125,12 @@
         <div class="hero-legend" id="herolegend"></div>
       </div>
     </section>
-    <div class="pagehead"><h1>Read spectra</h1><code class="hint" id="read-hint">fa.read(…)</code></div>
     <div id="restorebox" class="restorebox hidden"></div>
+  </section>
+
+  <!-- ================================================================ 1 READ -->
+  <section class="page hidden" id="page-read" data-step="read">
+    <div class="pagehead"><h1>Read spectra</h1><code class="hint" id="read-hint">fa.read(…)</code></div>
     <h3 class="label">What are you analysing?</h3>
     <div class="modes" id="modes">
       <label class="mode" data-mode="single"><input type="radio" name="mode" value="single">
@@ -519,6 +525,7 @@
       <button data-v="fit" class="on">Fit</button>
       <button data-v="atlas">Atlas</button>
       <button data-v="anatomy">Anatomy</button>
+      <button data-v="feii">Fe&nbsp;II</button>
       <button data-v="degen">Degeneracies</button>
       <button data-v="sdiag">Diagrams</button>
       <button data-v="checks">Checks<span class="tabcount hidden" id="checkcount"></span></button>
@@ -657,6 +664,36 @@
         <svg id="at-dist"></svg>
       </div>
       <div class="at-grid" id="at-grid"></div>
+    </div>
+    <div id="res-feii" class="hidden fx">
+      <div class="fx-kpis" id="fx-kpis"></div>
+      <div class="fx-main">
+        <section class="card fx-plotcard">
+          <div class="fx-bar">
+            <h3>The Fe II spectrum, multiplet by multiplet</h3><span class="grow"></span>
+            <div class="seg small" id="fx-mode"><button data-m="alone" class="on" title="Everything but Fe II subtracted from the data">Fe II alone</button><button data-m="full" title="The whole spectrum, with the Fe II stacked on the rest of the model">Full spectrum</button></div>
+            <label class="check small hidden" id="fx-zoomwrap" title="Scale the plot to the continuum and the Fe II; the strong lines run off the top"><input type="checkbox" id="fx-zoom" checked> scale to Fe II</label>
+            <label class="check small" id="fx-datawrap"><input type="checkbox" id="fx-data" checked> data</label>
+            <div class="seg small" id="fx-ranges"></div>
+          </div>
+          <p class="fx-sub" id="fx-sub"></p>
+          <canvas id="fx-plot"></canvas>
+          <canvas id="fx-over"></canvas>
+        </section>
+        <aside class="card fx-side">
+          <h3>Groups</h3>
+          <p id="fx-sidetxt"></p>
+          <div class="fx-glist" id="fx-glist"></div>
+        </aside>
+      </div>
+      <div class="fx-lower" id="fx-lower">
+        <section class="card" id="fx-grotcard"><div class="fx-bar"><h3>Grotrian diagram</h3><span class="grow"></span><span class="muted small" id="fx-grotsrc"></span></div>
+          <canvas id="fx-grot"></canvas><p id="fx-grottxt"></p></section>
+        <section class="card" id="fx-velcard"><h3 id="fx-velh">Where is Fe II emitted?</h3><canvas id="fx-vel"></canvas><p id="fx-veltxt"></p></section>
+        <section class="card" id="fx-mscard"><h3>On the quasar main sequence</h3><canvas id="fx-ms"></canvas><p id="fx-mstxt"></p></section>
+      </div>
+      <div class="fx-tip" id="fx-tip"></div>
+      <div class="empty hidden" id="fx-empty"></div>
     </div>
     <div id="res-degen" class="hidden">
       <div class="dg-grid">
@@ -1000,6 +1037,8 @@
       </div>
       </div>
     </div>
+    <details class="card codebox vcodebox hidden" id="vcodebox"><summary><b>Python code</b> <small class="muted" id="vcodesum">to draw this plot in a script</small></summary>
+      <pre class="code" id="vcode"></pre><button class="btn small" type="button" data-copy="vcode">Copy</button></details>
     <footer class="pagefoot">
       <button class="btn" data-go="fit">← Fit</button><span class="grow"></span>
       <button class="btn" id="refine">Change the model</button></footer>
@@ -1056,6 +1095,7 @@
 </div>
 <div id="toast" class="toast hidden"></div>
 <div class="mb hidden" id="mb"></div>
+<script src="/static/feii.js"></script>
 <script src="/static/wf.js"></script>
 <script src="/static/hero.js"></script>
 <script src="/static/mb.js"></script>

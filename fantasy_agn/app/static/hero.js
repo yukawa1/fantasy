@@ -437,7 +437,7 @@
     if (!running && shown && !document.hidden && hero.offsetParent !== null && D) { running = true; raf = requestAnimationFrame(frame); }
   }
 
-  // the app shows the hero on the Read page until a spectrum is read
+  // the app's Home page shows the hero (renderHome in wf.js)
   window.fantasyHero = {
     show(on) {
       if (on !== shown) {

@@ -130,6 +130,28 @@ def resolve_pattern(text):
     raise ValueError(f"no files match {raw!r}{hint}")
 
 
+_FEII_LEVELS = {}
+
+
+def _feii_levels(kind, n):
+    """
+    [term_k, J_i, J_k, E_i, E_k, nist] of every line of a Fe II template, in the template's order, for the
+    Grotrian diagram of Results › Fe II; None for a template without atomic data (the local UV model).
+    """
+    if kind not in _FEII_LEVELS:
+        from ..lines import DATA
+        src = {"optical": "feii_levels.csv", "uv_extended": "uvfe2.csv"}.get(kind)
+        rows = None
+        if src:
+            t = pd.read_csv(os.path.join(DATA, src), comment="#", keep_default_na=False)
+            nist = t["nist"] if "nist" in t else pd.Series(1, index=t.index)
+            rows = [[str(tk).replace(" ", ""), str(ji), str(jk), round(float(ei), 4), round(float(ek), 4), int(m)]
+                    for tk, ji, jk, ei, ek, m in zip(t.term_k, t.J_i, t.J_k, t.Ei_eV, t.Ek_eV, nist)]
+        _FEII_LEVELS[kind] = rows
+    rows = _FEII_LEVELS[kind]
+    return rows if rows is not None and len(rows) == n else None
+
+
 class StepsMixin:
     """Workflow methods of :class:`fantasy_agn.app.session.Session`."""
 
@@ -1405,6 +1427,128 @@ class StepsMixin:
         self._wf_cache[key] = out
         return out
 
+    def wf_feii_view(self, k=0):
+        """
+        Results › Fe II: the Fe II of fit ``k`` group by group, for the browser. The spectrum with
+        everything but Fe II subtracted, the fitted Fe II of every group (lines sharing a lower term),
+        every transition at its fitted strength, the band flux, EW and ratio of ``r.feii()``, the
+        kinematics against the broad reference line (H-beta, or Mg II for the UV templates) and, for
+        the optical template, the position on the quasar main sequence.
+        """
+        from ..lines import line_table
+        from ..plotting import plain_line
+        from ..wavelengths import vac_to_air
+        res = self.wf_results()
+        if not res:
+            return None
+        k = min(max(int(k), 0), len(res) - 1)
+        name, _, r, _ = res[k]
+        if r is None:
+            return {"k": k, "name": name, "error": "this spectrum could not be fitted"}
+        key = ("feii", id(r))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        fes = r._feii_components() if hasattr(r, "_feii_components") else []
+        if not fes:
+            return {"k": k, "name": name, "error": "this model has no Fe II component"}
+        fe = fes[0]
+        spec, ctx = r.spectrum, r.spectrum.context
+        comps = {c.name: c for c in r.model.components}
+        slices = dict(zip(comps, r.model._slices()))
+        p = np.asarray(r.full[slices[fe.name]], float)
+        fit = r.mask & spec.good
+        lo, hi = float(spec.wave[fit].min()), float(spec.wave[fit].max())
+        keep = (spec.wave >= lo) & (spec.wave <= hi)
+        x = spec.wave[keep]
+        parts = {n: v[keep] for n, v in r.model_flux(components=True).items()}
+        model = sum(parts.values(), np.zeros_like(x))
+        fe_obs = parts[fe.name]                                  # with any extinction applied
+        fe_raw = fe.value(x, p, ctx)
+        scale = np.divide(fe_obs, fe_raw, out=np.ones_like(x), where=np.abs(fe_raw) > 0)
+        line_kinds = ("continuum", "host", "template")
+        emis = sum((v for n, v in parts.items() if n != fe.name and getattr(comps[n], "kind", "") not in line_kinds
+                    and type(comps[n]).__name__ not in ("BalmerContinuum",)), np.zeros_like(x))
+        P = r.params.set_index("parameter")
+        fin = lambda v: float(v) if v is not None and np.isfinite(v) else None   # noqa: E731
+        num = lambda a: [None if not np.isfinite(v) else float(f"{v:.5g}") for v in np.asarray(a, float)]  # noqa: E731
+        meta = r.feii(component=fe.name)
+        blo, bhi = meta["band"]
+        inband = (x > blo) & (x < bhi)
+        groups = []
+        for i, g in enumerate(fe.groups):
+            q = p.copy()
+            q[:fe._n_amp] = 0.0
+            q[i] = p[i]
+            f = fe.value(x, q, ctx) * scale
+            w = fe._wave[fe._amp_index == i]
+            pname = f"{fe.name}.{g}"
+            groups.append({"name": g, "amp": fin(P.loc[pname, "value"]), "err": fin(P.loc[pname, "error"]),
+                           "status": str(P.loc[pname, "status"]), "flux": num(f) if np.any(f > 0) else None, "n": int(w.size),
+                           "wmin": float(w.min()), "wmax": float(w.max()),
+                           "total": float(np.trapezoid(f, x)) if x.size > 1 else 0.0,
+                           "band": float(np.trapezoid(f[inband], x[inband])) if inband.sum() > 1 else 0.0})
+        C = 299792.458
+        par = lambda n: (fin(P.loc[f"{fe.name}.{n}", "value"]), fin(P.loc[f"{fe.name}.{n}", "error"]))  # noqa: E731
+        (shift, shift_err), (fwhm, fwhm_err) = par("shift"), par("fwhm")
+        air = getattr(spec, "medium", "vacuum") == "air"
+        atoms = _feii_levels(getattr(fe, "feii_kind", "optical"), len(fe._wave))
+        lines = []
+        for q, (w0, gi, fl) in enumerate(zip(fe._wave, fe._amp_index, fe.line_fluxes(p))):
+            wc = w0 * (1 + (shift or 0) / C)
+            wc = float(vac_to_air(wc)) if air else float(wc)
+            sig = (fwhm or 2000) / 2.3548 / C * wc
+            if lo - 20 < wc < hi + 20 and fl > 0:
+                lines.append([round(wc, 2), int(gi), float(f"{fl / (np.sqrt(2 * np.pi) * sig):.4g}"), float(f"{fl:.4g}")]
+                             + (atoms[q] if atoms else []))
+        # the broad reference line in velocity, and one Fe II line of the fitted width beside it
+        ref = meta["reference"]
+        broad = [c.name for c in r._line_components() if c.role == "broad" and ref in c.line_names]
+        refd = None
+        if broad:
+            w_ref = float(line_table().loc[ref].vacuum)
+            if air:
+                w_ref = float(vac_to_air(w_ref))
+            # the intrinsic profile (no instrumental broadening, as its FWHM and the Fe II FWHM), on a fine grid
+            v = np.arange(-12000.0, 12000.0 + 1, 20.0)
+            ictx = {"medium": ctx.get("medium", "vacuum"), "resolution": 0.0}
+            prof = sum(comps[n].line_profile(w_ref * (1 + v / C), r.full[slices[n]], ictx, ref) for n in broad)
+            win = np.isfinite(prof)
+            try:
+                m = r.measure(ref, broad)
+                rf, rfe = fin(m["fwhm"]), fin(m["fwhm_err"])
+            except Exception:                         # noqa: BLE001 - a profile without a measurable FWHM
+                rf = rfe = None
+            if win.sum() > 3:
+                refd = {"line": ref, "label": plain_line(ref).split(" λ")[0], "v": num(v[win]), "f": num(prof[win]),
+                        "fwhm": rf, "fwhm_err": rfe}
+        # the other emission lines of the model, to label where they sit
+        seen, labels = set(), []
+        for c in r._line_components():
+            for ln, w0 in zip(c.line_names, np.atleast_1d(getattr(c, "_wave", []))):
+                wl = float(vac_to_air(w0)) if air else float(w0)
+                if ln not in seen and lo < wl < hi:
+                    seen.add(ln)
+                    labels.append([plain_line(ln).split(" λ")[0], round(wl, 1)])
+        labels.sort(key=lambda t: t[1])
+        out = {"k": k, "name": name, "z": fin(getattr(spec, "z", None)), "kind": getattr(fe, "feii_kind", "optical"),
+               "component": fe.name, "flux_unit": spec.flux_unit, "rchi2": float(r.rchi2),
+               "wave": num(x), "data": num(np.where(fit[keep], spec.flux[keep], np.nan)), "err": num(spec.err[keep]),
+               "model": num(model), "other": num(model - fe_obs), "feii": num(fe_obs), "emis": num(emis),
+               "groups": groups, "lines": lines, "labels": labels, "levels": bool(atoms),
+               "kin": {"shift": shift, "shift_err": shift_err, "fwhm": fwhm, "fwhm_err": fwhm_err,
+                       "shift_status": str(P.loc[f"{fe.name}.shift", "status"]),
+                       "fwhm_status": str(P.loc[f"{fe.name}.fwhm", "status"])},
+               "ref": refd,
+               "strength": {"line": meta["line"], "ratio_label": meta["ratio_label"], "reference": ref,
+                            "band": [blo, bhi], "covered": bool(meta["covered"]),
+                            "r": fin(meta["r_feii"]), "r_err": fin(meta["r_feii_err"]),
+                            "flux": fin(meta["flux"]), "flux_err": fin(meta["flux_err"]),
+                            "ew": fin(meta["ew"]), "ew_err": fin(meta["ew_err"])}}
+        if len(self._wf_cache) > 80:
+            self._wf_cache.clear()
+        self._wf_cache[key] = out
+        return out
+
     def wf_result(self, k=0):
         res = self.wf_results()
         if not res:
@@ -1429,6 +1573,7 @@ class StepsMixin:
         out["fit"] = {"chi2": float(r.chi2), "dof": int(r.dof), "rchi2": float(r.rchi2),
                       "scale": float(getattr(r, "scale", 1.0) or 1.0)}
         out["corner_params"] = self.sampled_params(r)
+        out["has_feii"] = bool(hasattr(r, "_feii_components") and r._feii_components())
         if len(self._wf_cache) > 80:
             self._wf_cache.clear()
         self._wf_cache[key] = out
@@ -3068,7 +3213,12 @@ class StepsMixin:
         return {"joint": f"me.epochs[{int(k)}]", "fits": f"fits[{int(k)}]"}.get(kind, "r")
 
     def wf_figure_code(self, k=0, opts=None):
-        return self.figure_code(dict(opts or {}), name=self._fit_name(k))
+        """Python code of the publication figure of fit ``k``, with the title the preview has (wf_custom_figure)."""
+        name, date, _, many = self._wf_fit(k)
+        opts = dict(opts or {})
+        if "title" not in opts:
+            opts["title"] = f"epoch {k}: {name}" + (f"  ({date})" if date else "") if many else name
+        return self.figure_code(opts, name=self._fit_name(k))
 
     def wf_lines_code(self, k=0, lines=(), opts=None):
         """Python code that draws the line figure with these options."""
@@ -3091,6 +3241,11 @@ class StepsMixin:
         head = f"    fig = {self._fit_name(k)}.{func}("
         return "\n".join(["from fantasy_agn.plotting import paper_style", "", "with paper_style():",
                           head + (",\n" + " " * len(head)).join(args) + ")", '    fig.savefig("lines.pdf")'])
+
+    def wf_view_code(self, view, k=0, opts=None):
+        """Python code for the plot of a Results view (see viewcode.py), following what the view shows."""
+        from .viewcode import view_code
+        return view_code(self, view, k, opts)
 
     def wf_components_csv(self, k=0):
         """The fitted model of fit ``k`` and its components as CSV (see Session.components_csv)."""

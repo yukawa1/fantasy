@@ -61,10 +61,12 @@ derives black-hole masses and diagnostics, and propagates every uncertainty.</di
 {_PIPELINE}
 <p>The app follows the five steps above. Each step writes ordinary FANTASY code into the Python session and runs
 it, so whatever is done by clicking can be repeated, changed or scripted. The bar at the top shows which steps are done;
-click a step to go back to it. <b>New analysis</b> clears the session; the <b>&#8943;</b> menu opens and saves projects and downloads
+click a step to go back to it. The app opens on its home page, a real fit replayed; <b>Analyse your own spectra</b>
+leads to the Read step, <b>Try it on this galaxy</b> reads the bundled example, and the FANTASY logo returns there.
+<b>New analysis</b> clears the session; the <b>&#8943;</b> menu opens and saves projects and downloads
 the session as a script or notebook.</p>
 <p><b>The session is saved after every step</b> (to <code>~/.fantasy_agn/sessions</code>, or <code>$FANTASY_AUTOSAVE</code>; set it to
-<code>0</code> to switch this off). When the app starts again, or after <b>New analysis</b>, the Read step offers <b>Restore last
+<code>0</code> to switch this off). When the app starts again, or after <b>New analysis</b>, the home page offers <b>Restore last
 session</b>, and <b>Open the one before</b> for the session before that: a server restart or a closed terminal no longer loses the
 work. The saved file is a project like those of the &#8943; menu (a pickle: open only your own).</p>
 <p><b>&#9632; Stop</b> appears in the top bar while a step runs: it ends the worker processes of a parallel run (fits of many epochs,
@@ -389,6 +391,18 @@ a black-hole mass outside 10<sup>5.5</sup>&ndash;10<sup>10.5</sup>, or three or 
 <i>Common wavelength axis</i> lines the lines up down the grid, <i>same flux scale</i> (on for epochs) shows the variability. The class
 chips filter a sample (alt-click: one class only). A card opens its fit in <i>Fit</i>. The Eddington ratio uses bolometric corrections
 of 9.26 at 5100&nbsp;&Aring; and 5.15 at 3000&nbsp;&Aring;.</dd>
+<dt>Fe&#8202;II</dt><dd>the Fe&#8202;II of the fit, group by group, when the model has an Fe&#8202;II component
+(<code>r.feii()</code>, <code>r.params</code> rows <code>feii.*</code>). On top, the band ratio (R<sub>FeII</sub> = F(Fe&#8202;II 4434&ndash;4684)/F(broad H&beta;),
+or Fe&#8202;II/Mg&#8202;II for the UV templates), the band flux and EW, the Fe&#8202;II width and shift (marked when tied or fixed) and the
+main-sequence type. The plot shows <i>Fe&#8202;II alone</i> (the data minus every other component, faded where other lines outweigh
+the Fe&#8202;II, so that the subtraction is uncertain) or the <i>Full spectrum</i> (the data and the rest of the model, with the Fe&#8202;II
+stacked on it). The Fe&#8202;II is split into its groups, the lines sharing a lower term, whose relative intensities are fixed and whose
+strengths are fitted. Below, every transition of the template stands at its fitted peak height. Pointing at a group (in the plot or the
+list) shows it alone; a click pins it. The list gives each group's share of the band flux and the S/N of its strength. The
+<i>Grotrian diagram</i> draws every fitted line from its lower term to its upper term on an energy scale, as wide as its fitted flux,
+with levels from the NIST Atomic Spectra Database; lines of the optical template without a NIST transition end in the last
+column at E<sub>i</sub>&nbsp;+&nbsp;hc/&lambda;. Two panels compare one Fe&#8202;II line with the broad H&beta; (or Mg&#8202;II) profile
+and place the object on the quasar main sequence.</dd>
 <dt>Anatomy</dt><dd>the fit taken apart (<code>r.model_flux(components=True)</code>): the components stacked from the continuum up
 (host, Balmer continuum, Fe&#8202;II, broad, narrow, outflow), with the data over them. The <i>flux budget</i> above gives the share of
 each in the flux of the range shown; hovering the spectrum gives the composition at that wavelength (a ring and a table, with data, model
@@ -474,6 +488,9 @@ drawn, its colour, fill, line width and style. PDF, PNG, EPS, SVG, and the Pytho
 FWHM, &sigma; and flux, the half-maximum points and residuals) or <b>Overlaid</b> (the profiles on one velocity axis, scaled to their peaks,
 to compare widths and shapes; with several epochs, <b>Compare: Every epoch</b> overlays the first chosen line of every epoch, in time order); a velocity range;
 PDF, PNG, EPS, SVG and the Python code.</dd>
+<dt>Python code</dt><dd>under every view with a plot (Fit, Atlas, Anatomy, Fe&#8202;II, Degeneracies, Posterior, Classification,
+Main sequence, Light curves, Checks): the code that draws it with matplotlib, following what the view shows (the range zoomed to,
+the components switched off or picked out, the mode, the threshold, the light curves chosen) as you change it.</dd>
 <dt>Posterior</dt><dd>with Monte Carlo or MCMC errors: the corner plot of chosen parameters.</dd>
 <dt>Main sequence</dt><dd>with Fe&#8202;II and broad H&beta;: R<sub>Fe&#8202;II</sub> against FWHM(H&beta;) for every epoch; <i>Zoom to the
 epochs</i> (<a data-doc="feii-ms">Fe&#8202;II and the main sequence</a>).</dd>

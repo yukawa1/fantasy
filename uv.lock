@@ -380,7 +380,7 @@ wheels = [
 
 [[package]]
 name = "fantasy-agn"
-version = "2.0.0"
+version = "2.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "astropy", version = "6.1.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },

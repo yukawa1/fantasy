@@ -217,6 +217,7 @@ function render() {
   $("objlabel").textContent = obj ? `${obj} · ${MODE_LABEL[mode()]}` : MODE_LABEL[mode()];
   renderStepper();
   renderCells();
+  if (page === "home") renderHome();
   if (page === "read") renderRead();
   if (page === "prepare") renderPrepare();
   if (page === "model") renderModel();
@@ -255,8 +256,9 @@ function renderStepper() {
   }).join("");
   if (nav.dataset.html !== html) { nav.innerHTML = html; nav.dataset.html = html; }
 }
+const PAGES = ["home", ...STEPS.map(([id]) => id)];     // Home (the opening screen) comes before the steps
 function go(step) {
-  if (!STEPS.some(([id]) => id === step)) step = "read";
+  if (!PAGES.includes(step)) step = "home";
   page = step;
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.dataset.step !== step));
   if (location.hash !== "#" + step) history.replaceState(null, "", "#" + step);
@@ -303,11 +305,23 @@ function renderRestore() {
   $("restorehide").onclick = () => { restoreHidden = true; renderRestore(); };
 }
 let restoreHidden = false;
-// the opening screen's quasar (hero.js): read it as a single spectrum
-window.fantasyTryExample = (path) => path && !path.startsWith("__") && readSpectra({ pattern: path, mode: "single" });
-function renderRead() {
+// Home: the opening screen (hero.js), the way in, and the last session to restore
+// "Try it on this galaxy" reads the bundled Seyfert 1 as a single spectrum, on the Read page
+window.fantasyTryExample = (path) => {
+  if (!path || path.startsWith("__")) return;
+  go("read");
+  readSpectra({ pattern: path, mode: "single" });
+};
+function renderHome() {
   renderRestore();
-  if (window.fantasyHero) window.fantasyHero.show(!loaded());
+  if (window.fantasyHero) window.fantasyHero.show(true);
+  // with an analysis under way, the first button returns to it
+  const L = loaded();
+  $("herocontinue").hidden = !L;
+  $("herostart").hidden = !!L;
+  if (L) $("herocontinue").dataset.go = fitDone() ? "results" : prepared() ? "model" : "prepare";
+}
+function renderRead() {
   if (nextReadMode === mode() || !loaded()) nextReadMode = null;
   const m = nextReadMode || mode();
   document.querySelectorAll(".mode").forEach((el) => {
@@ -1386,7 +1400,9 @@ function resultViews() {
   if (kind === "sample") return ["fit", "atlas", "sdiag", "figure"];
   const v = ["fit"];
   if ((kind === "joint" || kind === "fits") && (F.epochs || []).length > 1) v.push("atlas");
-  v.push("anatomy", "degen", "checks", "figure", "lines");
+  v.push("anatomy");
+  if (resultData && resultData.has_feii) v.push("feii");     // Results › Fe II (feii.js)
+  v.push("degen", "checks", "figure", "lines");
   if (resultData && resultData.corner_params && resultData.corner_params.length) v.push("posterior");
   v.push("class");                       // the classification, or a button to run it
   if (S.wf.has_ms) v.push("ms");
@@ -1394,7 +1410,7 @@ function resultViews() {
   if (["joint", "fits"].includes(kind) && S.wf.corr) v.push("corr");
   return v;
 }
-const VIEW_HINT = { anatomy: "r.model_flux(components=True)", degen: "r.cov · r.samples · r.params", sdiag: "sample.table", corr: "ep = fa.epoch_table(me) · fa.epoch_correlations(ep)", checks: "fa.analyze_residuals(r) · fa.robustness(r) · fa.compare_fits(a, b) · fa.prune_feii(r) · fa.simulation_check(r)", lines: "r.plot_lines(['Hb', 'Ha'], residuals=True)", ms: "r.main_sequence()", figure: "r.plot(xlim=…, group=…, label_lines=…)", posterior: "r.samples", class: "fa.classify_fit(r) · c.plot()", time: "me.light_curve() · me.reverberation(line)" };
+const VIEW_HINT = { feii: "r.feii() · r.params (feii.*)", anatomy: "r.model_flux(components=True)", degen: "r.cov · r.samples · r.params", sdiag: "sample.table", corr: "ep = fa.epoch_table(me) · fa.epoch_correlations(ep)", checks: "fa.analyze_residuals(r) · fa.robustness(r) · fa.compare_fits(a, b) · fa.prune_feii(r) · fa.simulation_check(r)", lines: "r.plot_lines(['Hb', 'Ha'], residuals=True)", ms: "r.main_sequence()", figure: "r.plot(xlim=…, group=…, label_lines=…)", posterior: "r.samples", class: "fa.classify_fit(r) · c.plot()", time: "me.light_curve() · me.reverberation(line)" };
 function showView() {
   const F = fitDone(), kind = F && F.kind, views = resultViews();
   if (!views.includes(rv)) rv = views[0] || "fit";
@@ -1410,6 +1426,7 @@ function showView() {
   $("res-lines").classList.toggle("hidden", rv !== "lines");
   $("res-anatomy").classList.toggle("hidden", rv !== "anatomy");
   $("res-degen").classList.toggle("hidden", rv !== "degen");
+  $("res-feii").classList.toggle("hidden", rv !== "feii");
   $("res-atlas").classList.toggle("hidden", rv !== "atlas");
   $("res-post").classList.toggle("hidden", rv !== "posterior");
   $("res-class").classList.toggle("hidden", rv !== "class");
@@ -1506,6 +1523,7 @@ function renderResults() {
   if (rv === "fit") drawResultPlot();
   if (rv === "anatomy") drawAnatomy();
   if (rv === "degen") drawDegen();
+  if (rv === "feii" && window.FX) FX.show(rk, `${rk}|${R.fit && R.fit.chi2}|${R.name}`);
   if (rv === "figure") showFigure();
   if (rv === "lines") showLines();
   if (rv === "posterior") renderCorner();
@@ -1868,6 +1886,35 @@ async function refreshCode(box, pre, url) {
   try { $(pre).textContent = (await api(url)).code; } catch (e) { $(pre).textContent = "# " + e.message; }
 }
 const figCodeUrl = () => figUrl("png").replace("/api/wf/figure.png", "/api/wf/figure_code");
+// ---- the Python code of the plot of the other Results views (viewcode.py), following what the view shows
+let fitRange = null;
+const OWN_CODE = new Set(["figure", "lines", "corr", "sdiag"]);     // these views have a code box of their own (or no plot)
+function viewCodeUrl() {
+  const F = fitDone(), kind = F && F.kind;
+  if (!F || OWN_CODE.has(rv) || (kind === "sample" && rv !== "atlas") || (kind === "classify" && rv !== "class")) return null;
+  const q = new URLSearchParams({ view: rv, k: rk, v: S.cells.length });     // v: new code after a new fit
+  const set = (o) => Object.entries(o).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== "") q.set(k, v); });
+  if (rv === "fit") set({ xmin: fitRange && fitRange[0], xmax: fitRange && fitRange[1], hide: [...hiddenSeries].join(",") });
+  else if (rv === "anatomy" && AN.F) {
+    const whole = AN.view[0] <= AN.F.x[0] && AN.view[1] >= AN.F.x[AN.F.x.length - 1];
+    set({ xmin: whole ? null : Math.round(AN.view[0]), xmax: whole ? null : Math.round(AN.view[1]), off: [...AN.off].join(","), solo: AN.solo, peel: AN.peel || null });
+  } else if (rv === "feii" && window.FX && FX.state) set(FX.state());
+  else if (rv === "degen") set({ th: DG.th, scope: DG.scope });
+  else if (rv === "atlas" && AT.data) set({ order: atShown().map((o) => o.k).join(","), common: AT.common ? 1 : 0, same: AT.same ? 1 : 0 });
+  else if (rv === "posterior") set({ params: [...$("cornerparams").querySelectorAll("input:checked")].map((c) => c.value).join(",") });
+  else if (rv === "class") { q.set("k", ck); set({ kind: cfigKind }); }
+  else if (rv === "ms") set({ zoom: $("mszoom").checked ? 1 : 0 });
+  else if (rv === "time") set({ a: LX.A, b: LX.B });
+  return `/api/wf/view_code?${q}`;
+}
+let vcodeUrl = null;
+function refreshViewCode(force) {
+  const url = viewCodeUrl();
+  $("vcodebox").classList.toggle("hidden", !url || page !== "results");
+  if (!url || !$("vcodebox").open || (url === vcodeUrl && !force)) return;
+  vcodeUrl = url;
+  refreshCode("vcodebox", "vcode", url);
+}
 const lineCodeUrl = () => linesUrl("png").replace("/api/wf/linegrid.png", "/api/wf/lines_code");
 // a one-column figure is previewed at about its printed size relative to a two-column one, not blown up
 const previewWidth = (w) => (/double/.test(w || "double") ? "100%" : "560px");
@@ -3599,6 +3646,7 @@ function initResults() {
   // a range zoomed in the interactive plot can be taken over by the publication figure
   $("rplot").addEventListener("plotview", (e) => {
     const v = e.detail;
+    fitRange = v ? [Math.round(v[0]), Math.round(v[1])] : null;
     $("userange").classList.toggle("hidden", !v);
     if (v) $("userange").dataset.range = `${Math.round(v[0])},${Math.round(v[1])}`;
   });
@@ -3628,6 +3676,8 @@ function initResults() {
   $("lo-width").addEventListener("change", () => (lineWidthTouched = true));
   $("lo-win").oninput = linesChanged;
   setLineMode("grid");
+  $("vcodebox").addEventListener("toggle", () => refreshViewCode(true));
+  setInterval(() => refreshViewCode(false), 600);          // follows every change of the view while the box is open
   $("figcodebox").addEventListener("toggle", () => refreshCode("figcodebox", "figcode", figCodeUrl()));
   $("linecodebox").addEventListener("toggle", () => lineSel.length && refreshCode("linecodebox", "linecode", lineCodeUrl()));
   document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => {
@@ -4064,10 +4114,10 @@ function initTop() {
     await post("/api/stop", {});
   };
   $("newbtn").onclick = async () => {
-    if (!confirm("Start a new analysis? The current session (code, spectra and fits) is cleared. It stays auto-saved, and the Read step offers to restore it.")) return;
+    if (!confirm("Start a new analysis? The current session (code, spectra and fits) is cleared. It stays auto-saved, and the home page offers to restore it.")) return;
     restoreHidden = false; prep = null; modelTried = false; lastRun = null; runLog = []; resultData = null; fitInit = false; rk = 0; pk = 0;
     $("presetsel").innerHTML = "";
-    if (await post("/api/reset", {})) go("read");
+    if (await post("/api/reset", {})) go("home");
   };
   document.querySelector('[data-act="open-project"]').onclick = () => $("projectfile").click();
   // How to cite: from the ⋯ menu and the Results page
@@ -4092,12 +4142,12 @@ function initTop() {
 }
 function guessPage() {
   const h = location.hash.slice(1);
-  if (STEPS.some(([id]) => id === h)) return h;
+  if (PAGES.includes(h)) return h;
   if (fitDone()) return "results";
   if (S.model && prepared()) return "model";
   if (prepared()) return "model";
   if (loaded()) return "prepare";
-  return "read";
+  return "home";
 }
 async function main() {
   initTop(); initUpdate(); initRead(); initPrepare(); initModel(); initFit(); initResults(); initTime(); initResid(); initSession();

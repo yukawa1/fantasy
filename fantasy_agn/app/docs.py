@@ -36,7 +36,7 @@ def _api_objects():
                      ("fa.fit_many", fa.fit_many), ("fa.fit_sample", fa.fit_sample), ("fa.fit_absorbed", fa.fit_absorbed),
                      ("fa.refine", fa.refine), ("fa.prune_feii", fa.prune_feii), ("fa.fit_epochs", fa.fit_epochs)]),
         ("Results", [(f"FitResult.{n}", getattr(FitResult, n)) for n in
-                     ("key_results", "lines", "line_limit", "upper_limit", "measure", "bh_mass", "bh_masses", "feii", "balmer_decrement", "undersampled",
+                     ("key_results", "lines", "line_limit", "upper_limit", "measure", "bh_mass", "bh_masses", "feii", "feii_groups", "balmer_decrement", "undersampled",
                       "host_properties", "luminosity", "continuum", "plot", "savefig", "save",
                       "summary")]),
     ]

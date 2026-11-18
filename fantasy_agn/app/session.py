@@ -590,7 +590,7 @@ class Session(BuilderMixin, StepsMixin):
                 "lines": ("continuum", "host", "feii")}.get(str(opts.get("zoom_subtract") or ""), ())
         kw = dict(components=on("components"), residuals=on("residuals"), zoom=zoom[:4] or None,
                   zoom_subtract=zsub if zoom else (),
-                  xlim=(xmin, xmax) if xmin is not None and xmax is not None else None,
+                  xlim=(xmin, xmax) if xmin is not None or xmax is not None else None,
                   width=width, group=group, label_lines={"0": False, "1": True, "all": "all"}.get(labels, False),
                   title=title, colors=colors, hide=hide, data=on("data"), model=on("model"),
                   legend=legend, label_options=lopt, styles=styles,
@@ -622,11 +622,10 @@ class Session(BuilderMixin, StepsMixin):
             lo, hi = ax.get_ylim()
             ax.set_ylim(ymin if ymin is not None else lo, ymax if ymax is not None else hi)
         if fs:
-            for t in fig.findobj(lambda o: hasattr(o, "set_fontsize") and o.get_gid() != "linelabel"):
-                try:
+            from matplotlib.text import Text
+            for t in fig.findobj(Text):
+                if t.get_gid() != "linelabel":
                     t.set_fontsize(fs)
-                except Exception:                        # noqa: BLE001
-                    pass
         return self._fig_bytes(fig, fmt, dpi)
 
     def figure_code(self, opts, name="r"):
@@ -657,7 +656,10 @@ class Session(BuilderMixin, StepsMixin):
         if ymin is not None or ymax is not None:
             lines.append(f"    fig.axes[0].set_ylim({ymin!r}, {ymax!r})")
         if fs:
-            lines.append(f"    # font size {fs:g} pt: set matplotlib.rcParams['font.size'] before plotting")
+            lines[0:1] = ["from matplotlib.text import Text", lines[0]]
+            lines += ["    for t in fig.findobj(Text):                 # every text except the line names",
+                      '        if t.get_gid() != "linelabel":',
+                      f"            t.set_fontsize({fs:g})"]
         lines.append('    fig.savefig("fit.pdf")')
         return "\n".join(lines)
 

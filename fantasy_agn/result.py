@@ -764,6 +764,33 @@ class FitResult:
                 "luminosity": "broad line" if at == "line" else f"L{at}",
                 "width": rec.get("width", "fwhm"), "systematic_dex": rec["scatter"]}
 
+    def feii_groups(self, component=None, wave=None):
+        """
+        The fitted Fe II split by group (the lines of one lower term, e.g. 'b4F', 'a6S'): a dict
+        {group: flux at ``wave``} (default: the spectrum's wavelengths), with any extinction of the model
+        applied, so the groups add up to ``model_flux(components=True)[component]``. Groups at zero are
+        included (all zeros).
+        """
+        comps = self._feii_components()
+        if component is not None:
+            comps = [c for c in comps if c.name == component]
+        if not comps:
+            raise ValueError("the model has no FeII component" + (f" named {component!r}" if component else ""))
+        fe = comps[0]
+        x = self.spectrum.wave if wave is None else np.asarray(wave, float)
+        ctx = self.spectrum.context
+        p = np.asarray(self.full[dict(zip([c.name for c in self.model.components], self.model._slices()))[fe.name]], float)
+        observed = self.model_flux(x, components=True)[fe.name]
+        raw = fe.value(x, p, ctx)
+        scale = np.divide(observed, raw, out=np.ones_like(x), where=np.abs(raw) > 0)
+        out = {}
+        for i, g in enumerate(fe.groups):
+            q = p.copy()
+            q[:fe._n_amp] = 0.0
+            q[i] = p[i]
+            out[g] = fe.value(x, q, ctx) * scale
+        return out
+
     def main_sequence(self):
         """
         Position on the quasar main sequence: R_FeII = F(Fe II 4434-4684) / F(broad

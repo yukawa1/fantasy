@@ -481,8 +481,8 @@ def plot_result(result, ax=None, components=True, residuals=True, xlim=None, fig
     with paper_style(style):
         s = result.spectrum
         sel = result.mask
-        if xlim is None:
-            xlim = (s.wave[sel].min(), s.wave[sel].max())
+        lo, hi = s.wave[sel].min(), s.wave[sel].max()
+        xlim = (lo, hi) if xlim is None else (lo if xlim[0] is None else xlim[0], hi if xlim[1] is None else xlim[1])
         view = (s.wave >= xlim[0]) & (s.wave <= xlim[1])
         narrow = _figsize(width, 1)[0] < 5
         aspect = ((0.95 if narrow else 0.62) if residuals else (0.75 if narrow else 0.48)) * float(height)

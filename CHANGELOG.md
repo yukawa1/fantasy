@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.2.0
+
+### Added
+
+- Results › Fe II, a tab for the Fe II of the fit. It shows the band ratio, flux and EW, the Fe II width and shift, and the
+  main-sequence type. A plot shows Fe II alone (everything else subtracted) or in the full spectrum, split into its groups
+  of lines that share a lower term, with every transition at its fitted strength. A list of the groups gives their share
+  and S/N; pointing at a group shows it alone. A Grotrian diagram draws every fitted line between its NIST levels. Two
+  panels compare one Fe II line with broad Hβ and place the object on the quasar main sequence.
+- `fantasy_agn/data/feii_levels.csv`: NIST levels of the lines of the optical Fe II template, built by
+  `tools/build_feii_levels.py`. The template itself is unchanged.
+- A **Python code** box under the plots of the Results views (Fit, Atlas, Anatomy, Fe II, Degeneracies, Posterior,
+  Classification, Main sequence, Light curves, Checks). It holds the code that draws the plot with matplotlib and
+  follows what the view shows as it changes: the range, hidden or picked-out components, the mode, the threshold.
+- `r.feii_groups()`: the fitted Fe II split by group (lines sharing a lower term), adding up to the Fe II component.
+- `r.plot(xlim=(4500, None))`: one end of the range may be left open.
+
+### Changed
+
+- Results › Publication figure: the Python code follows a range with only one end set and the font size (real code,
+  not a comment), and gives the figure the same title as the preview.
+- Results › Fe II, "Is Fe II as broad as Hβ?": the FWHM bars sit at the half maximum of their curves, the broad Hβ
+  profile is the intrinsic one (as its FWHM), and the text gives the Hβ FWHM error and both velocities from the
+  laboratory wavelengths, with their difference.
+
+- The app opens on a home page with the replayed fit, apart from the Read step. Its buttons are
+  **Analyse your own spectra** (to the Read step), **Try it on this galaxy** (reads the bundled Seyfert 1)
+  and, with an analysis under way, **Continue your analysis**. The FANTASY logo returns home, which also
+  offers to restore the last session.
+
 ## 2.1.0
 
 ### Added

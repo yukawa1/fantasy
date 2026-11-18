@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 import numpy as np
 from astropy.io import fits
@@ -1829,6 +1830,39 @@ def test_app_workflow_tie_absorption_exports():
     assert {p["comp"] for p in dg["params"]} <= {g["name"] for g in dg["groups"]}
     assert {g["family"] for g in dg["groups"]} >= {"broad", "narrow", "feii"}
     assert s.wf_degeneracy(0) is dg                                           # cached
+    # Results › Fe II: the groups add up to the Fe II, the Fe II and the rest to the model, and every line
+    # carries its levels for the Grotrian diagram
+    import json
+    fx = s.wf_feii_view(0)
+    assert s.wf_result(0)["has_feii"] and fx["kind"] == "optical" and fx["levels"]
+    json.dumps(fx, allow_nan=False)
+    fe, model = np.array(fx["feii"], float), np.array(fx["model"], float)
+    tot = sum(np.array(g["flux"], float) for g in fx["groups"] if g["flux"] is not None)
+    assert np.allclose(tot, fe, rtol=1e-3, atol=1e-3 * fe.max())
+    assert np.allclose(np.array(fx["other"], float) + fe, model, rtol=1e-3, atol=1e-3 * model.max())
+    assert fx["strength"]["ratio_label"] == "R_FeII" and fx["kin"]["fwhm_status"] != "free"   # tied to the narrow lines
+    assert fx["lines"] and all(len(q) == 10 and q[8] > q[7] for q in fx["lines"])
+    assert fx["ref"]["line"] == "Hb" and np.isfinite(fx["ref"]["fwhm"]) and s.wf_feii_view(0) is fx
+    groups = s.result.feii_groups()                                    # the public split of the Fe II by group
+    assert np.allclose(sum(groups.values()), s.result.model_flux(components=True)["feii"], rtol=1e-6, atol=1e-12)
+    # the Python code under every Results view runs and draws, following what the view shows
+    import matplotlib.pyplot as plt
+    plt.switch_backend("Agg")                                          # plt.show() must not wait for a window
+    for view, opts in (("fit", {"xmin": "4600", "hide": "data"}), ("anatomy", {"peel": "1", "off": "Fe II"}),
+                       ("feii", {"mode": "full", "pin": "b4F"}), ("feii", {"xmin": "4400", "xmax": "4800"}),
+                       ("degen", {"th": "0.5"}), ("ms", {}), ("class", {"kind": "diagrams"})):
+        code = s.wf_view_code(view, 0, opts)
+        here = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp:                     # the snippets save their figures
+            os.chdir(tmp)
+            try:
+                exec(compile(code, view, "exec"), dict(s.ns))
+            finally:
+                os.chdir(here)
+        assert plt.get_fignums(), view
+        plt.close("all")
+    assert "(w >= 4600)" in s.wf_view_code("fit", 0, {"xmin": "4600"}) and "pin = 'b4F'" in s.wf_view_code("feii", 0, {"pin": "b4F"})
+    assert "fig.axes[0]" not in s.wf_figure_code(0, {}) and "xlim=(4500.0, None)" in s.wf_figure_code(0, {"xmin": "4500"})
     csv = s.wf_components_csv(0)
     head = csv.splitlines()[1].split(",")
     assert head[:5] == ["wavelength", "flux", "error", "model", "residual"]
@@ -2869,6 +2903,24 @@ def test_refine_keeps_only_what_the_bic_wants():
     # chi2/nu below the threshold: no extension tried
     assert len(fa.refine(spec, "seyfert2", result=r).refinement) == 0
 
+
+
+def test_feii_levels_follow_the_optical_template():
+    """The NIST levels of the Grotrian diagram (data/feii_levels.csv) line up with the optical Fe II template."""
+    import pandas as pd
+    from fantasy_agn.lines import DATA
+    from fantasy_agn.app.steps import _feii_levels
+    t = pd.read_csv(os.path.join(DATA, "feII_model.csv"))
+    lv = pd.read_csv(os.path.join(DATA, "feii_levels.csv"), comment="#", keep_default_na=False)
+    assert list(lv.ime) == list(t.ime) and np.allclose(lv.wav, t.wav)
+    # upper minus lower energy is the photon energy of the line (vacuum wavelength)
+    from fantasy_agn.wavelengths import air_to_vac
+    m = lv.nist >= 1                       # a NIST transition (1) or identified from the NIST levels (2)
+    assert (lv.nist == 1).sum() > 150 and m.all()
+    assert np.allclose(lv.Ek_eV - lv.Ei_eV, 12398.42 / air_to_vac(lv.wav.to_numpy()), rtol=2e-3)
+    assert (lv.term_i[m].str.rstrip("*") == lv.ime[m]).all()
+    rows = _feii_levels("optical", len(t))
+    assert len(rows) == len(t) and _feii_levels("optical", len(t) + 1) is None and _feii_levels("uv", 10) is None
 
 
 def test_prune_feii_drops_undetected_multiplets():
