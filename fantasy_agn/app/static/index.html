@@ -322,6 +322,7 @@
   <section class="page hidden" id="page-model" data-step="model">
     <div class="pagehead"><h1>Model</h1><code class="hint" id="model-hint">fa.presets.…()</code></div>
     <div id="model-note" class="card note-card hidden"></div>
+    <div id="splan" class="hidden"></div>
     <div class="card classcard" id="classcard">
       <div class="ccmain">
         <div class="cctitle" id="cctitle"></div>
@@ -377,6 +378,7 @@
             <span class="mono muted small" id="ghl"></span></div>
           <div class="plot" id="gplot"></div>
         </div>
+        <div class="card msum hidden" id="msum"></div>
         <div class="card hidden" id="sharecard">
           <div class="plothead"><b>The same in all epochs, or one per epoch?</b><code class="hint">fa.fit_epochs(spectra, model, shared=…)</code><span class="grow"></span>
             <button class="btn small ghost" id="sharereset">Defaults</button></div>
@@ -488,10 +490,26 @@
       </details>
       <div class="card flush hidden" id="progcard">
         <div class="cardhead"><b>Progress</b><span class="grow"></span><span class="mono small" id="progstate">not run</span></div>
+        <div class="fl hidden" id="fl">
+          <div class="fl-head"><div class="fl-phases" id="fl-phases"></div><span class="grow"></span><span class="mono small muted" id="fl-time"></span></div>
+          <canvas id="fl-plot"></canvas>
+          <div class="fl-foot">
+            <div class="fl-score"><span class="fl-lbl">χ²ᵣ</span><span class="fl-num" id="fl-chi">—</span>
+              <div class="fl-side"><span id="fl-what"></span><span class="muted small" id="fl-meta"></span></div></div>
+            <canvas id="fl-spark"></canvas>
+          </div>
+        </div>
         <ul class="progress" id="proglist"></ul>
         <div class="bar"><span id="progbar"></span></div>
       </div>
       <div class="card donecard hidden" id="donecard"></div>
+      <div class="card st hidden" id="st">
+        <div class="st-head"><div class="grow"><b id="st-title">Spectra</b><div class="muted small" id="st-sub"></div></div>
+          <div class="st-keys" id="st-keys"></div></div>
+        <div class="st-bar"><span id="st-bar"></span></div>
+        <div class="st-grid" id="st-grid"></div>
+        <div class="muted small st-more hidden" id="st-more"></div>
+      </div>
       <div class="card flush hidden" id="epochtblbox"><table class="tbl" id="epochtbl"></table></div>
     </div>
     <footer class="pagefoot runfoot">
@@ -562,11 +580,11 @@
       <div class="callout hidden" id="rsampling"></div>
       <div class="callout hidden" id="rcatnote"></div>
       <div class="card plotcard">
-        <div class="plothead"><b id="rtitle"></b><span class="grow"></span>
+        <div class="plothead"><b id="rtitle"></b><span class="seg small zoomchips" id="rzoom"></span><span class="grow"></span>
           <span class="mono muted small" id="raxis"></span></div>
         <div class="plot tall" id="rplot"></div>
         <div class="plotfoot" id="rfoot"><span id="rlegend" class="legend"></span><span class="grow"></span>
-          <span class="muted small">click a legend entry to hide it · drag to zoom, double-click to reset</span>
+          <span class="muted small">click a legend entry to hide it, point at one to pick it out · drag to zoom, double-click to reset<span id="rlinkhint"> · click a line name for its profile</span></span>
           <button class="btn small hidden" type="button" id="userange" title="Draw the publication figure over the zoomed range">Use this range in the figure →</button></div>
       </div>
       <div class="card flush">
@@ -587,6 +605,10 @@
       </div>
     </div>
     <div id="res-checks" class="hidden">
+      <div class="card sccard" id="scheckcard">
+        <div class="plothead"><b>Checks of this spectrum</b><span class="muted small" id="schead"></span><span class="grow"></span><code class="hint">fa.suggest_lines(r) · fa.analyze_residuals(r)</code></div>
+        <div id="scbody"></div>
+      </div>
       <div class="card ckcard collapsed" id="residcard">
         <div class="plothead"><button type="button" class="cktoggle" aria-expanded="false" title="show or hide the details"><span class="chev" aria-hidden="true"></span><span class="stepno">1</span><b>Does the model miss anything?</b></button><code class="hint" id="residhint">fa.analyze_residuals(r)</code><span class="badge ckstatus" id="residcard-status"></span><span class="grow"></span>
           <select id="rscope" class="small"></select>
@@ -594,12 +616,12 @@
           <button class="btn small" id="residrun">Analyse residuals</button></div>
         <p class="note" id="residnote">Finds coherent features in the residuals (missing lines, wings, absorption, continuum shape, sky residuals), identifies them and suggests a change to the model you can apply.</p>
         <div class="lsbox hidden" id="lsbox">
-          <div class="row"><b>Lines to add or separate</b><code class="hint">fa.suggest_lines(r)</code><span class="grow"></span>
-            <button class="btn small" id="lsall">Apply all &amp; refit</button><button class="btn small primary hidden" id="lsrefit">Fit again →</button></div>
+          <div class="row"><b>Lines to add or separate</b><code class="hint" id="lshint">fa.suggest_lines(r)</code><span class="grow"></span>
+            <button class="btn small hidden" id="lspick">Select all</button><button class="btn small" id="lsall">Apply all &amp; refit</button><button class="btn small primary hidden" id="lsrefit">Fit again →</button></div>
           <p class="note" id="lsnote"></p>
-          <div class="tblwrap"><table class="tbl" id="lstbl"></table></div>
+          <div class="sgwrap"><div class="sggrid" id="lstbl"></div></div>
         </div>
-        <div class="tblwrap mid hidden" id="residbox"><table class="tbl" id="residtbl"></table></div>
+        <div class="sgwrap hidden" id="residbox"><div class="sggrid" id="residtbl"></div></div>
         <div class="row hidden" id="residfoot" style="margin-top:10px"><span class="muted small grow" id="residapplied"></span>
           <button class="btn primary" id="residrefit">Refit with the changes →</button></div>
       </div>
@@ -740,11 +762,25 @@
       </div>
     </div>
     <div id="res-lines" class="hidden">
+      <div class="lv" id="lv">
+        <div class="card lv-stripcard"><div class="lv-strip" id="lv-strip"></div></div>
+        <div class="lv-main">
+          <div class="card lv-plotcard">
+            <div class="lv-head">
+              <div class="lv-legend" id="lv-legend"></div>
+              <div class="seg sm" id="lv-mode"><button type="button" data-m="one" class="on" title="One line and its components">Decomposition</button><button type="button" data-m="cmp" title="Several lines scaled to their peaks on one velocity axis">Compare widths</button><button type="button" data-m="ep" class="hidden" title="This line in every epoch, coloured by time">Across epochs</button></div>
+            </div>
+            <div class="lv-canvwrap"><canvas id="lv-plot"></canvas><div class="lv-tip hidden" id="lv-tip"></div><div class="figwait hidden" id="lv-wait">Measuring…</div></div>
+          </div>
+          <div class="card lv-side" id="lv-side"></div>
+        </div>
+      </div>
+      <details class="lv-paper" id="lv-paper"><summary><span>Figure for a paper</span><small>the same lines drawn with matplotlib, in a journal's size and style, with the Python code</small></summary>
       <div class="figlayout">
         <form class="card fpanel" id="lineopts" autocomplete="off">
         <div class="pbody">
           <details class="psec" data-sec="ln-lines" open><summary><span>Lines</span><small class="psum" id="sum-llines"></small></summary>
-            <div class="linepick" id="lo-lines"></div>
+            <div class="lpick" id="lo-lines"></div>
           </details>
           <details class="psec" data-sec="ln-show" open><summary><span>Display</span><small class="psum" id="sum-lshow"></small></summary>
             <div class="seg full" id="lo-modeseg"><button type="button" data-mode="grid" class="on">Each in a panel</button><button type="button" data-mode="overlay">Overlaid</button></div>
@@ -799,6 +835,7 @@
           <div class="empty hidden" id="linesempty">Tick a line on the left to draw it.</div>
           <img id="rlinesimg" class="figimg" alt="line profiles"></div>
       </div>
+      </details>
     </div>
     <div id="res-figure" class="hidden">
       <div class="figlayout">
@@ -992,14 +1029,15 @@
     <div id="res-class" class="hidden">
       <div class="callout info hidden" id="cempty"><div><b>No classification.</b><div class="small" style="margin-top:4px">The final class comes from the values of the fit (<code>fa.classify_fit(r)</code>): its broad lines, and the narrow-line ratios and EW(Hα) on the BPT and WHAN diagrams. This fit could not be classified (it needs a broad line, or the narrow Hα with its neighbours). The preliminary classification, <code>fa.classify</code>, fits the spectrum on its own and can still be run.</div><div style="margin-top:8px"><button class="btn" id="crun">Classify spectrum</button></div></div></div>
       <div id="cbody">
-      <div class="cols half" id="cmulti">
+      <div class="card csum hidden" id="csum"></div>
+      <div class="cols half hidden" id="cmulti">
         <div class="card flush tblwrap mid"><table class="tbl clickable" id="ctbl"></table></div>
         <div class="card plotcard">
           <div class="plothead"><b>All spectra · [N II] BPT</b><span class="grow"></span><span class="muted small">click a point</span></div>
           <div class="plot square" id="cbptall"></div>
         </div>
       </div>
-      <div class="callout info" id="cverdict"></div>
+      <div class="card cverdict" id="cverdict"></div>
       <div class="diagrams">
         <div class="card plotcard"><b>[N II] BPT</b><div class="plot square" id="cd-nii"></div></div>
         <div class="card plotcard"><b>[S II] BPT</b><div class="plot square" id="cd-sii"></div></div>
@@ -1096,6 +1134,9 @@
 <div id="toast" class="toast hidden"></div>
 <div class="mb hidden" id="mb"></div>
 <script src="/static/feii.js"></script>
+<script src="/static/lineview.js"></script>
+<script src="/static/fitlive.js"></script>
+<script src="/static/sampletiles.js"></script>
 <script src="/static/wf.js"></script>
 <script src="/static/hero.js"></script>
 <script src="/static/mb.js"></script>

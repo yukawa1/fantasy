@@ -15,6 +15,10 @@ KIND_FUNC = '''def kind(c):
         return "continuum"
     if getattr(c, "kind", "") == "host":
         return "host"
+    lines = getattr(c, "line_names", None) or ["-"]
+    if role == "narrow" and (c.name.startswith("coronal")
+                             or all(n.startswith(("[FeVII]", "[FeX]", "[FeXI]", "[FeXIV]")) for n in lines)):
+        return "coronal"
     if role in ("narrow", "broad", "outflow"):
         return role
     if t == "FeII":
@@ -22,7 +26,7 @@ KIND_FUNC = '''def kind(c):
     return "balmer" if t in ("BalmerContinuum", "HighOrderBalmer") else "other"
 '''
 COLOR = ('COLOR = {"continuum": "#52514e", "host": "#008300", "balmer": "#86b6ef", "feii": "#e34948", '
-         '"broad": "#2a78d6", "narrow": "#1baf7a", "outflow": "#eda100", "other": "#898781"}')
+         '"broad": "#2a78d6", "narrow": "#1baf7a", "coronal": "#b8459c", "outflow": "#eda100", "other": "#898781"}')
 
 
 def _num(opts, k):
@@ -98,7 +102,8 @@ def fit(s, k, opts):
 
 # ------------------------------------------------------------------ Anatomy
 AN_GROUPS = [("continuum", "Continuum"), ("host", "Host galaxy"), ("balmer", "Balmer continuum"), ("feii", "Fe II"),
-             ("broad", "Broad lines"), ("narrow", "Narrow lines"), ("outflow", "Outflow"), ("other", "Other")]
+             ("broad", "Broad lines"), ("narrow", "Narrow lines"), ("coronal", "Coronal lines"),
+             ("outflow", "Outflow"), ("other", "Other")]
 
 
 def anatomy(s, k, opts):
@@ -435,6 +440,11 @@ def checks(s, k, opts):
         obj = {"joint": "me", "fits": "fits"}.get(kind, "r")
         out += ["import fantasy_agn as fa", "", f"res = fa.analyze_residuals({obj})        # features the model misses",
                 "print(res)"]
+    elif s.wf.get("fit_kind") == "sample" and s.sample is not None:
+        out += ["import fantasy_agn as fa", "", f"r = sample.load({int(k or 0)})",
+                "res = fa.analyze_residuals(r)        # features the model misses",
+                "lines = fa.suggest_lines(r)          # lines to add, or to separate from their component",
+                "print(res)", "print(lines)"]
     if isinstance(s.ns.get("rob"), Robustness):
         out += ["", "fig = rob.plot()                                # the scans of fa.robustness(r)"]
     if isinstance(s.ns.get("cmp"), FitComparison):
@@ -442,7 +452,82 @@ def checks(s, k, opts):
     return "\n".join(out) or "# fit first"
 
 
-VIEWS = {"fit": fit, "anatomy": anatomy, "feii": feii, "degen": degen, "atlas": atlas, "posterior": posterior,
+# ------------------------------------------------------------------ Line profiles
+def lines(s, k, opts):
+    r, pre = _head(s, k)
+    safe = lambda n: re.sub(r"[^\w\[\]\.\-]", "", str(n))
+    xmin, xmax = _num(opts, "xmin"), _num(opts, "xmax")
+    if opts.get("mode") == "cmp":
+        names = [safe(n) for n in _names(opts, "lines")][:8] or ["Hb"]
+        out = ["import matplotlib.pyplot as plt", "", *pre,
+               f"lines = {names!r}",
+               "for ln in lines:                                 # the broad profile of each line (or the whole line)",
+               f"    broad = [c.name for c in {r}._line_components() if c.role == 'broad' and ln in c.line_names]",
+               f"    m = {r}.measure(ln, broad or None)",
+               "    print(f\"{ln:10s} FWHM {m['fwhm']:7.0f} ± {m['fwhm_err']:4.0f}   sigma {m['sigma']:6.0f} ± {m['sigma_err']:4.0f}"
+               "   shift {m['shift']:+6.0f} km/s\")",
+               "# scaled to their peaks on one velocity axis, the half-maximum points marked: the broad profiles",
+               "# when every line has broad components, else the whole lines",
+               f"which = 'broad' if all(any(c.role == 'broad' and ln in c.line_names for c in {r}._line_components()) "
+               "for ln in lines) else 'all'",
+               f"fig = {r}.plot_profiles(lines, which=which, normalize=True)"]
+        if xmin is not None and xmax is not None:
+            out.append(f"fig.axes[0].set_xlim({xmin:.0f}, {xmax:.0f})")
+        return "\n".join(out + ["plt.show()"])
+    if opts.get("mode") == "ep" and len(s.wf_results() or []) > 1:
+        obj = "me.epochs" if s.wf.get("fit_kind") == "joint" else "fits"
+        line = safe(opts.get("line") or "Hb")
+        out = ["import matplotlib.pyplot as plt", "from fantasy_agn.plotting import plot_profiles", "",
+               f"line = {line!r}",
+               f"for k, e in enumerate({obj}):                  # the line in every epoch: broad profile, else the whole line",
+               "    broad = [c.name for c in e._line_components() if c.role == 'broad' and line in c.line_names]",
+               "    m = e.measure(line, broad or None)",
+               "    print(f\"#{k} MJD {e.spectrum.mjd:.0f}  FWHM {m['fwhm']:6.0f} ± {m['fwhm_err']:4.0f}  flux {m['flux']:.4g} ± {m['flux_err']:.2g}"
+               "  shift {m['shift']:+5.0f} km/s\")",
+               "# the profiles of all epochs on one velocity axis",
+               f"which = 'broad' if all(any(c.role == 'broad' and line in c.line_names for c in e._line_components()) for e in {obj}) else 'all'",
+               f"fig = plot_profiles({obj}, line, which=which, normalize={opts.get('norm') == '1'})",
+               "",
+               "# the mean and rms profiles over the epochs, on one velocity grid, with FWHM and line dispersion",
+               "import numpy as np",
+               "from fantasy_agn.lines import line_wavelength",
+               "lam0, v = line_wavelength(line), np.linspace(-15000, 15000, 1201)",
+               "prof = []",
+               f"for e in {obj}:",
+               "    parts = e.model_flux(components=True)",
+               "    names = [c.name for c in e._line_components() if line in c.line_names and (which == 'all' or c.role == 'broad')]",
+               "    vel = (e.spectrum.wave / lam0 - 1) * 299792.458",
+               "    prof.append(np.interp(v, vel, sum(parts[n] for n in names), left=np.nan, right=np.nan))",
+               "mean, rms = np.nanmean(prof, axis=0), np.nanstd(prof, axis=0, ddof=1)",
+               "for name, y in (('mean', mean), ('rms', rms)):",
+               "    y = np.nan_to_num(y).clip(0)",
+               "    up = v[y >= y.max() / 2]",
+               "    c = np.trapezoid(y * v, v) / np.trapezoid(y, v)",
+               "    sigma = np.sqrt(np.trapezoid(y * (v - c) ** 2, v) / np.trapezoid(y, v))",
+               "    print(f'{name:4s}  FWHM {up[-1] - up[0]:6.0f}  sigma_line {sigma:6.0f} km/s')",
+               "fig2, ax = plt.subplots()",
+               "ax.plot(v, mean, 'k--', label='mean')",
+               "ax.plot(v, rms, color='#d0247f', lw=2, label='rms')",
+               "ax.set_xlabel('velocity (km/s)'); ax.set_ylabel('flux'); ax.legend()"]
+        if xmin is not None and xmax is not None:
+            out.append(f"for f in (fig, fig2):\n    f.axes[0].set_xlim({xmin:.0f}, {xmax:.0f})")
+        return "\n".join(out + ["plt.show()"])
+    line = safe(opts.get("line") or "Hb")
+    out = ["import matplotlib.pyplot as plt", "", *pre,
+           f"line = {line!r}",
+           f"broad = [c.name for c in {r}._line_components() if c.role == 'broad' and line in c.line_names]",
+           f"m = {r}.measure(line, broad or None)             # of the summed broad components, else of the whole line",
+           "for key in ('fwhm', 'sigma', 'shift', 'flux', 'ew'):",
+           "    print(f\"{key:6s} {m[key]:.4g} ± {m[key + '_err']:.2g}\")",
+           f"print({r}.lines[{r}.lines.line == line])          # each component of the line",
+           "# the line with everything else subtracted, its components, the FWHM and the residuals",
+           f"fig = {r}.plot_line(line, residuals=True, info=True, mark_fwhm=True)"]
+    if xmin is not None and xmax is not None:
+        out.append(f"for ax in fig.axes:\n    ax.set_xlim({xmin:.0f}, {xmax:.0f})")
+    return "\n".join(out + ["plt.show()"])
+
+
+VIEWS = {"lines": lines, "fit": fit, "anatomy": anatomy, "feii": feii, "degen": degen, "atlas": atlas, "posterior": posterior,
          "class": classification, "ms": main_sequence, "time": time, "checks": checks}
 
 

@@ -16,7 +16,7 @@ from scipy.linalg import qr, solve_triangular
 from scipy.optimize import least_squares, lsq_linear, nnls
 
 from ._threads import SINGLE_THREADED, environment, n_threads
-from .progress import report
+from .progress import live, live_enabled, report
 from .result import FitResult
 
 __all__ = ("fit", "guess", "fit_many")
@@ -212,6 +212,66 @@ class Problem:
         return chi2, out
 
 
+class _Live:
+    """
+    Snapshots of a running fit for a live display (progress.set_live_hook): the data once, then at most
+    about eight times a second the current model (rebuilt from the residuals, model = y + r err), chi2 and
+    the phase. Only while a live hook is installed; costs nothing otherwise.
+    """
+    PHASES = ("guess", "fit", "build-up", "errors")
+
+    def __init__(self, x, y, err, npar):
+        self.x, self.y, self.err = x, y, err
+        self.idx = slice(None, None, max(1, x.size // 900))
+        self.t0 = self.last = time.time()
+        self.n, self.best, self.phase = 0, np.inf, "guess"
+        self.dof = max(x.size - npar, 1)
+        live({"event": "start", "x": x[self.idx], "y": y[self.idx], "err": err[self.idx], "dof": self.dof,
+              "phases": self.PHASES, "npar": int(npar)})
+
+    def set_phase(self, phase, detail=""):
+        self.phase = phase
+        live({"event": "phase", "phase": phase, "detail": detail, "t": time.time() - self.t0, "n": self.n})
+
+    def tick(self, r=None, chi2=None, model=None, force=False):
+        """One evaluation: the residual vector r, or chi2 and a function that gives the model (force: send
+        it however soon after the last one, e.g. the converged model)."""
+        self.n += 1
+        if r is not None:
+            if r.size != self.y.size:
+                return
+            chi2 = float(r @ r)
+        if not np.isfinite(chi2):
+            return
+        self.best = min(self.best, chi2)
+        now = time.time()
+        if now - self.last < 0.12 and not force:
+            return
+        self.last = now
+        f = self.y + r * self.err if r is not None else model() if model is not None else None
+        live({"event": "tick", "phase": self.phase, "n": self.n, "t": now - self.t0, "chi2": chi2,
+              "best": self.best, "model": None if f is None else f[self.idx]})
+
+
+_LIVE = threading.local()          # the _Live of the fit running in this thread (fits in other threads have their own)
+
+
+def _live_now():
+    return getattr(_LIVE, "current", None)
+
+
+def _tick(**kw):
+    lv = _live_now()
+    if lv is not None:
+        lv.tick(**kw)
+
+
+def _phase(name, detail=""):
+    lv = _live_now()
+    if lv is not None:
+        lv.set_phase(name, detail)
+
+
 def _bounded_lsq(A, b, lb, ub):
     """
     min ||A x - b|| with lb <= x <= ub. One-sided bounds (the usual case:
@@ -325,6 +385,7 @@ def _initial_guess(prob, ngrid=9, nrefine=5, npass=3, verbose=False):
             theta[k] = _neutral(prob.free[k])
 
     chi2, theta = prob.solve_linear(theta)
+    _tick(chi2=chi2, model=lambda t=theta.copy(): prob.evaluate(t)[0], force=True)   # the starting point
     if verbose:
         print(f"  guess: start chi2 = {chi2:.1f}")
 
@@ -357,6 +418,7 @@ def _initial_guess(prob, ngrid=9, nrefine=5, npass=3, verbose=False):
                     best_chi2, best_vals = c2, vals
             theta[ks] = best_vals
             chi2, theta = prob.solve_linear(theta)
+            _tick(chi2=chi2, model=lambda t=theta.copy(): prob.evaluate(t)[0])
         if verbose:
             print(f"  guess: pass {ipass + 1} chi2 = {chi2:.1f}")
         if ipass >= 1 and chi2 > pass_start * (1 - 1e-3):
@@ -594,7 +656,13 @@ def _interior(theta, lb, ub, linear):
 def _least_squares(prob, theta0, max_nfev=None, tol=1e-10):
     if prob.linear.any() and (~prob.linear).any() and os.environ.get("FANTASY_VARPRO", "1") != "0":
         return _projected_least_squares(prob, theta0, max_nfev, tol)
-    return least_squares(prob.residuals, _interior(theta0, prob.lb, prob.ub, prob.linear),
+    def resid(theta):
+        r = prob.residuals(theta)
+        _tick(r=r)
+        return r
+
+    return least_squares(resid if _live_now() is not None else prob.residuals,
+                         _interior(theta0, prob.lb, prob.ub, prob.linear),
                          jac=prob.jacobian, bounds=(prob.lb, prob.ub), method="trf",
                          x_scale="jac", ftol=tol, xtol=tol, gtol=tol,
                          max_nfev=max_nfev)
@@ -645,6 +713,7 @@ def _projected_least_squares(prob, theta0, max_nfev=None, tol=1e-10):
             _, t = prob.solve_linear(t)
             f, J = prob.evaluate(t)
             r = (f - prob.y) / prob.err
+            _tick(r=r)
             J = J / prob.err[:, None]
             span = np.where(np.isfinite(prob.ub - prob.lb), prob.ub - prob.lb, 0.0)
             tiny = 1e-10 * np.maximum(np.abs(t), span)
@@ -739,18 +808,32 @@ def fit(spectrum, model, wave_range=None, guess=True, errors="covariance", n_mc=
 
     theta = prob.theta_from_model()
     given = theta.copy()
+    outer = _live_now()
+    _LIVE.current = _Live(x, y, err, len(theta)) if live_enabled() else None
+    try:
+        return _fit_body(spectrum, model, prob, good, x, y, err, theta, given, guess, learned, build_up, unconstrained,
+                         errors, n_mc, scale_errors, seed, n_jobs, mcmc, verbose, t0)
+    finally:
+        _LIVE.current = outer
+
+
+def _fit_body(spectrum, model, prob, good, x, y, err, theta, given, guess, learned, build_up, unconstrained,
+              errors, n_mc, scale_errors, seed, n_jobs, mcmc, verbose, t0):
+    """fit() after the problem is set up (see there)."""
     # Overlapping components (extra broad components, outflow wings) are easily trapped in a local
     # minimum when all are placed at once; they are also built up one at a time (the staged search)
     # and the better solution is kept. The staged search is independent of the direct one: it runs in
     # the helper process meanwhile, when there is one to use.
     staged_job = None
     if guess and build_up and _extra_components(model):
+        _phase("guess", "starting the build-up in a helper process")
         staged_job = _HELPER.submit("_staged_fit", model.copy(), x, y, err, spectrum.context)
     try:
         res, start_method = _direct_search(prob, model, theta, given, guess, learned)
         if guess and build_up:
             values = None
             if staged_job is not None:
+                _phase("build-up", "components added one at a time (in a helper process)")
                 job, staged_job = staged_job, None
                 try:
                     values = job()
@@ -759,6 +842,7 @@ def fit(spectrum, model, wave_range=None, guess=True, errors="covariance", n_mc=
             else:
                 values = _staged_fit(model, x, y, err, spectrum.context)
             if values is not None:
+                _phase("build-up", "components added one at a time")
                 staged = np.array([values[p.name] for p in prob.free])
                 new = _least_squares(prob, staged)
                 if new.fun @ new.fun < res.fun @ res.fun * (1 - 1e-9):
@@ -769,6 +853,7 @@ def fit(spectrum, model, wave_range=None, guess=True, errors="covariance", n_mc=
         if staged_job is not None:
             staged_job.cancel()
     theta = res.x.copy()
+    _tick(r=res.fun, force=True)                     # the converged model
     # An amplitude kept because a wide profile would reach the fitted pixels can end with no effect on them at
     # the fitted width (a narrow line inside a masked band): nothing constrains it, so it is set to 0.
     idle = _idle_amplitudes(prob, theta)
@@ -798,6 +883,9 @@ def fit(spectrum, model, wave_range=None, guess=True, errors="covariance", n_mc=
 
     cov_full = None
     samples = None
+    if errors:
+        _phase("errors", {"covariance": "from the Jacobian", "mc": f"{n_mc} Monte Carlo fits",
+                          "mcmc": "MCMC sampling"}.get(errors, ""))
     if errors in ("covariance", "mc"):
         cov = _covariance(res.jac, unused) * scale
         cov_full = prob.T @ cov @ prob.T.T
@@ -830,7 +918,9 @@ def fit(spectrum, model, wave_range=None, guess=True, errors="covariance", n_mc=
 def _direct_search(prob, model, theta, given, guess, learned):
     """The fit from the data-driven (or learned) guess, with the escapes from local minima."""
     if guess:
+        _phase("guess", "a grid search for the widths and shifts")
         theta, _ = _initial_guess(prob, verbose=False)
+    _phase("fit", "trust-region least squares")
     res = _least_squares(prob, theta)
     if guess and getattr(model, "_fitted", False):
         # the values come from an earlier fit (r.model, a robustness alternative): try them as a start too,
@@ -850,6 +940,7 @@ def _direct_search(prob, model, theta, given, guess, learned):
                 res = new
     if guess:
         for _ in range(3):
+            _phase("fit", "looking for a better minimum nearby")
             start = _escape_local_minimum(prob, res.x, float(res.fun @ res.fun))
             if start is None:
                 break

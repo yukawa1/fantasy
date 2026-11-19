@@ -605,6 +605,32 @@ class StepsMixin:
                 "threshold": float(zf.min_dchi2), "candidates": rows,
                 "marks": [[n, float(w), t] for n, w, t in MARK_LINES]}
 
+    def wf_redshift_curve(self, n=700):
+        """chi2 per pixel against log(1+z) for each template set of the last redshift search, for the
+        interactive plot of the Prepare step. Thinned to about ``n`` points by keeping the lowest value of
+        each bin, so that no minimum is lost."""
+        zf, _ = self._redshift_result()
+        if zf is None:
+            return None
+        key = ("redshift_curve", id(zf))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        curves = {}
+        for kind, (z, c) in zf.curves.items():
+            z, c = np.asarray(z, float), np.asarray(c, float) / zf.n_pixels
+            ok = np.isfinite(c) & (z > -1)
+            if ok.sum() < 2:
+                continue
+            x, c = np.log10(1 + z[ok]), c[ok]
+            if len(x) > n:
+                edges = np.linspace(0, len(x), n + 1).astype(int)
+                pick = [a + int(np.argmin(c[a:b])) for a, b in zip(edges[:-1], edges[1:]) if b > a]
+                x, c = x[pick], c[pick]
+            curves[kind] = {"x": [round(float(v), 6) for v in x], "y": [round(float(v), 5) for v in c]}
+        out = {"id": id(zf), "curves": curves}
+        self._wf_cache[key] = out
+        return out
+
     def wf_redshift_figure(self, fmt="png"):
         from matplotlib.figure import Figure
         zf, _ = self._redshift_result()
@@ -979,6 +1005,66 @@ class StepsMixin:
             break
         raise ValueError("repeat Prepare for all spectra to record how to prepare the files beyond the preview")
 
+    def wf_sample_plan(self):
+        """The Model step of a sample: which model each class gets (Classification.RECOMMENDED, the presets
+        in words and code), and per spectrum its route (ends below 5200 Å in the rest frame: the UV model of
+        Mg II or C IV; else the optical classifier at fit time), with the class and model it got once fitted."""
+        import inspect
+        from .. import presets
+        from ..classify import Classification, UV_RED_LIMIT, _uv_choice
+        from .session import MODELS
+        src = self.spectra if self.spectra is not None else self.raw
+        sm = self.sample
+        key = ("sample_plan", id(src), id(sm), str((self.wf.get("fit_opts") or {}).get("sample_model")))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and np.isfinite(v) else None
+
+        def summary(name):
+            doc = (inspect.getdoc(getattr(presets, name)) or "").split("\n\n")[0].replace("\n", " ")
+            doc = re.sub(r"``([^`]+)``", r"\1", doc)
+            first = re.split(r"(?<=[a-z0-9)])\. ", doc)
+            text = first[0] + ("." if len(first) > 1 else "")
+            return text if len(text) <= 260 else text[:257].rsplit(" ", 1)[0] + "…"
+        order = ["type1", "type1_host", "seyfert2", "liner", "composite", "starforming", "retired", "passive",
+                 "unknown", "uv_mgii", "uv_civ"]
+        routes = []
+        for cls in order:
+            name, kw = Classification.RECOMMENDED[cls]
+            args = ", ".join(f"{k}={v!r}" for k, v in kw.items())
+            routes.append({"cls": cls, "preset": name, "code": f"fa.presets.{name}({args})", "about": summary(name)})
+        table = sm.table if sm is not None else None
+        rows = []
+        for k, sp in enumerate(src or []):
+            row = {"k": k, "name": getattr(sp, "name", f"spectrum {k}"), "z": num(getattr(sp, "z", None)),
+                   "blue": None, "red": None, "route": "optical", "cls": None, "preset": None}
+            try:
+                rest = sp if sp.rest_frame else sp.to_rest_frame()
+                good = rest.good
+                if good.any():
+                    row["blue"], row["red"] = float(rest.wave[good].min()), float(rest.wave[good].max())
+                uv = _uv_choice(rest)
+                row["route"] = uv.label if uv is not None else "optical"
+            except ValueError as exc:       # no redshift, or no line model for this range
+                row["route"] = "none"
+                row["why"] = str(exc)
+            if table is not None and k < len(table):
+                t = table.iloc[k]
+                row["cls"] = str(t["cls"]) if "cls" in t and isinstance(t["cls"], str) else None
+                row["preset"] = str(t["preset"]) if "preset" in t and isinstance(t["preset"], str) else None
+            rows.append(row)
+        choice = (self.wf.get("fit_opts") or {}).get("sample_model") or "auto"
+        files = self.wf_input_files()
+        counts = ({str(c): int(n) for c, n in table["cls"].value_counts().items()}
+                  if table is not None and "cls" in table else {})
+        out = {"routes": routes, "spectra": rows, "uv_limit": UV_RED_LIMIT, "fitted": sm is not None,
+               # the rows are the spectra read for the preview (the first 20 files); the fit reads them all
+               "n_input": len(table) if table is not None else max(len(files or []), len(rows)),
+               "class_counts": counts,
+               "one_model": None if choice in ("auto", "") else {"label": choice, "preset": MODELS.get(choice, (choice, {}))[0]}}
+        self._wf_cache[key] = out
+        return out
+
     def _wf_sample_code(self, sample_model, n_jobs, out, prune_feii=False):
         from .session import MODELS
         if self.raw is None:
@@ -1115,7 +1201,7 @@ class StepsMixin:
 
     def _series(self, r):
         """Model, component curves and residuals of one FitResult for the browser plot."""
-        from ..plotting import is_bowen, plain_line
+        from ..plotting import is_bowen, is_coronal, plain_line
         s = r.spectrum
         lo, hi = r.model.wave_range or (s.wave.min(), s.wave.max())
         sel = (s.wave >= lo) & (s.wave <= hi) & np.isfinite(s.flux)
@@ -1123,7 +1209,7 @@ class StepsMixin:
         idx = idx[::_stride(idx.size)]
         parts = r.model_flux(components=True)
         model = r.model_flux()
-        series, narrow, cont = [], [], []
+        series, narrow, coronal, cont = [], [], [], []
         for comp in r.model.components:
             if comp.name not in parts:
                 continue
@@ -1133,6 +1219,8 @@ class StepsMixin:
                 cont.append(y)
             elif kind == "host":
                 series.append({"name": comp.name, "role": "host", "y": y})
+            elif role == "narrow" and is_coronal(comp):
+                coronal.append(y)
             elif role == "narrow":
                 narrow.append(y)
             elif role in ("broad", "outflow"):
@@ -1144,6 +1232,8 @@ class StepsMixin:
                                "balmer" if t in ("BalmerContinuum", "HighOrderBalmer") else "other"})
         if narrow:
             series.append({"name": "narrow", "role": "narrow", "y": np.sum(narrow, axis=0)})
+        if coronal:
+            series.append({"name": "coronal", "role": "coronal", "y": np.sum(coronal, axis=0)})
         if cont:
             series.insert(0, {"name": "continuum", "role": "continuum", "y": np.sum(cont, axis=0)})
         for d in series:
@@ -1160,7 +1250,7 @@ class StepsMixin:
                 continue
             if np.isfinite(row.flux_err) and row.flux_err > 0 and row.flux < 3 * row.flux_err:
                 continue
-            labels.append({"x": float(row.wavelength), "text": plain_line(row.line).replace(" λ", " "),
+            labels.append({"x": float(row.wavelength), "text": plain_line(row.line).replace(" λ", " "), "line": row.line,
                            "flux": float(row.flux), "role": roles.get(row.component)})
         # broad lines first (as in the figures), then the strongest narrow ones; one label per line
         labels.sort(key=lambda d: (d["role"] != "broad", -d["flux"]))
@@ -1714,19 +1804,55 @@ class StepsMixin:
 
     # ------------------------------------------------------------ missing lines
     def _linescan(self):
-        """fa.suggest_lines of the single fit (milliseconds; cached per fit)."""
+        """fa.suggest_lines of the single fit, or of every epoch of a multi-epoch fit (milliseconds each;
+        cached per fit). For epochs, one row per suggestion: the epoch where it lowers the BIC most, with
+        ``epochs`` (where it is found, by index) and ``by_epoch`` ({index: flux}), the most frequent first."""
         from ..linescan import suggest_lines
+
+        def scan(r):
+            try:
+                return suggest_lines(r)
+            except Exception:       # a model without line components, an odd mask: nothing to suggest
+                return None
+        kind = self.wf.get("fit_kind")
+        if kind in ("joint", "fits"):
+            eps = [(k, e) for k, (_, _, e, _) in enumerate(self.wf_results() or []) if e is not None]
+            if len(eps) < 2:
+                return None
+            key = ("linescan", tuple(id(e) for _, e in eps))
+            if key not in self._wf_cache:
+                self._wf_cache[key] = self._merge_scans({k: scan(e) for k, e in eps})
+            return self._wf_cache[key]
         r = self.result
-        if r is None or self.wf.get("fit_kind") != "single":
+        if r is None or kind != "single":
             return None
         key = ("linescan", id(r))
         if key not in self._wf_cache:
-            try:
-                t = suggest_lines(r)
-            except Exception:       # a model without line components, an odd mask: nothing to suggest
-                t = None
-            self._wf_cache[key] = t
+            self._wf_cache[key] = scan(r)
         return self._wf_cache[key]
+
+    @staticmethod
+    def _merge_scans(tabs):
+        """One table from fa.suggest_lines of each epoch ({index: table}): a row per line to add (with the component
+        it is found with in most epochs, then where it helps most) and per line to separate from its component."""
+        frames = [t.assign(epoch=k) for k, t in tabs.items() if t is not None and len(t)]
+        if not frames:
+            return next((t for t in tabs.values() if t is not None), None)
+        allr = pd.concat(frames, ignore_index=True)
+        rows = []
+        allr["_key"] = [c if a == "split" else "" for a, c in zip(allr["action"], allr["component"])]
+        for _, g in allr.groupby(["action", "line", "_key"], sort=False):
+            count = g["component"].map(g["component"].value_counts())
+            g = g[count == count.max()]                                  # the component of most epochs
+            best = g.loc[g["dbic"].astype(float).idxmin()].copy()     # dbic < 0: the epoch where it helps most
+            g = g[g["component"] == best["component"]]
+            best["epochs"] = sorted(int(k) for k in g["epoch"])
+            best["by_epoch"] = {int(k): float(f) for k, f in zip(g["epoch"], g["flux"])}
+            rows.append(best.drop("_key"))
+        out = pd.DataFrame(rows).reset_index(drop=True)
+        out["_n"] = out["epochs"].map(len)
+        out = out.sort_values(["_n", "dbic"], ascending=[False, True]).drop(columns="_n").reset_index(drop=True)
+        return out
 
     def _line_homes(self):
         """{line: names of the components of the current model that have it}."""
@@ -1753,10 +1879,181 @@ class StepsMixin:
         num = lambda v: None if v is None or not np.isfinite(v) else round(float(v), 1)
         rows = [{"action": d["action"], "line": d["line"], "lines": list(d["lines"]), "wave": round(float(d["wave"]), 1),
                  "ion": d["ion"], "type": d["type"], "component": d["component"], "role": d["role"],
-                 "snr": num(d["snr"]), "dv": num(d["dv"]), "dbic": num(d["dbic"]), "added": self._ls_done(d, homes)}
+                 "snr": num(d["snr"]), "dv": num(d["dv"]), "dbic": num(d["dbic"]), "added": self._ls_done(d, homes),
+                 **({"epochs": list(d["epochs"]), "ep": int(d["epoch"])} if "epochs" in d else {})}
                 for d in t.to_dict("records")]
+        if self.wf.get("fit_kind") in ("joint", "fits"):
+            return {"id": id(t), "rows": rows, "trial": None, "n_epochs": len(self.wf_results() or [])}
         trial = self._trial()
         return {"id": id(self.result), "rows": rows, "trial": trial[0] if trial else None}
+
+    @staticmethod
+    def _leftover(r, lo, hi, n=150):
+        """data - model of fit ``r`` between ``lo`` and ``hi`` (Å, the frame of its spectrum), binned to at most
+        about ``n`` points (mean, with its error); masked pixels are left out."""
+        s = r.spectrum
+        sel = (s.wave >= lo) & (s.wave <= hi) & np.asarray(r.mask, bool) & np.isfinite(s.flux) & np.isfinite(s.err) & (s.err > 0)
+        if sel.sum() < 3:
+            return None
+        x, d, e = s.wave[sel], (s.flux - r.model_flux(s.wave))[sel], s.err[sel]
+        b = max(1, int(np.ceil(x.size / n)))
+        m = x.size // b * b or x.size
+        if b > 1:
+            x, d = x[:m].reshape(-1, b).mean(1), d[:m].reshape(-1, b).mean(1)
+            e = np.sqrt((e[:m].reshape(-1, b) ** 2).sum(1)) / b
+        rd = lambda v: [float(f"{t:.4g}") for t in v]
+        return {"x": [round(float(t), 2) for t in x], "d": rd(d), "e": rd(e)}
+
+    def _line_snip(self, r, d, kin):
+        """The leftover flux around suggestion ``d`` of fa.suggest_lines in fit ``r`` (``kin``: {component: (fwhm,
+        shift)}), with the line it would add, or where a line to separate sits now and where it would go."""
+        from ..plotting import C_KMS
+        from ..components import _in_medium
+        fwhm, shift = kin.get(d["component"], (500.0, 0.0))
+        lam = float(_in_medium(np.array([float(d["wave"])]), r.spectrum.context)[0])
+        half = lam * max(3.0 * fwhm, 1500.0) / C_KMS
+        snip = self._leftover(r, lam - half, lam + half)
+        if snip is None:
+            return None
+        now = lam * (1 + shift / C_KMS)
+        snip.update({"lam": round(lam, 2), "now": round(now, 2)})
+        if d["action"] == "split" and d.get("dv") is not None and np.isfinite(d["dv"]):
+            snip["to"] = round(lam * (1 + (shift + float(d["dv"])) / C_KMS), 2)
+        elif d["action"] != "split" and np.isfinite(d.get("flux", np.nan)):
+            sig = now * fwhm / C_KMS / 2.3548
+            xf = np.linspace(lam - half, lam + half, 160)
+            g = float(d["flux"]) / (sig * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((xf - now) / sig) ** 2)
+            snip["add"] = {"x": [round(float(v), 2) for v in xf], "y": [float(f"{v:.4g}") for v in g]}
+        return snip
+
+    def wf_sample_checks(self, k=0):
+        """Results › Checks of spectrum ``k`` of a sample: fa.analyze_residuals and fa.suggest_lines of its fit,
+        each row with the leftover flux around it and the code that applies it (computed on demand, cached)."""
+        from ..linescan import suggest_lines
+        from ..residuals import analyze_residuals
+        r = self._sample_fit(k)
+        k = min(max(int(k), 0), len(self.sample.table) - 1)
+        key = ("sample_checks", id(r))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and np.isfinite(v) else None
+        out = {"k": k, "name": r.spectrum.name, "lines": [], "resid": [], "rchi2": num(r.rchi2)}
+        kin = {}
+        for d in self._lines_table(r).to_dict("records"):
+            if d.get("component") not in kin and np.isfinite(d.get("fwhm", np.nan)):
+                kin[d["component"]] = (float(d["fwhm"]), float(d.get("shift", 0.0) or 0.0))
+        try:
+            t = suggest_lines(r)
+        except Exception:       # a model without line components: nothing to suggest
+            t = None
+        for d in (t.to_dict("records") if t is not None else []):
+            out["lines"].append({"action": d["action"], "line": d["line"], "lines": list(d["lines"]),
+                                 "wave": round(float(d["wave"]), 1), "ion": d["ion"], "type": d["type"],
+                                 "component": d["component"], "role": d["role"], "snr": num(d["snr"]),
+                                 "dv": num(d["dv"]), "dbic": num(d["dbic"]), "code": d.get("code") or "",
+                                 "snip": self._line_snip(r, d, kin)})
+        try:
+            res = analyze_residuals(r)
+        except Exception as exc:                # noqa: BLE001
+            res, out["resid_error"] = None, f"{type(exc).__name__}: {exc}"
+        for i, d in enumerate(res.to_dict("records") if res is not None else []):
+            lo, hi = num(d["lo"]), num(d["hi"])
+            snip = None
+            if lo is not None and hi is not None:
+                pad = max(1.5 * (hi - lo), 15.0)
+                snip = self._leftover(r, lo - pad, hi + pad)
+                if snip:
+                    snip.update({"lo": lo, "hi": hi})
+            out["resid"].append({"i": i, "center": num(d["center"]), "lo": lo, "hi": hi, "kind": d["kind"],
+                                 "sigma": num(d["sigma"]), "fwhm": num(d["fwhm"]), "line": d.get("line") or "",
+                                 "in_model": bool(d.get("in_model")), "suggestion": d["suggestion"],
+                                 "code": d.get("code") or "", "snip": snip})
+        self._wf_cache[key] = out
+        return out
+
+    def wf_sample_checks_code(self, k=0, lines=(), resid=()):
+        """Code that refits spectrum ``k`` of a sample with the chosen rows of its checks (indices into the lines and
+        the residual features of wf_sample_checks): the lines to add in one tied component per kinematic source
+        (as fa.suggest_lines combines them), the lines to separate, then the residual suggestions not covered."""
+        from ..linescan import _code
+        D = self.wf_sample_checks(k)
+        r = self._sample_fit(k)
+        rows = [D["lines"][int(i)] for i in lines if 0 <= int(i) < len(D["lines"])]
+        adds = [d for d in rows if d["action"] == "add"]
+        parts = ([_code(adds, r.model)] if adds else []) + [d["code"] for d in rows if d["action"] != "add" and d["code"]]
+        covered = {ln for d in rows for ln in d["lines"]}
+        for i in resid:
+            if 0 <= int(i) < len(D["resid"]):
+                d = D["resid"][int(i)]
+                if d["code"] and d["line"] not in covered and d["code"] not in parts:
+                    parts.append(d["code"])
+                    covered.add(d["line"])
+        k = D["k"]
+        return "\n".join([f"r = sample.load({k})                     # {D['name']}", "model = r.model.copy()"]
+                         + (parts or ["# choose changes above"])
+                         + [f"r{k} = fa.fit(r.spectrum, model)",
+                            f"print(r{k}.rchi2, r{k}.bic - r.bic)   # ΔBIC < -10: keep the change"])
+
+    def wf_check_snips(self, k=0):
+        """For Results › Checks: the leftover flux (data - model) around each suggestion of fa.suggest_lines
+        (with the line it would add: a Gaussian of the flux found, at the width and shift of the component
+        it takes them from; for a line to separate, where it sits now and where it would go) and around each
+        feature of the residual analysis of the shown fit."""
+        out = {"lines": [], "resid": []}
+        t, r = self._linescan(), self.result
+        multi = t is not None and "epochs" in t.columns
+        if t is not None and (r is not None or multi):
+            key = ("check_snips", id(r), id(t), int(k) if multi else 0)
+            if key in self._wf_cache:
+                out["lines"] = self._wf_cache[key]
+            else:
+                kins = {}
+
+                def kinematics(r):
+                    if id(r) not in kins:
+                        kin = kins[id(r)] = {}
+                        for d in self._lines_table(r).to_dict("records"):
+                            if d.get("component") not in kin and np.isfinite(d.get("fwhm", np.nan)):
+                                kin[d["component"]] = (float(d["fwhm"]), float(d.get("shift", 0.0) or 0.0))
+                    return kins[id(r)]
+                rows = []
+                for d in t.to_dict("records"):
+                    ep = None
+                    if multi:             # the shown epoch, or the one where the line helps most when it is not found there
+                        ep = int(k) if int(k) in d["epochs"] else int(d["epoch"])
+                        r = self._wf_fit(ep)[2]
+                        d = dict(d, flux=d["by_epoch"].get(ep, d["flux"]))
+                    snip = self._line_snip(r, d, kinematics(r))
+                    if snip is not None and ep is not None:
+                        snip["ep"] = ep
+                    rows.append(snip)
+                self._wf_cache[key] = out["lines"] = rows
+        Rz = self.wf_residuals()
+        if Rz and Rz["rows"]:
+            k = int(k)
+            key = ("resid_snips", k, Rz["id"], id(self.wf_results()))
+            if key in self._wf_cache:
+                out["resid"] = self._wf_cache[key]
+            else:
+                rows = []
+                for d in Rz["rows"]:
+                    # the shown epoch, or the first epoch the feature was found in when it is not there
+                    ep = k if not d["epochs"] or k in d["epochs"] else d["epochs"][0]
+                    try:
+                        _, _, rk, _ = self._wf_fit(ep)
+                    except ValueError:
+                        rk = None
+                    if rk is None or d["lo"] is None or d["hi"] is None:
+                        rows.append(None)
+                        continue
+                    pad = max(1.5 * (d["hi"] - d["lo"]), 15.0)
+                    snip = self._leftover(rk, d["lo"] - pad, d["hi"] + pad)
+                    if snip:
+                        snip.update({"lo": d["lo"], "hi": d["hi"], "ep": ep})
+                    rows.append(snip)
+                self._wf_cache[key] = out["resid"] = rows
+        out["id"] = [id(t) if multi else id(r) if r is not None else None, Rz["id"] if Rz else None]
+        return out
 
     def wf_addlines_code(self, lines, refit=False):
         """Code that applies suggestions of fa.suggest_lines: adds the missing lines, tied to the kinematics
@@ -1785,18 +2082,20 @@ class StepsMixin:
                 parts.append(f"model.split_lines({d['component']!r}, {group!r}, "
                              f"{_split_name(self.model, d['component'], d['line'])!r})")
         change = "\n".join(parts)
+        multi = "epochs" in t.columns
+        found = "fa.suggest_lines on each epoch" if multi else "fa.suggest_lines(r)"
         if not refit:
-            return "# add lines found by fa.suggest_lines(r)\n" + change + "\nmodel"
+            return f"# add lines found by {found}\n" + change + "\nmodel"
         # the model is edited by the time the fit runs: no preset-specific host check
         self.__dict__["_preset_made"] = None
         opts = dict(self.wf.get("fit_opts") or {})
-        trial = self._trial()                  # multi-epoch: the trial fit of one epoch is refitted, not all epochs
+        trial = None if multi else self._trial()   # a trial fit of one epoch is refitted, not all epochs
         if trial is not None:
             opts["trial"] = trial[0]
         fit = self.wf_fit_code(**opts)
         fit = fit.split("\n", 1)[1] if fit.startswith(("# fit\n", "# trial fit\n")) else fit
         stale = "resid = None\n" if self.ns.get("resid") is not None else ""
-        return "# add lines and refit (found by fa.suggest_lines(r))\n" + change + "\n" + stale + fit
+        return f"# add lines and refit (found by {found})\n" + change + "\n" + stale + fit
 
     # ------------------------------------------------------------ robustness
     @staticmethod
@@ -2807,6 +3106,32 @@ class StepsMixin:
             return final, pmap, "final"
         return prelim, pmap, "preliminary"
 
+    @staticmethod
+    def _diagram_region(diagram, p):
+        """Where a point lies in a diagnostic diagram, with the boundaries of fa.classify: [N II] BPT star-forming
+        (Kauffmann 2003), composite or AGN (Kewley 2001); [S II] and [O I] star-forming, Seyfert or LINER (Kewley 2001,
+        2006); WHAN (Cid Fernandes 2011) SF, sAGN, wAGN, retired or passive."""
+        from ..classify import kauffmann03, kewley01, kewley06, _above_kewley, PASSIVE_EW, RETIRED_EW
+        if not p or p.get("x") is None or p.get("y") is None or not (np.isfinite(p["x"]) and np.isfinite(p["y"])):
+            return None
+        x, y = float(p["x"]), float(p["y"])
+        if diagram == "nii":
+            if x < 0.05 and y < kauffmann03(x):
+                return "star-forming"
+            return "AGN" if _above_kewley(x, y, "nii") else "composite"
+        if diagram in ("sii", "oi"):
+            if not _above_kewley(x, y, diagram):
+                return "star-forming"
+            return "Seyfert" if y > kewley06(x, diagram) else "LINER"
+        ew = 10 ** y
+        if ew < PASSIVE_EW:
+            return "passive"
+        if ew < RETIRED_EW:
+            return "retired"
+        if x < -0.4:
+            return "SF"
+        return "sAGN" if ew > 6 else "wAGN"
+
     def classify_state(self, k=0, stage="final"):
         cl, pmap, stage = self._class_sets(stage)
         if cl is None:
@@ -2834,11 +3159,9 @@ class StepsMixin:
                "narrow_class": c.measurements.get("narrow_class") if stage == "final" else None,
                "preliminary": ({"label": pre.label, "uncertain": bool(pre.uncertain), "reason": str(pre.reason or "")}
                                if pre is not None else None),
-               "labels": [{"k": i, "name": x.spectrum.name, "label": x.label, "uncertain": bool(x.uncertain),
-                           "date": mjd_to_date(x.spectrum.mjd), "points": points(x),
-                           "preliminary": pmap[_epoch_key(x.spectrum)].label if stage == "final" and _epoch_key(x.spectrum) in pmap else None}
-                          for i, x in enumerate(cl)],
+               "labels": [self._class_row(i, x, points(x), pmap, stage) for i, x in enumerate(cl)],
                "rows": rows, "diagrams": self.diagram_curves(), "points": points(c)}
+        out["regions"] = {d: self._diagram_region(d, p) for d, p in out["points"].items()}
         # the steps of the preliminary classification (its own fits), when it was made
         c = pre if stage == "final" else c
         if c is None:
@@ -2892,6 +3215,19 @@ class StepsMixin:
             self._wf_cache.clear()
         self._wf_cache[key] = out
         return out
+
+    def _class_row(self, i, x, pts, pmap, stage):
+        """One spectrum of a classification set, for the table and the summary across epochs: its class, the
+        region of each diagram it falls in, and the numbers the class rests on (broad-line S/N and FWHM, host)."""
+        num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and not isinstance(v, bool) and np.isfinite(v) else None
+        m = x.measurements
+        mjd = getattr(x.spectrum, "mjd", None)
+        return {"k": i, "name": x.spectrum.name, "label": x.label, "uncertain": bool(x.uncertain),
+                "date": mjd_to_date(mjd), "mjd": num(mjd), "points": pts,
+                "regions": {d: self._diagram_region(d, p) for d, p in pts.items()},
+                "m": {key: num(m.get(key)) for key in ("broad_snr", "broad_fwhm", "host_fraction_5100", "ew_ha")},
+                "broad_line": m.get("broad_line"), "narrow_class": m.get("narrow_class"),
+                "preliminary": pmap[_epoch_key(x.spectrum)].label if stage == "final" and _epoch_key(x.spectrum) in pmap else None}
 
     def classify_figure(self, k=0, kind="steps", fmt="png", stage="final"):
         """Publication figure of classification ``k``: 'steps' (plot_steps) or 'diagrams' (plot);
@@ -3005,7 +3341,37 @@ class StepsMixin:
             frames.append(t)
         return pd.concat(frames, ignore_index=True) if frames else None
 
+    def _sample_fit(self, k):
+        """Fit ``k`` of a fitted sample, loaded from its .fantasy file (the last few kept, so the views of one
+        spectrum share one object and its caches)."""
+        sm = self.sample
+        if sm is None:
+            raise ValueError("fit first")
+        k = min(max(int(k), 0), len(sm.table) - 1)
+        keep = self.__dict__.setdefault("_sample_fits", {})
+        if any(s is not sm for s, _ in keep.values()):           # another sample: forget the fits of the old one
+            for s, r in keep.values():
+                self._forget(r)
+            keep.clear()
+        if k not in keep:
+            err = sm.table.iloc[k].get("error") if "error" in sm.table else None
+            if isinstance(err, str) and err:
+                raise ValueError("this spectrum could not be fitted")
+            if len(keep) >= 6:
+                self._forget(keep.pop(next(iter(keep)))[1])
+            keep[k] = (sm, sm.load(k))
+        return keep[k][1]
+
+    def _forget(self, obj):
+        """Drop the cached views of an object about to be released: its id() can be reused by a new object."""
+        i = id(obj)
+        for key in [key for key in self._wf_cache if isinstance(key, tuple) and i in key[1:]]:
+            del self._wf_cache[key]
+
     def _wf_fit(self, k=0):
+        if self.wf.get("fit_kind") == "sample":
+            r = self._sample_fit(k)
+            return r.spectrum.name, None, r, False
         res = self.wf_results()
         if not res:
             raise ValueError("fit first")
@@ -3138,13 +3504,246 @@ class StepsMixin:
             raise ValueError("create a model first")
         return json.dumps(self.model.to_dict(), indent=1).encode()
 
+    def _lines_table(self, r):
+        """r.lines of a fit, kept while the fit is the same object (it takes a moment)."""
+        key = ("lines_table", id(r))
+        if key not in self._wf_cache:
+            self._wf_cache[key] = (r, r.lines)
+        return self._wf_cache[key][1]
+
     def wf_line_list(self, k=0):
-        """The lines of fit ``k`` that can be drawn alone (see plotting.fitted_lines), by wavelength."""
-        from ..plotting import fitted_lines, main_line, plain_line
+        """The lines of fit ``k`` that can be drawn alone (see plotting.fitted_lines), by wavelength, each with a
+        small profile (the summed broad components, or all components, on 48 points) and its FWHM."""
+        from ..plotting import fitted_lines, main_line, plain_line, _line_parts, _rest_wave, C_KMS
+        from ..components import _in_medium
+        from ..fitcompare import half_max_crossings
         r = self._wf_fit(k)[2]
-        lines = [{"line": d["line"], "label": plain_line(d["line"]), "wave": d["wavelength"],
-                  "n": len(d["components"]), "roles": sorted(set(d["roles"]))} for d in fitted_lines(r)]
-        return {"lines": sorted(lines, key=lambda d: d["wave"]), "main": main_line(r)}
+        key = ("line_list", id(r))
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        lines = []
+        for d in fitted_lines(r, self._lines_table(r)):
+            row = {"line": d["line"], "label": plain_line(d["line"]), "wave": d["wavelength"],
+                   "n": len(d["components"]), "roles": sorted(set(d["roles"]))}
+            try:
+                lam0 = float(_in_medium(np.array([_rest_wave(r, d["line"])]), r.spectrum.context)[0])
+                broad = "broad" in d["roles"]
+                win = 12000.0 if broad else 2000.0
+                v = np.linspace(-win, win, 600)
+                parts = _line_parts(r, d["line"], lam0 * (1 + v / C_KMS))
+                roles = dict(zip(d["components"], d["roles"]))
+                prof = sum(y for n, y in parts.items() if not broad or roles.get(n) == "broad")
+                if np.max(prof) > 0:
+                    a, b = half_max_crossings(v, prof)
+                    row["fwhm"] = float(b - a) if np.isfinite(a) and np.isfinite(b) else None
+                    row["spark"] = [round(float(x), 3) for x in prof[::12] / np.max(prof)]
+                    row["win"] = win
+            except Exception:                                    # a line that cannot be drawn keeps its name
+                pass
+            lines.append(row)
+        out = {"lines": sorted(lines, key=lambda d: d["wave"]), "main": main_line(r, self._lines_table(r))}
+        self._wf_cache[key] = out
+        return out
+
+    def wf_line_view(self, k=0, line=None, window=None):
+        """
+        Results › Line profiles, one line of fit ``k`` for the browser: the data with everything else in the model
+        subtracted, its errors and residuals (in sigma) around the line, each component of the line and their sum
+        on a fine velocity grid, the half-maximum crossings of the broad profile (or of the whole line), the
+        measurement of r.measure (with errors) and the other fitted lines in the window.
+        """
+        from ..plotting import (fitted_lines, main_line, plain_line, _line_parts, _rest_wave, _transmission,
+                                C_KMS, is_coronal, is_bowen)
+        from ..components import _in_medium
+        from ..fitcompare import half_max_crossings, fwhm_fragile
+        name, _, r, _ = self._wf_fit(k)
+        line = line or main_line(r, self._lines_table(r))
+        fl = fitted_lines(r, self._lines_table(r))
+        known = {d["line"]: d for d in fl}
+        if line not in known:
+            raise ValueError(f"{line} is not a fitted line")
+        win = float(window) if window not in (None, "") else None
+        key = ("line_view", id(r), line, win)
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        s = r.spectrum
+        lam0 = float(_in_medium(np.array([_rest_wave(r, line)]), s.context)[0])
+        comps = [c for c in r._line_components() if line in c.line_names]
+        broad = [c.name for c in comps if c.role == "broad"]
+        meas = r.measure(line, broad or None)
+        if win is None:
+            win = float(np.clip(2.5 * meas["fwhm"], 1500.0, 15000.0)) if broad and np.isfinite(meas["fwhm"]) else 1500.0
+        win = min(max(win, 300.0), 40000.0)
+        v_data = (s.wave / lam0 - 1) * C_KMS
+        view = np.abs(v_data) <= win
+        if view.sum() < 5:
+            raise ValueError(f"{line} is outside the spectrum")
+        own = sum(_line_parts(r, line, s.wave).values()) * _transmission(r, s.wave)
+        model = r.model_flux()
+        iso = s.flux - (model - own)
+        idx = np.nonzero(view)[0]
+        idx = idx[::max(1, idx.size // 1500)]
+        sel = r.mask
+        res = np.where(sel, (s.flux - model) / s.err, np.nan)
+        vf = np.linspace(-win, win, 700)
+        lamf = lam0 * (1 + vf / C_KMS)
+        parts = _line_parts(r, line, lamf)
+        T = _transmission(r, lamf)
+        table = self._lines_table(r)
+        nth = {}
+        out_comps = []
+        for c in comps:
+            role = "coronal" if c.role == "narrow" and is_coronal(c) else c.role or "other"
+            nth[role] = nth.get(role, 0) + 1
+            row = table[(table.component == c.name) & (table.line == line)]
+            g = lambda col: (float(row[col].iloc[0]) if len(row) and np.isfinite(row[col].iloc[0]) else None)
+            out_comps.append({"name": c.name, "role": role, "n": nth[role], "bowen": bool(is_bowen(c)),
+                              "profile": getattr(c, "profile", "gaussian"),
+                              "y": [round(float(x), 5) for x in parts[c.name]],
+                              "flux": g("flux"), "flux_err": g("flux_err"), "fwhm": g("fwhm"), "fwhm_err": g("fwhm_err"),
+                              "shift": g("shift"), "shift_err": g("shift_err"), "ew": g("ew")})
+        ref = sum(parts[n] for n in broad) if broad else sum(parts.values())
+        hm = None
+        if np.max(ref) > 0:
+            a, b = half_max_crossings(vf, ref)
+            if np.isfinite(a) and np.isfinite(b):
+                hm = [float(a), float(b), float(0.5 * np.max(ref))]
+        others = []
+        for d in fitted_lines(r, self._lines_table(r)):
+            if d["line"] == line:
+                continue
+            vo = (_rest_wave(r, d["line"]) / _rest_wave(r, line) - 1) * C_KMS
+            if abs(vo) < win and d["line"] not in [o["line"] for o in others]:
+                others.append({"line": d["line"], "label": plain_line(d["line"]), "v": float(vo)})
+        clean = lambda a: [None if not np.isfinite(x) else round(float(x), 5) for x in a]
+        m = {key_: (None if isinstance(val, float) and not np.isfinite(val) else val)
+             for key_, val in meas.items() if key_ not in ("components", "moment_window")}
+        m["ratio"] = (meas["fwhm"] / meas["sigma"]) if meas["sigma"] and np.isfinite(meas["sigma"]) and np.isfinite(meas["fwhm"]) else None
+        m["fragile_ratio"] = fwhm_fragile(vf, ref)[1] if np.max(ref) > 0 else None
+        if m["fragile_ratio"] is not None and not np.isfinite(m["fragile_ratio"]):
+            m["fragile_ratio"] = None
+        out = {"k": int(k), "name": name, "line": line, "label": plain_line(line), "lam0": lam0, "window": win,
+               "of": "broad" if broad else "all", "flux_unit": s.flux_unit,
+               "v": [round(float(x), 2) for x in v_data[idx]], "y": clean(iso[idx]), "e": clean(s.err[idx]),
+               "ok": [int(b) for b in sel[idx]], "res": clean(res[idx]),
+               "vf": [round(float(x), 2) for x in vf], "comps": out_comps,
+               "absorbed": [round(float(x), 5) for x in sum(parts.values()) * T] if np.min(T) < 0.99 else None,
+               "hm": hm, "meas": m, "others": others}
+        self._wf_cache[key] = out
+        return out
+
+    def wf_line_epochs(self, line="", window=""):
+        """Results › Line profiles › Across epochs: one line in every epoch of a multi-epoch fit, on the velocity
+        grid of the first epoch: the profile that is measured (the broad components summed, or the whole line),
+        the data with the rest of each epoch's model subtracted (thinned), and FWHM, sigma, shift and flux with
+        errors per epoch. ``shared``: the width does not change between epochs (a shape shared in the joint fit)."""
+        res = self.wf_results() or []
+        eps = [(k, name, date, e) for k, (name, date, e, _) in enumerate(res) if e is not None]
+        if len(eps) < 2:
+            raise ValueError("fit more than one epoch to compare a line between them")
+        first = self.wf_line_view(eps[0][0], line, window)
+        line, win = first["line"], first["window"]
+        key = ("line_epochs", tuple(id(e) for *_, e in eps), line, win)
+        if key in self._wf_cache:
+            return self._wf_cache[key]
+        num = lambda v: float(v) if v is not None and np.isfinite(v) else None
+        rows, of, stack, dstack, estack = [], set(), [], [], []
+        grid = np.array(first["vf"], float)
+        d0 = np.array(first["v"], float)
+        dgrid = d0[np.array(first["ok"], bool)] if np.sum(first["ok"]) > 1 else d0
+        gap = 1.5 * np.median(np.diff(d0)) if len(d0) > 1 else np.inf    # no data across masked stretches
+        views = {}
+        for k, name, date, e in eps:
+            try:
+                views[k] = first if k == eps[0][0] else self.wf_line_view(k, line, win)
+            except ValueError:
+                views[k] = None
+        # one profile for every epoch: the broad components when any epoch has them (zero where an epoch has
+        # none: a broad line that disappeared), else the whole line; a mix would put the narrow line in the rms
+        broad_any = any(D is not None and D["of"] == "broad" for D in views.values())
+        of = {"broad" if broad_any else "all"}
+        for k, name, date, e in eps:
+            D = views[k]
+            if D is None:
+                rows.append({"k": k, "name": name, "date": date, "missing": True})
+                continue
+            use = [c for c in D["comps"] if c["role"] == "broad"] if broad_any else D["comps"]
+            prof = np.sum([c["y"] for c in use], axis=0) if use else np.zeros(len(D["vf"]))
+            other = [c for c in D["comps"] if c not in use]
+            # the data of this epoch: the line alone, without its own components that are not measured (narrow)
+            vd = np.array(D["v"], float)
+            yd = np.array([np.nan if y is None else y for y in D["y"]], float)
+            if other:
+                yd = yd - np.interp(vd, D["vf"], np.sum([c["y"] for c in other], axis=0))
+            ok = np.array(D["ok"], bool) & np.isfinite(yd)
+            st = max(1, int(ok.sum() // 400))
+            M = D["meas"]
+            vfk = np.array(D["vf"], float)
+            stack.append(np.interp(grid, vfk, prof, left=np.nan, right=np.nan))
+            ed = np.array([np.nan if x is None else x for x in D["e"]], float)
+            dstack.append(self._near(dgrid, vd[ok], yd[ok], gap))
+            estack.append(self._near(dgrid, vd[ok], ed[ok], gap))
+            rows.append({"k": k, "name": name, "date": date, "mjd": num(getattr(e.spectrum, "mjd", None)),
+                         "y": [round(float(x), 5) for x in prof],
+                         "dv": [round(float(x), 1) for x in vd[ok][::st]], "dy": [round(float(x), 4) for x in yd[ok][::st]],
+                         "hm": D["hm"], "fwhm": M.get("fwhm"), "fwhm_err": M.get("fwhm_err"), "sigma": M.get("sigma"),
+                         "sigma_err": M.get("sigma_err"), "shift": M.get("shift"), "shift_err": M.get("shift_err"),
+                         "flux": M.get("flux"), "flux_err": M.get("flux_err")})
+        good = [r_ for r_ in rows if not r_.get("missing")]
+        w = [r_["fwhm"] for r_ in good if r_["fwhm"] is not None]
+        shared = len(w) > 1 and (max(w) - min(w)) <= 1e-3 * np.mean(w)
+        out = {"line": line, "label": first["label"], "window": win, "of": "broad" if of == {"broad"} else "all",
+               "flux_unit": first["flux_unit"], "vf": first["vf"], "epochs": rows, "shared": bool(shared),
+               "joint": self.wf.get("fit_kind") == "joint", "stack": self._mean_rms(grid, stack, dgrid, dstack, estack)}
+        self._wf_cache[key] = out
+        return out
+
+    @staticmethod
+    def _near(grid, x, y, gap):
+        """y(x) interpolated onto ``grid``, NaN farther than ``gap`` from the nearest x (masked stretches, the
+        ends); x ascending."""
+        if x.size < 2:
+            return np.full(len(grid), np.nan)
+        i = np.clip(np.searchsorted(x, grid), 1, x.size - 1)
+        dist = np.minimum(np.abs(grid - x[i - 1]), np.abs(x[i] - grid))
+        return np.where(dist < gap, np.interp(grid, x, y), np.nan)
+
+    @staticmethod
+    def _mean_rms(grid, stack, dgrid, dstack, estack):
+        """The mean and rms (sample standard deviation, the variable part) of a line's profile over the epochs,
+        of the fitted profiles on ``grid`` and of the data on ``dgrid``, with FWHM and line dispersion (second
+        moment) of each fitted one. The rms of the data is the excess over the noise (the mean squared error
+        subtracted in quadrature). None for fewer than two epochs."""
+        from ..rm import _half_max_walk, _profile_widths
+        if len(stack) < 2:
+            return None
+        import warnings
+        with warnings.catch_warnings():                                # all-NaN columns: outside some epoch's window
+            warnings.simplefilter("ignore", RuntimeWarning)
+            Y, D = np.array(stack, float), np.array(dstack, float)
+            mean, rms = np.nanmean(Y, axis=0), np.nanstd(Y, axis=0, ddof=1)
+            dm, ds = np.nanmean(D, axis=0), np.nanstd(D, axis=0, ddof=1)
+            ds = np.sqrt(np.clip(ds ** 2 - np.nanmean(np.array(estack, float) ** 2, axis=0), 0, None))
+
+        def width(y):                   # as rm.rms_spectrum: FWHM walked out from the peak, sigma over the line
+            y = np.where(np.isfinite(y), y, 0.0)
+            if not np.max(y) > 0:
+                return None, None, None
+            fwhm, sigma = _profile_widths(grid, y, 0.0, np.inf)
+            a, b = _half_max_walk(grid, np.clip(y, 0, None))
+            fwhm = float(fwhm) if np.isfinite(fwhm) else None
+            sigma = float(sigma) if np.isfinite(sigma) else None
+            return fwhm, sigma, ([a, b, float(0.5 * np.max(y))] if fwhm else None)
+
+        clean = lambda a: [None if not np.isfinite(x) else round(float(x), 5) for x in a]
+        out = {"n": len(stack)}
+        for key, y in (("mean", mean), ("rms", rms)):
+            f, sg, hm = width(y)
+            out[key] = {"y": clean(y), "fwhm": f, "sigma": sg, "hm": hm}
+        st = max(1, len(dgrid) // 400)
+        out["dv"] = [round(float(x), 1) for x in dgrid[::st]]               # thinned; a None breaks the curve
+        out["dmean"], out["drms"] = clean(dm[::st]), clean(ds[::st])
+        return out
 
     def _lines_kwargs(self, r, lines, opts):
         """(function name, keyword arguments) of the line figure: a grid of panels or an overlay of profiles."""
@@ -3210,7 +3809,8 @@ class StepsMixin:
     def _fit_name(self, k=0):
         """How the notebook refers to fit ``k``: r, me.epochs[k] or fits[k]."""
         kind = self.wf.get("fit_kind")
-        return {"joint": f"me.epochs[{int(k)}]", "fits": f"fits[{int(k)}]"}.get(kind, "r")
+        return {"joint": f"me.epochs[{int(k)}]", "fits": f"fits[{int(k)}]",
+                "sample": f"sample.load({int(k)})"}.get(kind, "r")
 
     def wf_figure_code(self, k=0, opts=None):
         """Python code of the publication figure of fit ``k``, with the title the preview has (wf_custom_figure)."""

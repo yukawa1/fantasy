@@ -1,5 +1,96 @@
 # Changelog
 
+## 2.3.0
+
+### Added
+
+- The Fit step shows a fit of one spectrum as it converges: the model drawn over the data snapshot by snapshot, the
+  residuals coloured by their size, reduced chi2 falling on a log scale and the phases of the fit (initial guess, fit,
+  build-up, errors), in place of a progress bar without progress.
+- `fantasy_agn.progress.set_live_hook(fn)`: snapshots of a running fit (the data, then the current model, chi2 and
+  phase, at most about eight a second). Without a hook the fit is unchanged and costs nothing extra.
+
+- Model step: a **The model in use** card under the initial guess. It names the model (the preset and its options in
+  words, or a model built in the editor or loaded), shows the code that made it and each change since, says whether the
+  current results come from this model, and lists what it fits by kind with the free parameters of each component.
+  Preset options changed but not applied are flagged, with **Use preset** beside them.
+
+- Results › **Line profiles** is interactive. Every fitted line is a card with its profile and FWHM. **Decomposition** shows one line
+  with the rest of the model subtracted: its components, the FWHM at half maximum, the centroid, the residuals in sigma, a readout of
+  every curve under the pointer and zoom by dragging; beside it FWHM, sigma, shift, flux and EW with errors, the shape (FWHM/sigma) and
+  each component's share of the flux. **Compare widths** overlays several lines scaled to their peaks, with a ladder of their widths and
+  each FWHM relative to the first line. The matplotlib figure and its options moved to **Figure for a paper** below, and the view has
+  its Python code.
+
+- Results › Line profiles › **Across epochs**, for a joint fit or epochs fitted one by one: one line in every epoch on
+  one velocity axis, coloured by time, with the **mean and rms profiles** over the epochs and their FWHM, line
+  dispersion (sigma_line) and FWHM/sigma. With the data shown, the mean and rms of the data too (the rms in excess of
+  the noise). Beside it the flux, FWHM and shift against time with their variability (rms, F_var); point at a curve or
+  a dot for that epoch. The Python code draws the profiles and computes the mean and rms profiles.
+
+- Results › Line profiles and Checks for a sample: of the spectrum chosen in the table. Checks shows the lines to add
+  or separate and the residual features of that fit with the leftover flux around each, and builds the code that
+  refits that spectrum with the chosen changes (the lines to add combined into one tied component per kinematic
+  source, as `fa.suggest_lines` does).
+
+- Fit step of a sample: one tile per spectrum, filled in as the processes finish them (the fitted range with data
+  and model, the class, χ²ᵣ, parameters at a limit or the error), with the classes so far, the median χ²ᵣ and the
+  time left; once done, a tile opens that spectrum in Results. `fa.progress.report` takes an optional `item` (the
+  detail of the step just finished), which `fit_sample` fills for each spectrum when a progress hook is installed.
+
+- Model step of a sample: the plan instead of one model. Each spectrum with its rest-frame coverage against the
+  5200 Å limit, its route (UV model, or the optical classifier) and, after the fit, the class and model it got; below,
+  the preset of every class in words and code, marked with how many spectra of the sample used it.
+
+- Results › Classification with several epochs opens with a summary: the class over all epochs in words and which
+  epochs differ, a timeline coloured by class, where each BPT/WHAN diagram places the epochs, and the broad-line S/N of
+  every epoch against the detection limit. Broad lines in some epochs only are flagged (a changing-look candidate, or
+  a line near the limit).
+
+- Results › Checks after a multi-epoch fit (joint or one by one): **Lines to add or separate** searches every epoch
+  (`fa.suggest_lines` per epoch), one card per line with the epochs it is found in. As a multi-epoch fit is expensive, the
+  cards are selected and **Apply & refit all epochs** makes the chosen changes together and fits all epochs once.
+  The checks are numbered 1, 2, … over the ones shown (a joint fit showed 1 and 5).
+
+- Prepare › **Find the redshift** draws chi2 against redshift for both template sets, with the candidates numbered at their
+  dips. Pointing at the curve marks the lines of that redshift on the spectrum; a click on a dip takes it; drag zooms.
+  Each candidate shows how much worse it fits against the limit for a secure answer, and its emission peaks on known lines
+  as dots. The matplotlib figure is one click away.
+
+- Results › Checks: the lines to add or separate and the residual features are cards instead of tables. Each shows the
+  leftover flux where it acts (data minus model, with errors), with the line a suggestion would add drawn over it, or an
+  arrow to the velocity a line to separate would get, and its ΔBIC as a bar with the limit of 10 marked.
+
+- Results › Fit: buttons that zoom the plot to the region of each main line the spectrum covers; a readout under the
+  pointer with the data, model, residual and every component there (strongest first) and the nearest line; pointing at a
+  legend entry brings that curve forward; a click on a line name opens the line in Line profiles.
+- Results › Degeneracies: each pair in the list has a small 68% ellipse showing the sign and strength of its correlation,
+  and the wheel turns while the correlations load instead of leaving the panel empty.
+- Results › Classification opens with the class in words, the evidence it rests on as a list, and where the spectrum falls in
+  each of the four diagrams (by the boundaries of the classifier), each a link to its diagram. While it loads it shows
+  placeholders instead of the empty table and plot of the multi-spectrum view.
+- One look for every menu of the app (its own chevron, hover and disabled states); the Model options (outflow wing,
+  stratified BLR, coronal lines, …) are toggle pills with a switch; the code beside each page title is a pill on one line
+  that shows all of it when pointed at.
+
+### Changed
+
+- **rms widths** (`rms_spectrum`, `me.reverberation`, the app's Measure lag): the adopted FWHM and sigma_line of the
+  rms and mean profiles are now those of the fitted broad profiles of every epoch (as the PrepSpec model rms of
+  SDSS-RM), with the data as a check measured on a smooth fit with a linear noise floor. Before, they were read pixel
+  by pixel from the noisy data rms over a wide window: the noise left in the wings raised sigma_line and a single
+  noise spike set the FWHM (on SDSS-RM rm017: sigma_line(rms) 6328 and FWHM 15363 km/s, now 2690 and 6737 km/s; on
+  mocks the old widths were 2-3.6 times too large). The FWHM now walks out from the peak (Peterson et al. 2004), the
+  data rms is the unbiased excess over the noise (N - 1), and warnings say when the line
+  varies too little for an rms width (variability S/N < 10), lacks data over its window, or the two disagree.
+  `sigma_window="mad"` gives the window of Wang et al. (2019).
+
+- **Stop** interrupts a fit of one spectrum within a fraction of a second (it had to finish before).
+- `plotting.fitted_lines` and `plotting.main_line` take the `r.lines` table when it is at hand (`table=`), as computing it takes a moment.
+- Coronal lines ([Fe VII], [Fe X], [Fe XI], [Fe XIV], or the `coronal` components of the presets) are drawn as a kind
+  of their own, in magenta with a "Coronal lines" legend entry, in the app and in `r.plot()`; they had been summed into
+  the narrow lines and could not be seen. `fantasy_agn.plotting.is_coronal` tells them apart.
+
 ## 2.2.0
 
 ### Added

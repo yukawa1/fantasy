@@ -11,7 +11,7 @@ const C = {
   // over grey data, and selections use the red accent
   data: "#9b9a95", model: "#0b0b0b", continuum: "#52514e", host: "#008300", narrow: "#1baf7a", feii: "#e34948",
   outflow: "#eda100", broad: ["#2a78d6", "#104281", "#6da7ec", "#1c5cab", "#9ec5f4"], balmer: "#86b6ef",
-  bowen: "#4a3aa7", other: ["#898781", "#86b6ef", "#c9c8c2"], accent: "#e34948",
+  bowen: "#4a3aa7", coronal: "#b8459c", other: ["#898781", "#86b6ef", "#c9c8c2"], accent: "#e34948",
 };
 let S = null;                 // server state
 let page = null;              // current step
@@ -567,20 +567,149 @@ function renderZFind() {
   if (zfShown === sig) return;
   zfShown = sig;
   const kms = (a, b) => 299792.458 * Math.abs(a - b) / (1 + b);
-  const head = `<p class="note"><b>z = ${Z.z.toFixed(5)}</b>${Z.error ? ` ± ${Z.error.toFixed(5)}` : ""} · ${Z.kind} templates${Z.method === "narrow lines" ? ", refined on the narrow lines" : ""} · ` +
-    (Z.secure ? '<span class="badge ok">secure</span>' : '<span class="badge warn">not secure</span>') +
-    (Z.file_z ? ` <span class="muted">The file says ${Z.file_z.toFixed(5)}${kms(Z.z, Z.file_z) < 300 ? ": they agree" : `: <b class="warnword">${Math.round(kms(Z.z, Z.file_z))} km/s apart</b>`}.</span>` : "") +
-    (Z.secure ? "" : " The next candidate fits almost as well: look at the figure and at the lines each one would show before you choose.") + `</p>`;
-  const cands = Z.candidates.map((c, i) => `<button type="button" class="zcand ${$("zsrc").value === "manual" && isFinite(cur) && kms(cur, c.z) < 30 ? "on" : ""}" data-z="${c.z}" title="${esc(c.lines)}">` +
-    `<b>${c.z.toFixed(5)}</b><span>${esc(c.kind)}</span><small>${i ? `χ² +${c.dchi2.toFixed(2)} per pixel` : "best"}${c.peaks ? ` · peaks ${esc(c.peaks)}` : ""}</small></button>`).join("");
-  $("zfindout").innerHTML = head + cands + `<p class="note small">Click a redshift to use it for ${L.shown > 1 ? "all spectra" : "the spectrum"}. “peaks”: emission peaks of the spectrum that sit on a known line at that redshift.</p>` +
-    `<img id="zfindimg" alt="chi-square against redshift, and the spectrum with the lines of the best redshift" src="${withToken(`/api/wf/redshift.png?v=${Z.id}`)}">`;
+  const how = `${Z.kind} templates${Z.method === "narrow lines" ? ", refined on the narrow lines" : ""}`;
+  const fileNote = Z.file_z ? ` The file says ${Z.file_z.toFixed(5)}${kms(Z.z, Z.file_z) < 300 ? ": they agree." : `: <b class="warnword">${Math.round(kms(Z.z, Z.file_z))} km/s apart.</b>`}` : "";
+  const head = `<div class="zhead"><div class="zbig"><small>best redshift</small><b>${Z.z.toFixed(5)}</b>${Z.error ? `<span>± ${Z.error.toFixed(5)}</span>` : ""}</div>` +
+    (Z.secure ? '<span class="badge ok">secure</span>' : '<span class="badge warn">not secure</span>') + `</div>` +
+    `<p class="note small zhow">${how}.${fileNote}${Z.secure ? "" : " Another redshift fits almost as well: point at each to see its lines on the spectrum before you choose."}</p>`;
+  const chart = `<div class="zchart" id="zchart"><canvas id="zcv"></canvas><div class="ztip hidden" id="ztip"></div></div>` +
+    `<div class="zchart-legend"><span><i style="background:#3b6fb6"></i>quasar</span><span><i style="background:#1b7f5c"></i>galaxy</span><span class="muted">χ² per pixel, lower is better; gaps: no physical fit</span></div>`;
+  const maxd = Math.max(Z.threshold * 2, ...Z.candidates.map((c) => c.dchi2 || 0));
+  const cands = Z.candidates.map((c, i) => {
+    const on = $("zsrc").value === "manual" && isFinite(cur) && kms(cur, c.z) < 30;
+    const close = i > 0 && c.dchi2 < Z.threshold;
+    const pk = /^(\d+) of (\d+)$/.exec(c.peaks || "");
+    const peaks = pk ? `<span class="zpk" title="${pk[1]} of the ${pk[2]} emission peaks of the spectrum sit on a known line at this redshift">` +
+      (+pk[2] <= 16 ? Array.from({ length: +pk[2] }, (_, j) => `<i class="${j < +pk[1] ? "y" : ""}"></i>`).join("") : `<em style="--f:${pk[1] / pk[2]}"></em>`) +
+      `<small>${pk[1]}/${pk[2]} peaks</small></span>` : "";
+    const fit = i === 0 ? `<span class="zfit best"><small>best fit</small></span>`
+      : `<span class="zfit${close ? " close" : ""}" title="χ² per pixel above the best; below ${Z.threshold} the two are hard to tell apart"><em><i style="width:${Math.min(100, 100 * c.dchi2 / maxd).toFixed(1)}%"></i><b style="left:${(100 * Z.threshold / maxd).toFixed(1)}%"></b></em><small>+${c.dchi2.toFixed(2)} χ²/px${close ? " · close" : ""}</small></span>`;
+    return `<button type="button" class="zcand${on ? " on" : ""}${i ? "" : " first"}" data-z="${c.z}" title="${esc(c.lines)}">` +
+      `<span class="zrank">${i + 1}</span><span class="zmain"><b>${c.z.toFixed(5)}</b><span class="zkind k-${esc(c.kind)}">${esc(c.kind)}</span></span>${fit}${peaks}</button>`;
+  }).join("");
+  $("zfindout").innerHTML = head + chart + `<div class="zlist">${cands}</div>` +
+    `<p class="note small">Click a redshift, or a dip of the curve, to use it for ${L.shown > 1 ? "all spectra" : "the spectrum"}; point at one to mark its lines on the spectrum. Drag on the curve to zoom, double-click to zoom out. ` +
+    `<a href="#" class="textlink" id="zfindfig">Figure</a></p>`;
+  const useZ = (z) => { markCandidate(null); $("zsrc").value = "manual"; $("zin").disabled = false; $("zin").value = z.toFixed(5); zfShown = ""; renderZFind(); schedulePrepare(); };
   $("zfindout").querySelectorAll(".zcand").forEach((b) => {
-    b.onclick = () => { markCandidate(null); $("zsrc").value = "manual"; $("zin").disabled = false; $("zin").value = (+b.dataset.z).toFixed(5); zfShown = ""; renderZFind(); schedulePrepare(); };
-    b.onmouseenter = b.onfocus = () => markCandidate(+b.dataset.z);
-    b.onmouseleave = b.onblur = () => markCandidate(null);
+    b.onclick = () => useZ(+b.dataset.z);
+    b.onmouseenter = b.onfocus = () => { markCandidate(+b.dataset.z); zChart.hot = +b.dataset.z; drawZChart(); };
+    b.onmouseleave = b.onblur = () => { markCandidate(null); zChart.hot = null; drawZChart(); };
   });
-  $("zfindimg").onclick = () => window.open(withToken(`/api/wf/redshift.png?v=${Z.id}`), "_blank");
+  $("zfindfig").onclick = (e) => { e.preventDefault(); window.open(withToken(`/api/wf/redshift.png?v=${Z.id}`), "_blank"); };
+  zChart.use = useZ;
+  setupZChart(Z);
+}
+// the chi2 of the redshift search against z (GET /api/wf/redshift_curve): hover to scan the lines of any
+// redshift over the spectrum, click a dip to take it, drag to zoom
+const zChart = { data: null, id: null, view: null, hover: null, hot: null, use: null, drag: null };
+async function setupZChart(Z) {
+  if (zChart.id !== Z.id) {
+    zChart.id = Z.id; zChart.data = null; zChart.view = null;
+    try { const d = await api("/api/wf/redshift_curve"); if (d && d.id === Z.id) zChart.data = d; } catch (e) { zChart.data = null; }
+  }
+  const cv = $("zcv");
+  if (!cv) return;
+  const zOf = (ev) => { const r = cv.getBoundingClientRect(), g = zChart.geo; return g ? g.inv(ev.clientX - r.left) : null; };
+  cv.onmousemove = (ev) => {
+    const x = zOf(ev);
+    if (x === null) return;
+    if (zChart.drag) zChart.drag.x1 = x;
+    zChart.hover = x;
+    markCandidate(10 ** x - 1);
+    drawZChart();
+  };
+  cv.onmouseleave = () => { zChart.hover = null; zChart.drag = null; markCandidate(null); drawZChart(); };
+  cv.onmousedown = (ev) => { const x = zOf(ev); if (x !== null) zChart.drag = { x0: x, x1: x }; };
+  cv.onmouseup = (ev) => {
+    const d = zChart.drag, g = zChart.geo;
+    zChart.drag = null;
+    if (!d || !g) return;
+    if (Math.abs(g.px(d.x1) - g.px(d.x0)) > 6) { zChart.view = [Math.min(d.x0, d.x1), Math.max(d.x0, d.x1)]; drawZChart(); return; }
+    const z = zDip(d.x0);
+    if (z !== null) zChart.use(z);
+  };
+  cv.ondblclick = () => { zChart.view = null; drawZChart(); };
+  drawZChart();
+}
+// the redshift a click at log(1+z) = x means: a candidate within 8 pixels, else the lowest point nearby
+function zDip(x) {
+  const g = zChart.geo, Z = S.wf.redshift;
+  if (!g || !Z) return null;
+  const near = Z.candidates.map((c) => [Math.abs(g.px(Math.log10(1 + c.z)) - g.px(x)), c.z]).sort((a, b) => a[0] - b[0])[0];
+  if (near && near[0] < 8) return near[1];
+  let best = null;
+  for (const c of Object.values(zChart.data ? zChart.data.curves : {}))
+    c.x.forEach((xi, i) => { if (Math.abs(g.px(xi) - g.px(x)) < 8 && (!best || c.y[i] < best[1])) best = [xi, c.y[i]]; });
+  return best ? 10 ** best[0] - 1 : null;
+}
+function drawZChart() {
+  const cv = $("zcv"), Z = S && S.wf && S.wf.redshift;
+  if (!cv || !Z) return;
+  const w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (!w) return;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const D = zChart.data, curves = D ? Object.entries(D.curves) : [];
+  const COL = { quasar: "#3b6fb6", galaxy: "#1b7f5c" };
+  if (!curves.length) { ctx.fillStyle = "#7b8290"; ctx.font = "11px system-ui"; ctx.fillText(D ? "no curve" : "loading…", 8, h / 2); zChart.geo = null; return; }
+  const all = curves.flatMap(([, c]) => c.x);
+  const [x0, x1] = zChart.view || [Math.min(...all), Math.max(...all)];
+  const ys = curves.flatMap(([, c]) => c.y.filter((_, i) => c.x[i] >= x0 && c.x[i] <= x1)).sort((a, b) => a - b);
+  const lo = ys[0], hi = ys[Math.floor(0.85 * (ys.length - 1))] || lo + 1, pad = (hi - lo) * 0.06 || 0.1;
+  const L = 12, R = w - 12, T = 12, B = h - 18;
+  const px = (x) => L + (x - x0) / (x1 - x0 || 1) * (R - L), py = (y) => B - 7 - (Math.min(y, hi + pad) - lo) / (hi + pad - lo) * (B - 7 - T);
+  zChart.geo = { px, inv: (p) => x0 + (p - L) / (R - L) * (x1 - x0) };
+  // z ticks
+  ctx.font = "10px system-ui"; ctx.textAlign = "center";
+  const span = 10 ** x1 - 10 ** x0, steps = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2];
+  const st = steps.find((s) => span / s <= 6) || 2;
+  for (let z = Math.ceil((10 ** x0 - 1) / st) * st; z <= 10 ** x1 - 1 + 1e-9; z += st) {
+    const p = px(Math.log10(1 + z));
+    ctx.strokeStyle = "#eef0f3"; ctx.beginPath(); ctx.moveTo(p, T); ctx.lineTo(p, B); ctx.stroke();
+    ctx.fillStyle = "#7b8290"; ctx.fillText(+z.toFixed(4) + "", p, h - 5);
+  }
+  ctx.save(); ctx.beginPath(); ctx.rect(L - 2, 0, R - L + 4, B + 1); ctx.clip();
+  // the current redshift
+  const cur = Number(String($("zin").value).replace(",", "."));
+  if (isFinite(cur) && cur > -1) { const p = px(Math.log10(1 + cur)); ctx.strokeStyle = "#d4472a"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(p, T); ctx.lineTo(p, B); ctx.stroke(); ctx.setLineDash([]); }
+  for (const [kind, c] of curves) {
+    ctx.strokeStyle = COL[kind] || "#898781"; ctx.lineWidth = 1.2; ctx.beginPath();
+    // no line across a gap of the scan (redshifts where the templates do not cover the spectrum)
+    const dx = c.x.slice(1).map((x, i) => x - c.x[i]).sort((a, b) => a - b), gap = 6 * (dx[dx.length >> 1] || 1);
+    let on = false;
+    c.x.forEach((x, i) => { if (x < x0 - (x1 - x0) * 0.02 || x > x1 + (x1 - x0) * 0.02 || (i && x - c.x[i - 1] > gap)) on = false; if (x < x0 - (x1 - x0) * 0.02 || x > x1 + (x1 - x0) * 0.02) return; const X = px(x), Y = py(c.y[i]); on ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); on = true; });
+    ctx.stroke();
+  }
+  const d = zChart.drag;
+  if (d && Math.abs(px(d.x1) - px(d.x0)) > 6) { ctx.fillStyle = "rgba(212,71,42,0.10)"; ctx.fillRect(Math.min(px(d.x0), px(d.x1)), T, Math.abs(px(d.x1) - px(d.x0)), B - T); }
+  if (zChart.hover !== null && !d) { const p = px(zChart.hover); ctx.strokeStyle = "#1d2128"; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(p, T); ctx.lineTo(p, B); ctx.stroke(); }
+  ctx.restore();
+  // the candidates at their dips
+  Z.candidates.forEach((c, i) => {
+    const x = Math.log10(1 + c.z);
+    if (x < x0 || x > x1) return;
+    const cv2 = D.curves[c.kind];
+    let y = B - 10;
+    if (cv2) { let k = 0, d = Infinity; cv2.x.forEach((xi, j) => { if (Math.abs(xi - x) < d) { d = Math.abs(xi - x); k = j; } }); y = py(cv2.y[k]); }
+    const hot = zChart.hot !== null && Math.abs(zChart.hot - c.z) < 1e-6;
+    ctx.fillStyle = i === 0 ? "#d4472a" : hot ? "#1d2128" : "#fff";
+    ctx.strokeStyle = i === 0 ? "#d4472a" : "#1d2128"; ctx.lineWidth = 1.2;
+    const cy = Math.max(T, Math.min(B - 7, y));
+    ctx.beginPath(); ctx.arc(px(x), cy, 6.5, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = i === 0 || hot ? "#fff" : "#1d2128"; ctx.font = "bold 9px system-ui"; ctx.textBaseline = "middle";
+    ctx.fillText(i + 1, px(x), cy + 0.5); ctx.textBaseline = "alphabetic";
+  });
+  ctx.strokeStyle = "#cfd3d9"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, B + 0.5); ctx.lineTo(R, B + 0.5); ctx.stroke();
+  const tip = $("ztip");
+  if (zChart.hover === null) { tip.classList.add("hidden"); return; }
+  const vals = curves.filter(([, c]) => zChart.hover >= c.x[0] && zChart.hover <= c.x[c.x.length - 1]).map(([kind, c]) => { let k = 0, dd = Infinity; c.x.forEach((xi, j) => { if (Math.abs(xi - zChart.hover) < dd) { dd = Math.abs(xi - zChart.hover); k = j; } }); return `<span style="color:${COL[kind]}">${kind} ${c.y[k].toFixed(2)}</span>`; });
+  tip.innerHTML = `<b>z = ${(10 ** zChart.hover - 1).toFixed(4)}</b>${vals.join("")}`;
+  tip.classList.remove("hidden");
+  const p = px(zChart.hover);
+  tip.style.left = Math.max(0, Math.min(w - tip.offsetWidth, p - tip.offsetWidth / 2)) + "px";
 }
 // the instrumental resolution: what the file says; without it the widths include the instrument
 function renderResolution() {
@@ -820,10 +949,82 @@ function syncFromPreset() {
   if (!$("hostsel").value) $("hostsel").value = "default";
   syncOptionAvailability();
 }
+// the preset options as the active preset made them, in the shape of modelForm(); null if not a known preset
+function appliedPresetForm() {
+  const { label, args } = describePreset(presetLabel());
+  const d = label && (S.model_defaults || {})[label];
+  if (!d) return null;
+  const v = d.values || {}, has = (k) => (d.options || []).includes(k);
+  const f = { action: "preset", model: label, broad_components: +(args.broad_components ?? d.broad_components ?? 2),
+    host: args.host === undefined || args.host === "True" ? "default" : args.host === "False" ? "none" : args.host };
+  if (has("continuum")) f.continuum = (args.continuum ?? v.continuum) === "broken" ? "broken" : "powerlaw";
+  f.outflow = "outflow" in args ? args.outflow === "True" : !!d.outflow;
+  f.stratified = args.broad_profile === "stratified";
+  for (const k of ["coronal", "oi6046", "red"]) f[k] = k in args ? args[k] === "True" : !!v[k];
+  return f;
+}
+// what in the controls differs from the model in use: [] when nothing does
+function presetChanges() {
+  const a = appliedPresetForm();
+  if (!a) return [];
+  const f = modelForm();
+  if (f.model !== a.model) return ["model"];
+  const d = (S.model_defaults || {})[f.model] || {}, has = (k) => (d.options || []).includes(k);
+  const out = [];
+  if (has("broad_components") && f.broad_components !== a.broad_components) out.push("broad_components");
+  if (has("host") && f.host !== a.host) out.push("host");
+  if (has("continuum") && f.continuum !== a.continuum) out.push("continuum");
+  for (const k of ["outflow", "stratified", "coronal", "oi6046", "red"]) if (k in f && f[k] !== a[k]) out.push(k);
+  return out;
+}
 function makePreset() {
   syncOptionAvailability();
   startMode = "preset";
   post("/api/model", modelForm());
+}
+// ------------------------------------------------- the Model step of a sample: the model of each class, per spectrum
+const SP_WIN = [["C IV", 1450, 1720], ["Mg II", 2650, 3050], ["Hβ", 4800, 5050], ["Hα", 6500, 6650]];
+const SP_ROUTE = { optical: "optical", uv_mgii: "UV · Mg II", uv_civ: "UV · C IV", none: "no line model" };
+const SP_ROUTE_TIP = { optical: "classified by fa.classify when the sample is fitted", uv_mgii: "ends below 5200 Å: the Mg II model", uv_civ: "ends below 5200 Å: the C IV model" };
+let spSig = null;
+async function loadSamplePlan() {
+  const sig = JSON.stringify([S.cells.length, !!S.sample]);
+  if (spSig === sig && $("splan").innerHTML) return;
+  spSig = sig;
+  let P;
+  try { P = await api("/api/wf/sample_plan"); } catch (e) { $("splan").innerHTML = `<div class="card note-card">${esc(e.message || e)}</div>`; return; }
+  renderSamplePlan(P);
+}
+function renderSamplePlan(P) {
+  const sp = P.spectra, n = P.n_input || sp.length, cn = (c) => CLASS_NAME[c] || c, preview = n > sp.length;
+  const byRoute = {}, byCls = Object.assign({}, P.class_counts || {});
+  sp.forEach((x) => { byRoute[x.route] = (byRoute[x.route] || 0) + 1; if (x.cls && !P.class_counts) byCls[x.cls] = (byCls[x.cls] || 0) + 1; });
+  const flow = `<div class="sp-flow">` +
+    `<div class="sp-node"><small>1</small><b>${n} spectr${n === 1 ? "um" : "a"}</b><span>read and prepared</span></div><i class="sp-arrow"></i>` +
+    `<div class="sp-node"><small>2</small><b>Rest frame ends below ${Math.round(P.uv_limit)} Å?</b><span>yes: Hβ and [O III] are cut off, the UV model of Mg II (else C IV) · <b>${(byRoute.uv_mgii || 0) + (byRoute.uv_civ || 0)}</b></span><span>no: <code>fa.classify</code> at fit time · <b>${byRoute.optical || 0}</b></span>${preview ? `<span>counted in the first ${sp.length} spectra</span>` : ""}</div><i class="sp-arrow"></i>` +
+    `<div class="sp-node"><small>3</small><b>The model of the class</b><span>${P.fitted ? `${Object.keys(byCls).length} classes in this sample` : "from the table below"}; narrow-line galaxies with χ²ᵣ &gt; 1.2 get the extensions the BIC prefers (<code>fa.refine</code>)</span></div></div>`;
+  const one = P.one_model ? `<div class="callout warn small"><div>The Fit step is set to fit <b>every</b> spectrum with <code>${esc(P.one_model.label)}</code>: the classes below are not used. Choose “by class” there to use them.</div></div>` : "";
+  // coverage of each spectrum against the windows the route depends on
+  const lo = 1300, hi = 9000, X = (w) => ((Math.min(hi, Math.max(lo, w)) - lo) / (hi - lo) * 100).toFixed(2);
+  const scale = `<div class="sp-cov sp-scale">${SP_WIN.map(([nm, a, b]) => `<span class="sp-win" style="left:${X(a)}%;width:${(X(b) - X(a)).toFixed(2)}%"><em>${nm}</em></span>`).join("")}` +
+    `<span class="sp-lim" style="left:${X(P.uv_limit)}%"><em>${Math.round(P.uv_limit)} Å</em></span></div>`;
+  const rows = sp.map((x) => `<tr data-k="${x.k}"><td class="mono">#${x.k}</td><td class="mono sp-name">${esc(x.name)}</td><td class="num mono">${x.z === null ? "—" : x.z.toFixed(4)}</td>` +
+    `<td class="sp-covcell"><div class="sp-cov">${SP_WIN.map(([nm, a, b]) => `<span class="sp-win" style="left:${X(a)}%;width:${(X(b) - X(a)).toFixed(2)}%"></span>`).join("")}` +
+    (x.blue !== null ? `<span class="sp-bar r-${x.route}" style="left:${X(x.blue)}%;width:${(X(x.red) - X(x.blue)).toFixed(2)}%" title="${Math.round(x.blue)}–${Math.round(x.red)} Å in the rest frame"></span>` : "") +
+    `<span class="sp-lim" style="left:${X(P.uv_limit)}%"></span></div></td>` +
+    `<td><span class="sp-route r-${x.route}" title="${esc(x.why || SP_ROUTE_TIP[x.route] || "")}">${esc(SP_ROUTE[x.route] || x.route)}</span></td>` +
+    (P.fitted ? `<td>${x.cls ? `<span class="sgdot" style="background:${CLASS_COLOR[x.cls] || "#9aa1ad"}"></span>${esc(cn(x.cls))}` : '<span class="muted">—</span>'}</td><td class="mono sp-preset">${esc(x.preset || "—")}</td>` : "") + `</tr>`).join("");
+  const table = `<div class="card flush tblwrap"><table class="tbl sp-tbl"><thead><tr><th>#</th><th>Spectrum</th><th class="num">z</th><th>Rest-frame coverage ${scale}</th><th>Route</th>${P.fitted ? "<th>Class (fit)</th><th>Model used</th>" : ""}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  const cards = P.routes.map((r) => {
+    const used = byCls[r.cls] || 0;
+    return `<div class="sp-card${P.fitted && !used ? " unused" : ""}${used ? " used" : ""}"><div class="sp-chead"><span class="sgdot" style="background:${CLASS_COLOR[r.cls] || "#9aa1ad"}"></span><b>${esc(cn(r.cls))}</b><span class="grow"></span>` +
+      (P.fitted ? `<span class="badge ${used ? "ok" : "muted"}">${used ? `${used} in this sample` : "none"}</span>` : "") + `</div>` +
+      `<code class="sp-code">${esc(r.code)}</code><p>${esc(r.about)}</p></div>`;
+  }).join("");
+  $("splan").innerHTML = `<div class="card sp-hero"><div class="cs-top"><div><small>Sample · model by class</small><h2>Each spectrum gets the model of its class</h2>` +
+    `<p class="cs-sub">The class comes from <code>fa.classify</code> when the sample is fitted (<code>fa.fit_sample</code>), and picks a preset from <code>Classification.RECOMMENDED</code>. Nothing to build here: to fit every spectrum with one model instead, choose it in the Fit step.</p></div></div>${flow}${one}</div>` +
+    `<div class="sp-sec"><b>Your spectra</b><span class="muted small">${preview ? `the first ${sp.length} of ${n}, read for the preview (the fit reads them all); ` : ""}the bar: the rest-frame range of each spectrum; the shaded windows: the lines the route depends on</span></div>${table}` +
+    `<div class="sp-sec"><b>Class → model</b><span class="muted small">the preset each class gets${P.fitted ? "; the badge: how many spectra of this sample got it" : ""}</span></div><div class="sp-grid">${cards}</div>`;
 }
 function enterModel(force) {
   const m = mode();
@@ -832,6 +1033,9 @@ function enterModel(force) {
   ["optbar", "modelgrid", "classcard"].forEach((id) => $(id).classList.toggle("hidden", special));
   if (m === "classify") $("model-note").textContent = "Classification fits its own model (stellar populations + power law, then the emission lines); there is nothing to set up here.";
   if (m === "sample") $("model-note").textContent = "In a sample each spectrum is classified and gets the model its class needs; you can also choose one model for all of them in the Fit step.";
+  $("model-note").classList.toggle("hidden", !special || m === "sample");
+  $("splan").classList.toggle("hidden", m !== "sample");
+  if (m === "sample") loadSamplePlan();
   $("tofit").textContent = m === "classify" ? "Set up classification →" : "Set up fit →";
   if (special) {
     $("tofit").disabled = !!S.busy || !(prepared() || (m === "sample" && loaded()));
@@ -870,8 +1074,11 @@ function sharedPatterns() {
     S.model.components.filter((c) => c.role === "broad" || c.type === "FeII").forEach((c) => pats.push(c.name + ".*"));
   return pats;
 }
-const BOWEN_RE = /^(NIII|OIII3|HeII)\d+$/;
+const BOWEN_RE = /^(NIII|OIII3|HeII)\d+$/, CORONAL_RE = /^\[Fe(VII|X|XI|XIV)\]\d+$/;
+// coronal lines (plotting.is_coronal): named coronal..., or of [Fe VII], [Fe X], [Fe XI], [Fe XIV] lines only
+const isCoronal = (c) => c.role === "narrow" && (/^coronal/.test(c.name) || (!!(c.lines && c.lines.length) && c.lines.every((l) => CORONAL_RE.test(l))));
 function compColor(c, all) {
+  if (isCoronal(c)) return C.coronal;
   if (c.role === "broad" && c.lines && c.lines.length && c.lines.every((l) => BOWEN_RE.test(l))) return C.bowen;
   if (c.role === "broad") { const i = all.filter((x) => x.role === "broad").indexOf(c); return C.broad[i % C.broad.length]; }
   if (c.role === "narrow") return C.narrow;
@@ -1001,7 +1208,7 @@ function renderModel() {
     $("nfree").textContent = "";
     $("ghl").textContent = "";
     guessSig = loadGuess.data = null;
-    drawGuess(); renderSharing(); return;
+    drawGuess(); renderSharing(); renderModelSum(); return;
   }
   $("nfree").textContent = `${M.n_free} free parameters`;
   if (!M.components.some((c) => c.name === selComp)) {
@@ -1031,6 +1238,112 @@ function renderModel() {
     }));
   }
   renderSharing();
+  renderModelSum();
+}
+// ---- the model in use: what it is, where it came from, whether it was fitted, what it fits
+const MSUM_KINDS = [["continuum", "Continuum"], ["host", "Host galaxy"], ["feii", "Fe II"], ["narrow", "Narrow lines"], ["coronal", "Coronal lines"], ["broad", "Broad lines"],
+  ["outflow", "Outflow"], ["balmer", "Balmer"], ["absorption", "Absorption"], ["other", "Other"]];
+function msumKind(c) {
+  if (c.absorption) return "absorption";
+  if (c.kind === "host") return "host";
+  if (c.kind === "continuum" && !/^balmer/.test(c.name)) return "continuum";
+  if (c.type === "FeII") return "feii";
+  if (isCoronal(c)) return "coronal";
+  if (["narrow", "broad", "outflow"].includes(c.role)) return c.role;
+  if (["BalmerContinuum", "HighOrderBalmer"].includes(c.type)) return "balmer";
+  return "other";
+}
+function renderModelSum() {
+  const M = S.model, box = $("msum"), m = mode();
+  const show = !!(M && M.components.length) && !["classify", "sample"].includes(m);
+  box.classList.toggle("hidden", !show);
+  if (!show) return;
+  // the cell that made the model, and the cells that changed it since
+  let made = -1;
+  for (let i = S.cells.length - 1; i >= 0; i--) if (/^model\s*=\s*fa\./m.test(S.cells[i].code)) { made = i; break; }
+  const edits = made < 0 ? [] : S.cells.slice(made + 1).map((c, j) => ({ i: made + 1 + j, code: c.code }))
+    .filter((c) => /^model\s*(\.|=\s*model)/m.test(c.code) && !/^# (fit|trial fit)/.test(c.code));
+  let fitted = -1;
+  for (let i = S.cells.length - 1; i > made; i--) if (/^# (fit|trial fit)/.test(S.cells[i].code)) { fitted = i; break; }
+  const lastEdit = edits.length ? edits[edits.length - 1].i : made;
+  const origin = modelOrigin(), pl = presetLabel(), F = fitDone();
+  // the title: the preset in words, or how the model was built
+  let title, bits = [];
+  if (origin === "preset" && pl) {
+    const { label, args } = describePreset(pl);
+    const opt = label && [...$("presetsel").options].find((o) => o.value === label);
+    const nm = opt ? opt.textContent.split(" · ")[0] : pl.name;
+    title = `${nm.charAt(0).toUpperCase()}${nm.slice(1)} preset`;
+    if (args.broad_components) bits.push(`${args.broad_components} broad component${args.broad_components === "1" ? "" : "s"}`);
+    if (args.outflow === "True") bits.push("outflow wing"); else if (args.outflow === "False") bits.push("no outflow wing");
+    if (args.broad_profile === "stratified") bits.push("stratified BLR");
+    if (args.continuum) bits.push(args.continuum === "broken" ? "broken power law" : "power law");
+    if (args.host === "False") bits.push("no host"); else if (args.host && args.host !== "True") bits.push(`host: ${args.host}`);
+    for (const [k, t] of [["coronal", "coronal lines"], ["oi6046", "O I 6046"], ["red", "red side to 7500 Å"]]) if (args[k] === "True") bits.push(t);
+  } else if (origin === "saved") title = "A saved model";
+  else title = "A model built in the editor";
+  bits.push(`fitted over ${M.wave_range ? `${Math.round(M.wave_range[0])}–${Math.round(M.wave_range[1])} Å` : "the whole spectrum"}`);
+  // the state: fitted with this model, or not yet
+  let state;
+  if (fitted > lastEdit && F && F.rchi2 != null && ["single", "joint", "fits"].includes(F.kind))
+    state = `<span class="msum-state ok"><i></i>Fitted with this model · χ²ᵣ ${F.rchi2.toFixed(2)}</span>`;
+  else if (F && F.rchi2 != null) state = '<span class="msum-state warn"><i></i>Not fitted yet: the results are from an earlier model</span>';
+  else state = '<span class="msum-state"><i></i>Not fitted yet</span>';
+  // the preset options above, changed but not applied
+  const changes = origin === "preset" && startMode !== "custom" && startMode !== "saved" ? presetChanges() : [];
+  const pending = changes.length > 0;
+  $("usepreset").classList.toggle("primary", pending);
+  let pendingText = "";
+  if (pending) {
+    const so = $("presetsel").selectedOptions[0];
+    const name = so ? so.textContent.split(" · ")[0] : $("presetsel").value;
+    const NAMES = { broad_components: "broad components", host: "host galaxy", continuum: "continuum", outflow: "outflow wing",
+      stratified: "stratified BLR", coronal: "coronal lines", oi6046: "O I 6046", red: "red side" };
+    pendingText = changes[0] === "model"
+      ? `<b>${esc(name)}</b> is selected above, but the model in use is still the one below.`
+      : `The options above changed (${changes.map((k) => NAMES[k] || k).join(", ")}), but the model in use is still the one below.`;
+  }
+  // where it came from
+  const madeLine = made >= 0 ? S.cells[made].code.split("\n").find((l) => /^model\s*=/.test(l)) || "" : "";
+  const from = origin === "preset" && pl ? `Made by <code>${esc(pl.code)}</code>`
+    : origin === "saved" ? `Loaded by <code>${esc(madeLine.replace(/^model\s*=\s*/, ""))}</code>`
+      : "Built with <b>Edit model</b> (<code>fa.Model(…)</code>)";
+  const editList = edits.map((e) => e.code.split("\n").filter((l) => /^model/.test(l))
+    .map((l) => `<li><code>${esc(l.length > 90 ? l.slice(0, 88) + "…" : l)}</code></li>`).join("")).join("");
+  // what it fits, by kind, and the free parameters of each component
+  const free = {};
+  M.params.forEach((p) => { if (!p.fixed && !p.tie) { const c = p.name.split(".")[0]; free[c] = (free[c] || 0) + 1; } });
+  const rows = MSUM_KINDS.map(([k, label]) => {
+    const cs = M.components.filter((c) => msumKind(c) === k);
+    if (!cs.length) return "";
+    const lines = [...new Set(cs.flatMap((c) => c.lines || []))];
+    let what;
+    if (k === "feii") what = cs.map((c) => `template, ${Math.max(0, (c.n_params || 2) - 2)} groups`).join("; ");
+    else if (k === "broad") what = `${cs.length} component${cs.length > 1 ? "s" : ""}: ${lines.map(prettyLine).join(", ")}`;
+    else if (lines.length) what = `${lines.length} line${lines.length > 1 ? "s" : ""}: ${lines.slice(0, 6).map(prettyLine).join(", ")}${lines.length > 6 ? ", …" : ""}`;
+    else what = cs.map((c) => compDesc(c)).join(", ");
+    const ties = cs.filter((c) => c.tied_to).map((c) => `${esc(c.name)} moves with ${esc(c.tied_to)}`);
+    const n = cs.reduce((a, c) => a + (free[c.name] || 0), 0);
+    return `<tr><td><span class="sw" style="background:${compColor(cs[0], M.components)}"></span>${label}</td>` +
+      `<td>${esc(what)}${ties.length ? ` <span class="muted">· ${ties.join(", ")}</span>` : ""}</td><td class="num mono">${n}</td></tr>`;
+  }).join("");
+  const bar = M.components.filter((c) => free[c.name]).map((c) =>
+    `<span style="flex:${free[c.name]};background:${compColor(c, M.components)}" title="${esc(c.name)}: ${free[c.name]} free parameters"></span>`).join("");
+  const recipe = made >= 0 ? [S.cells[made].code.split("\n").filter((l) => !/^r = fits = |^model$/.test(l)).join("\n")]
+    .concat(edits.map((e) => e.code)).join("\n") : "";
+  const html = `<div class="msum-head"><div class="grow"><div class="msum-eyebrow">The model in use</div><div class="msum-title">${esc(title)}</div>` +
+    `<div class="msum-sub">${esc(bits.join(" · "))}</div></div>${state}</div>` +
+    (pending ? `<div class="callout warn msum-pending"><div class="grow">${pendingText} <b>Use preset</b> builds the new one, and the fit then uses it.</div><button class="btn small primary" id="msum-apply">Use preset</button></div>` : "") +
+    `<p class="msum-from">${from}${edits.length ? `, then changed ${edits.length} time${edits.length > 1 ? "s" : ""}:` : origin === "preset" ? ", unchanged." : "."}</p>` +
+    (editList ? `<ul class="msum-edits">${editList}</ul>` : "") +
+    `<div class="msum-budget"><div class="msum-bar">${bar}</div><span class="mono small muted">${M.n_free} free parameters</span></div>` +
+    `<table class="msum-tbl"><thead><tr><th>It fits</th><th></th><th class="num">free</th></tr></thead><tbody>${rows}</tbody></table>` +
+    (recipe ? `<details class="codebox msum-code"><summary>Python code of this model</summary><pre class="code">${esc(recipe)}</pre></details>` : "");
+  if (box.dataset.sig === html) return;
+  const open = box.querySelector("details") && box.querySelector("details").open;
+  box.dataset.sig = html; box.innerHTML = html;
+  if (open && box.querySelector("details")) box.querySelector("details").open = true;
+  if ($("msum-apply")) $("msum-apply").onclick = () => makePreset();
 }
 // what is the same in all epochs: one row per component, fluxes and shape
 function renderSharing() {
@@ -1132,9 +1445,11 @@ function editFitComponent(parameter) {
   if (S.model && prepared()) MB.openCurrent(selComp);
 }
 function initModel() {
-  $("presetsel").onchange = () => { setPresetDefaults($("presetsel").value); syncOptionAvailability(); };
-  $("bminus").onclick = () => { $("bcount").textContent = Math.max(1, +$("bcount").textContent - 1); };
-  $("bplus").onclick = () => { $("bcount").textContent = Math.min(3, +$("bcount").textContent + 1); };
+  $("presetsel").onchange = () => { setPresetDefaults($("presetsel").value); syncOptionAvailability(); renderModelSum(); };
+  $("bminus").onclick = () => { $("bcount").textContent = Math.max(1, +$("bcount").textContent - 1); renderModelSum(); };
+  $("bplus").onclick = () => { $("bcount").textContent = Math.min(3, +$("bcount").textContent + 1); renderModelSum(); };
+  for (const id of ["hostsel", "contsel"]) $(id).addEventListener("change", () => renderModelSum());
+  document.querySelectorAll("#optbar input[data-opt]").forEach((c) => c.addEventListener("change", () => renderModelSum()));
   document.querySelectorAll("#startseg button").forEach((b) => (b.onclick = () => setStartMode(b.dataset.s)));
   $("usepreset").onclick = () => { if (MB.confirmReplace()) makePreset(); };
   $("startempty").onclick = () => MB.openNew();
@@ -1322,6 +1637,14 @@ function renderProgress() {
   $("progcard").classList.toggle("hidden", !running && !failed);
   $("donecard").classList.toggle("hidden", running || failed || !F);
   $("epochtblbox").classList.toggle("hidden", running || failed || !(F && F.epochs && F.epochs.length > 1 && F.chi2 != null));
+  // the fit of one spectrum is shown as it converges (fitlive.js); runs of many spectra keep the list
+  const liveFit = !!running && (mode() === "single" || cell.code.startsWith("# trial fit"));
+  if (window.FL) FL.run(liveFit, running ? S.now - cell.start : 0);
+  // a sample: one tile per spectrum as the processes finish them (sampletiles.js), kept once the fit is done
+  const sampleRun = !!running && mode() === "sample" && cell.code.startsWith("# fit");
+  if (window.ST) ST.run(sampleRun, !running && !failed && !!F && F.kind === "sample", running ? S.now - cell.start : 0);
+  $("proglist").classList.toggle("hidden", liveFit);
+  $("progbar").parentElement.classList.toggle("hidden", liveFit);
   if (running || failed) {
     const items = runLog.map((e, i) => {
       const live = running && i === runLog.length - 1;
@@ -1393,11 +1716,13 @@ function initFit() {
 let rk = 0, rtab = "lines", resultData = null, resultSig = null, sk = 0, ck = 0, rv = "fit", cfigKind = "steps";
 let classData = null, samplePts = null, lastResidId = null;
 // the views of the Results step that apply to this fit
+// the fit the views of one spectrum show: the selected spectrum of a sample, else the selected epoch
+const fitK = () => (fitDone() && fitDone().kind === "sample" ? sk : rk);
 function resultViews() {
   const F = fitDone(), kind = F && F.kind;
   if (!F) return [];
   if (kind === "classify") return ["class"];
-  if (kind === "sample") return ["fit", "atlas", "sdiag", "figure"];
+  if (kind === "sample") return ["fit", "atlas", "sdiag", "figure", "checks", "lines"];
   const v = ["fit"];
   if ((kind === "joint" || kind === "fits") && (F.epochs || []).length > 1) v.push("atlas");
   v.push("anatomy");
@@ -1417,7 +1742,8 @@ function showView() {
   document.querySelectorAll("#rnav button").forEach((b) => { b.classList.toggle("hidden", !views.includes(b.dataset.v)); b.classList.toggle("on", b.dataset.v === rv); });
   $("rnav").classList.toggle("hidden", views.length < 2);
   $("res-fit").classList.toggle("hidden", !F || rv !== "fit" || kind === "classify");
-  $("res-sample").classList.toggle("hidden", kind !== "sample" || !["fit", "figure"].includes(rv));
+  $("res-sample").classList.toggle("hidden", kind !== "sample" || !["fit", "figure", "checks", "lines"].includes(rv));
+  $("res-checks").classList.toggle("sample", kind === "sample");
   $("res-sdiag").classList.toggle("hidden", rv !== "sdiag");
   $("res-checks").classList.toggle("hidden", rv !== "checks");
   $("res-corr").classList.toggle("hidden", rv !== "corr");
@@ -1512,6 +1838,7 @@ function renderResults() {
   }
   $("rtitle").textContent = kind === "sample" ? `${R.name}${R.cls ? " · " + R.cls : ""}${R.preset ? " · " + R.preset : ""}` : (R.name || "");
   $("res-fit").classList.toggle("sgfailed", kind === "sample" && !!R.error);
+  if (kind === "sample" && rv === "checks") loadSampleChecks(sk);
   if (R.error) {
     const note = kind === "sample" && S.sample ? S.sample.notes[R.k] : "";
     $("rplot").innerHTML = `<div class="empty"><p><b>This spectrum was not fitted.</b></p>${note && note !== R.error ? `<p>${esc(note)}</p>` : ""}<p class="mono small muted">${esc(R.error)}</p></div>`;
@@ -1525,7 +1852,7 @@ function renderResults() {
   if (rv === "degen") drawDegen();
   if (rv === "feii" && window.FX) FX.show(rk, `${rk}|${R.fit && R.fit.chi2}|${R.name}`);
   if (rv === "figure") showFigure();
-  if (rv === "lines") showLines();
+  if (rv === "lines") { if (window.LV) LV.show(fitK(), `${R.fit && R.fit.chi2}|${R.name}|${S.cells.length}`); if ($("lv-paper").open) showLines(); }
   if (rv === "posterior") renderCorner();
   renderResultTable();
 }
@@ -1662,6 +1989,8 @@ function drawResultPlot() {
   const R = resultData;
   if (!R || !R.plot) return;
   drawFit($("rplot"), $("rlegend"), R.plot, hiddenSeries, () => drawResultPlot());
+  renderZoomChips($("rplot"), $("rzoom"));
+  $("rlinkhint").classList.toggle("hidden", !resultViews().includes("lines"));
   $("raxis").textContent = `rest-frame λ ${Math.round(R.plot.range[0])}–${Math.round(R.plot.range[1])} Å`;
 }
 // ---- the publication figure, redrawn as the options change
@@ -1678,12 +2007,12 @@ function figUrl(fmt, dl) {
 // what the figure draws: the data, the model and each kind of component in the model, each with its colour
 const FIG_KIND = [["data", "Data", "#9b9a95"], ["model", "Model", "#0b0b0b"], ["continuum", "Continuum", "#52514e"], ["host", "Host galaxy", "#008300"],
   ["balmer_cont", "Balmer continuum", "#86b6ef"], ["balmer_lines", "High-order Balmer lines", "#86b6ef"], ["feii", "Fe II", "#e34948"],
-  ["narrow", "Narrow lines", "#1baf7a"], ["broad", "Broad lines", "#2a78d6"], ["outflow", "Outflow", "#eda100"], ["other", "Other lines", "#898781"]];   // plotting.COLORS
+  ["narrow", "Narrow lines", "#1baf7a"], ["coronal", "Coronal lines", "#b8459c"], ["broad", "Broad lines", "#2a78d6"], ["outflow", "Outflow", "#eda100"], ["other", "Other lines", "#898781"]];   // plotting.COLORS
 function figKinds() {
   const have = new Set(["data", "model"]);
   ((S.model && S.model.components) || []).forEach((c) => {
     const t = c.type;
-    if (t === "Lines") have.add(c.absorption ? "other" : ["narrow", "broad", "outflow"].includes(c.role) ? c.role : "other");
+    if (t === "Lines") have.add(c.absorption ? "other" : isCoronal(c) ? "coronal" : ["narrow", "broad", "outflow"].includes(c.role) ? c.role : "other");
     else if (t === "FeII") have.add("feii");
     else if (t === "HighOrderBalmer") have.add("balmer_lines");
     else if (t === "BalmerContinuum") have.add("balmer_cont");
@@ -1758,7 +2087,7 @@ function showFigure() {
 // ---- line profiles: a grid of the ticked lines, redrawn as the choice changes
 let lineList = null, lineKey = null, lineSel = [];
 function linesUrl(fmt, dl) {
-  const q = new URLSearchParams({ k: rk, lines: lineSel.join(",") });
+  const q = new URLSearchParams({ k: fitK(), lines: lineSel.join(",") });
   $("lineopts").querySelectorAll("[data-l]").forEach((el) => {
     const v = el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value;
     if (v !== "") q.set(el.dataset.l, v);
@@ -1767,25 +2096,40 @@ function linesUrl(fmt, dl) {
   if (dl && fmt === "png") q.set("dpi", $("lo-dpi").value);
   return `/api/wf/linegrid.${fmt}?${q}`;
 }
+// the lines of the figure as toggle chips, by group, with quick choices
+function renderLinePick() {
+  const L = (lineList && lineList.lines) || [];
+  if (!L.length) { $("lo-lines").innerHTML = '<p class="note small">No fitted lines.</p>'; return; }
+  const kind = (d) => d.roles.includes("broad") ? "broad" : /^\[Fe(VII|X|XI|XIV)\]/.test(d.line) ? "coronal" : "narrow";
+  const chip = (d) => `<label class="lpchip k-${kind(d)}" title="${esc(d.label)}: ${esc(d.roles.join(" + "))}"><input type="checkbox" value="${esc(d.line)}" ${lineSel.includes(d.line) ? "checked" : ""}>` +
+    `<span><i></i>${esc(d.label.replace(" λ", " "))}</span></label>`;
+  const groups = [["broad", "Broad", L.filter((d) => d.roles.includes("broad"))], ["narrow", "Narrow", L.filter((d) => !d.roles.includes("broad"))]];
+  const shown = window.LV && LV.state ? LV.state() : null;
+  const above = shown ? (shown.mode === "cmp" ? shown.lines.split(",") : [shown.line]).filter(Boolean) : [];
+  $("lo-lines").innerHTML =
+    `<div class="lpick-top"><span class="muted small">${plural(lineSel.length, "line", "lines")} chosen</span><span class="grow"></span>` +
+    (above.length ? `<button type="button" class="linkbtn" data-pick="above" title="${esc(above.join(", "))}">Same as above</button>` : "") +
+    `<button type="button" class="linkbtn" data-pick="none">Clear</button></div>` +
+    groups.filter((g) => g[2].length).map(([k, t, ls]) => `<div class="lpick-group"><div class="lpick-head"><span>${t}</span><small>${ls.length}</small>` +
+      `<button type="button" class="linkbtn" data-pick="${k}">all</button></div><div class="lpick-chips">${ls.map(chip).join("")}</div></div>`).join("");
+  const order = L.map((d) => d.line), set = (sel) => { lineSel = [...new Set(sel)].filter((l) => order.includes(l)).sort((a, b) => order.indexOf(a) - order.indexOf(b)); renderLinePick(); linesChanged(); };
+  $("lo-lines").querySelectorAll("input").forEach((el) => (el.onchange = () => set(el.checked ? lineSel.concat(el.value) : lineSel.filter((l) => l !== el.value))));
+  $("lo-lines").querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => {
+    const p = b.dataset.pick;
+    if (p === "none") set([]);
+    else if (p === "above") set(above);
+    else set(lineSel.concat((groups.find((g) => g[0] === p) || [, , []])[2].map((d) => d.line)));
+  }));
+}
 async function showLines() {
-  const key = rk + ":" + S.cells.length;
+  const key = fitK() + ":" + S.cells.length;
   if (lineKey !== key) {
     lineKey = key;
-    try { lineList = await api(`/api/wf/line_list?k=${rk}`); } catch (e) { lineList = { lines: [] }; }
+    try { lineList = await api(`/api/wf/line_list?k=${fitK()}`); } catch (e) { lineList = { lines: [] }; }
     const names = lineList.lines.map((d) => d.line);
     lineSel = lineSel.filter((l) => names.includes(l));
     if (!lineSel.length && lineList.main) lineSel = [lineList.main];
-    const row = (d) => `<label class="check linechk"><input type="checkbox" value="${esc(d.line)}" ${lineSel.includes(d.line) ? "checked" : ""}>` +
-      `<span>${esc(d.label)}</span><small>${d.roles.join(" + ")}</small></label>`;
-    const broadL = lineList.lines.filter((d) => d.roles.includes("broad")), narrowL = lineList.lines.filter((d) => !d.roles.includes("broad"));
-    $("lo-lines").innerHTML = (broadL.length ? `<div class="linegroup">With broad components</div>${broadL.map(row).join("")}` : "") +
-      (narrowL.length ? `<div class="linegroup">Narrow lines</div>${narrowL.map(row).join("")}` : "") || '<p class="note small">No fitted lines.</p>';
-    $("lo-lines").querySelectorAll("input").forEach((el) => (el.onchange = () => {
-      lineSel = el.checked ? lineSel.concat(el.value) : lineSel.filter((l) => l !== el.value);
-      const order = lineList.lines.map((d) => d.line);        // panels by wavelength
-      lineSel.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-      linesChanged();
-    }));
+    renderLinePick();
   }
   const none = !lineSel.length;
   const F = fitDone(), epochs = !!(F && ["joint", "fits"].includes(F.kind) && F.epochs && F.epochs.length > 1);
@@ -1888,17 +2232,18 @@ async function refreshCode(box, pre, url) {
 const figCodeUrl = () => figUrl("png").replace("/api/wf/figure.png", "/api/wf/figure_code");
 // ---- the Python code of the plot of the other Results views (viewcode.py), following what the view shows
 let fitRange = null;
-const OWN_CODE = new Set(["figure", "lines", "corr", "sdiag"]);     // these views have a code box of their own (or no plot)
+const OWN_CODE = new Set(["figure", "corr", "sdiag"]);     // these views have a code box of their own (or no plot)
 function viewCodeUrl() {
   const F = fitDone(), kind = F && F.kind;
-  if (!F || OWN_CODE.has(rv) || (kind === "sample" && rv !== "atlas") || (kind === "classify" && rv !== "class")) return null;
-  const q = new URLSearchParams({ view: rv, k: rk, v: S.cells.length });     // v: new code after a new fit
+  if (!F || OWN_CODE.has(rv) || (kind === "sample" && !["atlas", "lines", "checks"].includes(rv)) || (kind === "classify" && rv !== "class")) return null;
+  const q = new URLSearchParams({ view: rv, k: fitK(), v: S.cells.length });     // v: new code after a new fit
   const set = (o) => Object.entries(o).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== "") q.set(k, v); });
   if (rv === "fit") set({ xmin: fitRange && fitRange[0], xmax: fitRange && fitRange[1], hide: [...hiddenSeries].join(",") });
   else if (rv === "anatomy" && AN.F) {
     const whole = AN.view[0] <= AN.F.x[0] && AN.view[1] >= AN.F.x[AN.F.x.length - 1];
     set({ xmin: whole ? null : Math.round(AN.view[0]), xmax: whole ? null : Math.round(AN.view[1]), off: [...AN.off].join(","), solo: AN.solo, peel: AN.peel || null });
   } else if (rv === "feii" && window.FX && FX.state) set(FX.state());
+  else if (rv === "lines" && window.LV) set(LV.state());
   else if (rv === "degen") set({ th: DG.th, scope: DG.scope });
   else if (rv === "atlas" && AT.data) set({ order: atShown().map((o) => o.k).join(","), common: AT.common ? 1 : 0, same: AT.same ? 1 : 0 });
   else if (rv === "posterior") set({ params: [...$("cornerparams").querySelectorAll("input:checked")].map((c) => c.value).join(",") });
@@ -1969,6 +2314,7 @@ function drawFit(el, legendEl, P, hidden, redraw) {
     else if (s.role === "balmer") color = C.balmer;
     else if (s.role === "broad") color = C.broad[bi++ % C.broad.length];
     else if (s.role === "narrow") color = C.narrow;
+    else if (s.role === "coronal") color = C.coronal;
     else if (s.role === "outflow") color = C.outflow;
     else if (s.role === "host") color = C.host;
     else if (s.role === "continuum") { color = C.continuum; dash = "5 4"; }
@@ -1978,13 +2324,44 @@ function drawFit(el, legendEl, P, hidden, redraw) {
     layers.push({ y: s.y, color, width: 1.3, dash, fill: s.role === "feii", name: s.name, label, hidden: hidden.has(s.name) });
   }
   layers.push({ y: P.model, color: C.model, width: 1.2, name: "model", label: "model", range: true, hidden: hidden.has("model") });
+  const main = el.id === "rplot";
   plotSpectrum(el, { x: P.x, layers, zero: true, resid: P.resid, labels: P.labels, hatch: P.masked,
-    bands: el.id === "rplot" ? residBands() : [] });
-  legend(legendEl, layers, hidden, redraw);
+    bands: main ? residBands() : [], rich: main, onLabel: main && resultViews().includes("lines") ? openLineProfile : null });
+  legend(legendEl, layers, hidden, redraw, main ? el : null);
 }
-function legend(el, layers, hidden, redraw) {
+function legend(el, layers, hidden, redraw, plotEl) {
   el.innerHTML = layers.map((l) => `<span data-s="${esc(l.name)}" class="${l.hidden ? "off" : ""}"><i class="${l.dash ? "dash" : ""}" style="border-color:${l.color}"></i>${esc(l.label || l.name)}</span>`).join("");
-  el.querySelectorAll("span").forEach((s) => (s.onclick = () => { const n = s.dataset.s; hidden.has(n) ? hidden.delete(n) : hidden.add(n); redraw(); }));
+  el.querySelectorAll("span").forEach((s) => {
+    s.onclick = () => { const n = s.dataset.s; hidden.has(n) ? hidden.delete(n) : hidden.add(n); plotFocus.delete(plotEl); redraw(); };
+    // pointing at an entry brings that curve forward and fades the others
+    if (plotEl) {
+      s.onmouseenter = () => { if (hidden.has(s.dataset.s) || s.dataset.s === "data") return; plotFocus.set(plotEl, s.dataset.s); drawPlotEl(plotEl); };
+      s.onmouseleave = () => { if (plotFocus.get(plotEl) === undefined) return; plotFocus.delete(plotEl); drawPlotEl(plotEl); };
+    }
+  });
+}
+const plotFocus = new Map();       // plot element -> the layer whose legend entry is under the pointer
+// a line label of the Results plot: that line in Results › Line profiles
+function openLineProfile(line) {
+  if (window.LV) LV.open(line);
+  rv = "lines"; loadResult();
+}
+// quick ranges of the Results plot: the regions of the main lines the spectrum covers
+const ZOOM_REGIONS = [["Lyα", 1170, 1290], ["C IV", 1450, 1650], ["C III]", 1820, 1980], ["Mg II", 2650, 2950], ["Hγ", 4220, 4460],
+  ["Hβ · [O III]", 4600, 5120], ["Fe II", 5100, 5600], ["He I", 5800, 5950], ["Hα · [N II]", 6400, 6780], ["[S II]", 6680, 6770]];
+function renderZoomChips(el, box) {
+  const st = plots.get(el);
+  if (!st || !st.cfg || !st.cfg.x.length) { box.innerHTML = ""; return; }
+  const x = st.cfg.x, lo = x[0], hi = x[x.length - 1], v = st.view;
+  const regs = ZOOM_REGIONS.filter(([, a, b]) => a >= lo - 20 && b <= hi + 20);
+  if (!regs.length) { box.innerHTML = ""; return; }
+  const on = (a, b) => v && Math.abs(v[0] - a) < 1 && Math.abs(v[1] - b) < 1;
+  box.innerHTML = `<button type="button" class="${v ? "" : "on"}" data-z="">All</button>` +
+    regs.map(([n, a, b]) => `<button type="button" class="${on(a, b) ? "on" : ""}" data-z="${a},${b}">${esc(n)}</button>`).join("");
+  box.querySelectorAll("button").forEach((btn) => (btn.onclick = () => {
+    const z = btn.dataset.z ? btn.dataset.z.split(",").map(Number) : null;
+    st.view = z; drawPlotEl(el); el.dispatchEvent(new CustomEvent("plotview", { detail: z }));
+  }));
 }
 // ------------------------------------------------- light curves, reverberation
 // Light curves & lags: a driver and a responder light curve, the responder shifted back by tau, and the
@@ -2384,7 +2761,7 @@ function renderReverb() {
     R.lags.map((q) => `<tr class="${q.adopted ? "sel" : ""}"><td>${esc(q.method)}${q.adopted ? ' <span class="badge ok">adopted</span>' : ""}</td><td class="num">${esc(q.lag)}</td><td class="num">${sigCell(q)}</td><td class="num">${esc(q.r_max)}</td><td class="num">${esc(q.outside)}</td></tr>`).join("") + "</tbody>";
   const A = R.lags.find((q) => q.adopted);
   $("rvwarn").classList.toggle("hidden", !R.warnings.length);
-  if (A && A.sig_value !== null && A.sig_value !== undefined && R.warnings.length) $("rvwarn").innerHTML = `<div><b>Read the lag with care.</b><ul style="margin:4px 0 0">${R.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>`;
+  if (A && A.sig_value !== null && A.sig_value !== undefined && R.warnings.length) $("rvwarn").innerHTML = `<div><b>Read the lag and the rms width with care.</b><ul style="margin:4px 0 0">${R.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>`;
   const src = withToken(`/api/wf/reverb.png?v=${R.id}`);
   if ($("rvfig").dataset.src !== src) { $("rvfig").dataset.src = src; $("rvfig").src = src; }
 }
@@ -2425,6 +2802,50 @@ async function loadMore(R) {
   }
 }
 // ------------------------------------------------------------- residuals
+// the leftover flux (data - model) around each suggestion of Checks (GET /api/wf/check_snips)
+const CS = { sig: null, data: null, loading: null };
+function checkSnips(part) {
+  const L = S.wf.linescan, Rz = S.wf.residuals, sig = JSON.stringify([L && L.id, Rz && Rz.id, rk]);
+  if (CS.sig === sig) return CS.data && CS.data[part];
+  if (CS.loading !== sig) {
+    CS.loading = sig;
+    api(`/api/wf/check_snips?k=${rk}`).then((d) => { if (CS.loading !== sig) return; CS.sig = sig; CS.data = d; $("lsbox").dataset.sig = ""; $("residtbl").dataset.sig = ""; renderLines(); renderResid(); })
+      .catch(() => { CS.sig = sig; CS.data = null; });
+  }
+  return null;
+}
+function snipSvg(sn, o = {}) {
+  const W = 300, H = 76, P = 4;
+  const xs = sn.x.concat(sn.add ? sn.add.x : []), x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let lo = 0, hi = 0;
+  sn.d.forEach((d, i) => { lo = Math.min(lo, d - sn.e[i]); hi = Math.max(hi, d + sn.e[i]); });
+  if (sn.add) sn.add.y.forEach((v) => { hi = Math.max(hi, v); });
+  const pad = (hi - lo) * 0.08 || 1;
+  lo -= pad; hi += pad;
+  const X = (x) => (P + (x - x0) / (x1 - x0 || 1) * (W - 2 * P)).toFixed(1), Y = (y) => (P + (hi - y) / (hi - lo) * (H - 2 * P)).toFixed(1);
+  let g = "";
+  if (o.band) g += `<rect x="${X(o.band[0])}" y="0" width="${Math.max(1, X(o.band[1]) - X(o.band[0])).toFixed(1)}" height="${H}" fill="${o.tint || "rgba(212,71,42,.12)"}"/>`;
+  g += `<line x1="0" x2="${W}" y1="${Y(0)}" y2="${Y(0)}" stroke="#cfd3d9" stroke-width="1"/>`;
+  // runs of pixels without a masked gap: no line across a gap
+  const dx = sn.x.slice(1).map((x, i) => x - sn.x[i]).sort((a, b) => a - b), gap = 3 * (dx[dx.length >> 1] || 1), runs = [[]];
+  sn.x.forEach((x, i) => { if (i && x - sn.x[i - 1] > gap) runs.push([]); runs[runs.length - 1].push(i); });
+  for (const run of runs) {
+    if (run.length < 2) continue;
+    const up = run.map((i) => `${X(sn.x[i])},${Y(sn.d[i] + sn.e[i])}`), dn = run.map((i) => `${X(sn.x[i])},${Y(sn.d[i] - sn.e[i])}`).reverse();
+    g += `<polygon points="${up.concat(dn).join(" ")}" fill="#9b9a95" opacity=".22"/>`;
+    g += `<polyline points="${run.map((i) => `${X(sn.x[i])},${Y(sn.d[i])}`).join(" ")}" fill="none" stroke="#4a5160" stroke-width="1.1" stroke-linejoin="round"/>`;
+  }
+  if (sn.add) g += `<polygon points="${X(sn.add.x[0])},${Y(0)} ${sn.add.x.map((x, i) => `${X(x)},${Y(sn.add.y[i])}`).join(" ")} ${X(sn.add.x[sn.add.x.length - 1])},${Y(0)}" fill="rgba(212,71,42,.13)" stroke="#d4472a" stroke-width="1.4" stroke-dasharray="4 2"/>`;
+  if (o.split && sn.now !== undefined) {
+    g += `<line x1="${X(sn.now)}" x2="${X(sn.now)}" y1="0" y2="${H}" stroke="#7b8290" stroke-width="1" stroke-dasharray="2 2"/>`;
+    if (sn.to !== undefined) {
+      const y = 9, a = +X(sn.now), b = +X(sn.to), dir = b > a ? -1 : 1;
+      g += `<line x1="${X(sn.to)}" x2="${X(sn.to)}" y1="0" y2="${H}" stroke="#d4472a" stroke-width="1.3"/>` +
+        `<line x1="${a}" x2="${b}" y1="${y}" y2="${y}" stroke="#d4472a" stroke-width="1.3"/><path d="M${b},${y} l${dir * 5},-3.5 v7 z" fill="#d4472a"/>`;
+    }
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="data minus model around the feature">${g}</svg>`;
+}
 const RES_TINT = { emission: "rgba(15,143,126,.16)", absorption: "rgba(212,71,42,.14)", continuum: "rgba(168,117,0,.12)", sky: "rgba(120,126,140,.16)" };
 const appliedRes = new Set();
 function residRows() {
@@ -2462,17 +2883,17 @@ function renderResid() {
   $("residnote").textContent = Rz.rows.length ? `${Rz.rows.length} feature${Rz.rows.length > 1 ? "s" : ""} above the threshold` +
     (Rz.scope === "all" && many ? ` in ${Rz.n_epochs} epochs (most frequent first; the plot marks those of the shown epoch).` : ".")
     : "No significant residual features: the model describes the data down to the noise.";
-  $("residtbl").innerHTML = '<thead><tr><th>#</th><th class="num">λ (Å)</th><th>Kind</th><th class="num">σ</th><th class="num">FWHM</th><th>Line</th>' +
-    (many && Rz.scope === "all" ? '<th class="num">Epochs</th>' : "") + "<th>Suggestion</th><th></th></tr></thead><tbody>" +
-    Rz.rows.map((r) => {
-      const done = appliedRes.has(`${Rz.id}:${r.i}`);
-      return `<tr class="${done ? "applied" : ""}"><td class="mono">${r.i + 1}</td><td class="num">${fmtNum(r.center, 5)}</td>` +
-        `<td><span class="badge k-${r.kind}">${esc(r.kind)}</span></td><td class="num">${r.sigma.toFixed(1)}</td><td class="num">${Math.round(r.fwhm)}</td>` +
-        `<td>${r.line ? `<b>${esc(prettyLine(r.line))}</b>${r.in_model ? ' <small class="muted">in model</small>' : ""}` : '<span class="muted">—</span>'}</td>` +
-        (many && Rz.scope === "all" ? `<td class="num">${r.epochs.length}/${Rz.n_epochs}</td>` : "") +
-        `<td class="sugg">${esc(r.suggestion)}${r.code ? `<code>${esc(r.code)}</code>` : ""}</td>` +
-        `<td>${r.action ? `<button class="btn small" data-apply="${r.i}" ${done || S.busy ? "disabled" : ""}>${done ? "Applied" : "Apply"}</button>` : ""}</td></tr>`;
-    }).join("") + "</tbody>";
+  const snR = checkSnips("resid");
+  $("residtbl").innerHTML = Rz.rows.map((r) => {
+      const done = appliedRes.has(`${Rz.id}:${r.i}`), sn = snR && snR[r.i];
+      return `<div class="sgcard${done ? " applied" : ""}"><div class="sghead"><span class="sgno">${r.i + 1}</span>` +
+        `<b>${r.line ? esc(prettyLine(r.line)) : `${fmtNum(r.center, 5)} Å`}</b>${r.in_model ? '<small class="muted">in model</small>' : ""}<span class="grow"></span><span class="badge k-${r.kind}">${esc(r.kind)}</span></div>` +
+        `<div class="sgplot">${sn ? snipSvg(sn, { band: [r.lo, r.hi], tint: RES_TINT[r.kind] }) + (many && sn.ep !== undefined ? `<span class="sgep">epoch #${sn.ep}</span>` : "") : '<span class="muted small">…</span>'}</div>` +
+        `<div class="sgmeta"><span><b>${r.sigma.toFixed(1)}σ</b> significance</span><span>${fmtNum(r.center, 5)} Å</span><span>FWHM ${Math.round(r.fwhm)} km/s</span>` +
+        (many && Rz.scope === "all" ? `<span>in ${r.epochs.length}/${Rz.n_epochs} epochs</span>` : "") + `</div>` +
+        `<p class="sgtext">${esc(r.suggestion)}</p>${r.code ? `<code class="sgcode">${esc(r.code)}</code>` : ""}` +
+        (r.action ? `<div class="sgfoot"><button class="btn small${done ? "" : " primary"}" data-apply="${r.i}" ${done || S.busy ? "disabled" : ""}>${done ? "Applied ✓" : "Apply"}</button></div>` : "") + `</div>`;
+    }).join("");
   $("residtbl").querySelectorAll("[data-apply]").forEach((b) => (b.onclick = () => applyResid(Rz.rows[+b.dataset.apply], Rz.id)));
   const n = [...appliedRes].filter((k) => k.startsWith(Rz.id + ":")).length;
   $("residfoot").classList.toggle("hidden", !n);
@@ -2500,10 +2921,12 @@ function renderLines() {
   if (!L) return;
   const cell = S.cells[S.cells.length - 1];
   const running = !!(S.busy && cell && cell.code.startsWith("# add lines and refit"));
-  const sig = JSON.stringify([L.id, L.rows.map((r) => r.added), !!S.busy, running, S.progress && [S.progress.task, S.progress.done]]);
+  if (lsPick.id !== L.id) { lsPick.id = L.id; lsPick.set.clear(); }      // a new search: nothing selected
+  const sig = JSON.stringify([L.id, L.rows.map((r) => r.added), [...lsPick.set], !!S.busy, running, S.progress && [S.progress.task, S.progress.done]]);
   if (box.dataset.sig === sig) return;
   box.dataset.sig = sig;
-  const epoch = L.trial !== null && L.trial !== undefined;
+  const epoch = L.trial !== null && L.trial !== undefined, multi = !!L.n_epochs;
+  $("lshint").textContent = multi ? `fa.suggest_lines(${(fitDone() || {}).kind === "fits" ? "fits[k]" : "me.epochs[k]"}) for every k` : "fa.suggest_lines(r)";
   $("lsrefit").classList.add("hidden");
   if (running) {                     // the rows of the fit being replaced stay, greyed, until the new fit is in
     $("lsnote").textContent = `Changing ${lsAdding.map(prettyLine).join(", ")} and fitting ${epoch ? `epoch #${L.trial} ` : ""}again with the options of the last fit…` +
@@ -2521,30 +2944,55 @@ function renderLines() {
   const what = [nAdd ? `${plural(nAdd, "library line", "library lines")} the model lacks` : "",
     nSplit ? `${plural(nSplit, "line", "lines")} of the model whose velocity differs from the other lines of ${nSplit > 1 ? "their" : "its"} component` : ""].filter(Boolean).join(", and ");
   if (!running) $("lsnote").textContent = left.length
-    ? `Changes that lower the BIC by more than 10, measured on the residuals of this fit (no refit): ${what}. ` +
-      (nAdd ? "Add & refit adds a line with the width and shift of the component it was found with (one parameter, its flux). " : "") +
-      (nSplit ? "Separate & refit moves the line (with its doublet) to a component of its own, with its own shift and width (Model.split_lines). " : "") +
-      `Then it fits again with the options of the last fit${epoch ? ` (epoch #${L.trial} only, the trial fit; the epochs are fitted together from the Fit step)` : ""}; the list comes from the new fit.`
+    ? `Changes that lower the BIC by more than 10, measured on the residuals of ${multi ? `each of the ${L.n_epochs} epochs, most frequent first (the sketch: the shown epoch, or the epoch where the change helps most)` : "this fit"} (no refit): ${what}. ` +
+      (nAdd ? `${multi ? "An added line takes" : "Add & refit adds a line with"} the width and shift of the component it was found with (one parameter, its flux). ` : "") +
+      (nSplit ? `${multi ? "A separated line moves" : "Separate & refit moves the line"} (with its doublet) to a component of its own, with its own shift and width (Model.split_lines). ` : "") +
+      (multi ? "Select the changes you want: they are made together and all epochs are fitted again once, with the options of the last fit (and any change applied below); the list comes from the new fit."
+        : `Then it fits again with the options of the last fit${epoch ? ` (epoch #${L.trial} only, the trial fit; the epochs are fitted together from the Fit step)` : ""}; the list comes from the new fit.`)
     : "All of them are in the model, but this fit is older than the model: fit again to see the effect.";
-  $("lsall").disabled = !left.length || !!S.busy;
-  $("lsall").classList.toggle("hidden", left.length < 2);
-  $("lsall").textContent = running && lsAdding.length > 1 ? "Refitting…" : "Apply all & refit";
+  const picked = left.filter((r) => lsPick.set.has(r.line));
+  if (multi) {
+    $("lsall").disabled = !picked.length || !!S.busy;
+    $("lsall").classList.toggle("hidden", !left.length && !running);
+    $("lsall").classList.toggle("primary", !!picked.length);
+    $("lsall").textContent = running ? "Refitting…" : picked.length ? `Apply ${plural(picked.length, "change", "changes")} & refit all epochs` : "Select changes to apply";
+    $("lspick").classList.toggle("hidden", left.length < 2 || running);
+    $("lspick").textContent = picked.length === left.length ? "Clear" : "Select all";
+  } else {
+    $("lspick").classList.add("hidden");
+    $("lsall").classList.remove("primary");
+    $("lsall").disabled = !left.length || !!S.busy;
+    $("lsall").classList.toggle("hidden", left.length < 2);
+    $("lsall").textContent = running && lsAdding.length > 1 ? "Refitting…" : "Apply all & refit";
+  }
   if (!left.length && !running) { $("lsrefit").classList.remove("hidden"); $("lsrefit").disabled = !!S.busy; }
-  $("lstbl").innerHTML = '<thead><tr><th>Line</th><th>Type</th><th class="num">λ (Å)</th><th>Change</th><th class="num">S/N</th><th class="num">ΔBIC</th><th></th></tr></thead><tbody>' +
-    L.rows.map((r, i) => {
-      const now = running && lsAdding.includes(r.line), split = r.action === "split";
+  const snL = checkSnips("lines"), maxB = Math.max(30, ...L.rows.map((r) => Math.abs(r.dbic || 0)));
+  $("lstbl").innerHTML = L.rows.map((r, i) => {
+      const now = running && lsAdding.includes(r.line), split = r.action === "split", sn = snL && snL[i];
       const change = split
-        ? `own velocity: <b>${r.dv > 0 ? "+" : "−"}${Math.abs(r.dv).toFixed(0)} km/s</b> from <span class="mono">${esc(r.component)}</span>`
-        : `add, with the width and shift of <span class="mono">${esc(r.component)}</span> <small class="muted">${esc(r.role)}</small>`;
-      const btn = now ? "Refitting…" : r.added ? (split ? "Separated" : "Added") : (split ? "Separate & refit" : "Add & refit");
-      return `<tr class="${r.added || now ? "applied" : ""}"><td><b>${esc(lsName(r))}</b> <small class="muted">${esc(r.ion)}</small></td>` +
-        `<td>${esc(LS_TYPE[r.type] || r.type)}</td><td class="num">${r.wave.toFixed(1)}</td><td>${change}</td>` +
-        `<td class="num">${r.snr === null ? "—" : r.snr.toFixed(1)}</td><td class="num">${r.dbic.toFixed(0)}</td>` +
-        `<td><button class="btn small" data-ls="${i}" ${r.added || S.busy ? "disabled" : ""}>${btn}</button></td></tr>`;
-    }).join("") + "</tbody>";
-  $("lstbl").querySelectorAll("[data-ls]").forEach((b) => (b.onclick = () => addLines([L.rows[+b.dataset.ls].line])));
+        ? `own velocity <b>${r.dv > 0 ? "+" : "−"}${Math.abs(r.dv).toFixed(0)} km/s</b> from <span class="mono">${esc(r.component)}</span>`
+        : `width and shift of <span class="mono">${esc(r.component)}</span> <small class="muted">${esc(r.role)}</small>`;
+      const pick = multi && lsPick.set.has(r.line) && !r.added;
+      const btn = now ? "Refitting…" : r.added ? (split ? "Separated ✓" : "Added ✓") : multi ? (pick ? "Selected ✓" : "Select") : (split ? "Separate & refit" : "Add & refit");
+      const db = Math.abs(r.dbic || 0), w = Math.log10(1 + db) / Math.log10(1 + maxB) * 100, tick = Math.log10(11) / Math.log10(1 + maxB) * 100;
+      return `<div class="sgcard${r.added || now ? " applied" : ""}${now ? " running" : ""}${pick ? " picked" : ""}"><div class="sghead"><b>${esc(lsName(r))}</b><small class="muted">${esc(r.ion)} · ${esc(LS_TYPE[r.type] || r.type)}</small><span class="grow"></span>` +
+        `<span class="sgact ${split ? "split" : "add"}">${split ? "separate" : "add"}</span></div>` +
+        `<div class="sgplot">${sn ? snipSvg(sn, { split }) + (multi && sn.ep !== undefined ? `<span class="sgep">epoch #${sn.ep}</span>` : "") : '<span class="muted small">…</span>'}</div>` +
+        `<div class="sgbic" title="how much the BIC drops with this change; more than 10 (the tick) is strong evidence"><span>ΔBIC</span><em><i style="width:${w.toFixed(1)}%"></i><b style="left:${tick.toFixed(1)}%"></b></em><strong>−${db.toFixed(0)}</strong></div>` +
+        `<div class="sgmeta"><span>${r.wave.toFixed(1)} Å</span>${r.snr === null ? "" : `<span>S/N <b>${r.snr.toFixed(1)}</b>${multi ? ` <small class="muted">(#${r.ep})</small>` : ""}</span>`}` +
+        `${multi && r.epochs ? `<span title="epochs where it lowers the BIC by more than 10: ${r.epochs.map((k) => "#" + k).join(", ")}">in <b>${r.epochs.length}/${L.n_epochs}</b> epochs</span>` : ""}</div>` +
+        `<p class="sgtext">${split ? "Give it " : "Add it with the "}${change}</p>` +
+        `<div class="sgfoot"><button class="btn small${r.added || now || (multi && !pick) ? "" : " primary"}" data-ls="${i}" ${r.added || S.busy ? "disabled" : ""}${multi ? ` aria-pressed="${pick}"` : ""}>${btn}</button></div></div>`;
+    }).join("");
+  $("lstbl").querySelectorAll("[data-ls]").forEach((b) => (b.onclick = () => {
+    const ln = L.rows[+b.dataset.ls].line;
+    if (!multi) return addLines([ln]);
+    lsPick.set.has(ln) ? lsPick.set.delete(ln) : lsPick.set.add(ln);    // a multi-epoch refit is expensive: collect, then apply once
+    renderLines();
+  }));
 }
 let lsAdding = [];
+const lsPick = { id: null, set: new Set() };       // multi-epoch: the suggestions chosen for one refit
 async function addLines(lines) {
   lsAdding = lines;
   if (await post("/api/wf/addlines", { lines, refit: true })) toast(`Changed ${lines.map(prettyLine).join(", ")}: fitting again…`);
@@ -2876,11 +3324,78 @@ function checkStatus() {
   }
   return out;
 }
+// ---- Checks of one spectrum of a sample: fa.analyze_residuals and fa.suggest_lines of its fit (read only: each
+// spectrum has its own model, so the changes are given as code that refits that spectrum)
+const SC = { k: null, sig: null, D: null, use: new Set() };
+async function loadSampleChecks(k) {
+  const sig = `${S.sample && S.sample.id}|${k}`;
+  if (SC.sig === sig) return;                     // already shown: a poll must not rebuild it (a selection in the code)
+  Object.assign(SC, { sig, k, D: null, use: new Set(), code: "" });
+  renderSampleChecks();
+  let d;
+  try { d = await api(`/api/wf/sample_checks?k=${k}`); } catch (e) { d = { error: String(e.message || e) }; }
+  if (SC.sig !== sig) return;
+  SC.D = d;
+  (d.lines || []).forEach((r, i) => { if ((r.dbic ?? 0) < -10) SC.use.add(`l${i}`); });
+  renderSampleChecks();
+  renderChecks();
+}
+async function scCode() {                         // the refit code of the chosen changes (combined on the server)
+  const ids = (p) => [...SC.use].filter((id) => id[0] === p).map((id) => id.slice(1)).join(",");
+  const sig = `${SC.sig}|${[...SC.use].sort()}`;
+  if (SC.codeSig === sig) return;
+  SC.codeSig = sig;
+  let code;
+  try { code = (await api(`/api/wf/sample_checks_code?k=${SC.k}&lines=${ids("l")}&resid=${ids("r")}`)).code; } catch (e) { code = `# ${e.message || e}`; }
+  if (SC.codeSig === sig && $("sccode")) $("sccode").textContent = SC.code = code;
+}
+function renderSampleChecks() {
+  const box = $("scheckcard");
+  if (!box) return;
+  const D = SC.D, R = resultData;
+  if (R && R.error) { $("scbody").innerHTML = '<p class="muted">This spectrum was not fitted, so there is nothing to check.</p>'; $("schead").textContent = R.name || ""; return; }
+  if (!D) { $("scbody").innerHTML = '<div class="empty">Looking at the residuals of this fit…</div>'; return; }
+  if (D.error) { $("scbody").innerHTML = `<p class="muted">${esc(D.error)}</p>`; return; }
+  $("schead").textContent = `${D.name} · χ²ᵣ ${D.rchi2 != null ? D.rchi2.toFixed(2) : "—"}`;
+  const maxB = Math.max(30, ...D.lines.map((r) => Math.abs(r.dbic || 0)));
+  const btn = (id) => `<button class="btn small${SC.use.has(id) ? " primary" : ""}" data-scuse="${id}" aria-pressed="${SC.use.has(id)}">${SC.use.has(id) ? "In the code ✓" : "Use"}</button>`;
+  const lines = D.lines.map((r, i) => {
+    const split = r.action === "split", db = Math.abs(r.dbic || 0);
+    const w = Math.log10(1 + db) / Math.log10(1 + maxB) * 100, tick = Math.log10(11) / Math.log10(1 + maxB) * 100;
+    const change = split ? `own velocity <b>${r.dv > 0 ? "+" : "−"}${Math.abs(r.dv).toFixed(0)} km/s</b> from <span class="mono">${esc(r.component)}</span>`
+      : `width and shift of <span class="mono">${esc(r.component)}</span> <small class="muted">${esc(r.role)}</small>`;
+    return `<div class="sgcard${SC.use.has(`l${i}`) ? " picked" : ""}"><div class="sghead"><b>${esc(lsName(r))}</b><small class="muted">${esc(r.ion)} · ${esc(LS_TYPE[r.type] || r.type)}</small><span class="grow"></span>` +
+      `<span class="sgact ${split ? "split" : "add"}">${split ? "separate" : "add"}</span></div>` +
+      `<div class="sgplot">${r.snip ? snipSvg(r.snip, { split }) : '<span class="muted small">no data here</span>'}</div>` +
+      `<div class="sgbic" title="how much the BIC drops with this change; more than 10 (the tick) is strong evidence"><span>ΔBIC</span><em><i style="width:${w.toFixed(1)}%"></i><b style="left:${tick.toFixed(1)}%"></b></em><strong>−${db.toFixed(0)}</strong></div>` +
+      `<div class="sgmeta"><span>${r.wave.toFixed(1)} Å</span>${r.snr === null ? "" : `<span>S/N <b>${r.snr.toFixed(1)}</b></span>`}</div>` +
+      `<p class="sgtext">${split ? "Give it " : "Add it with the "}${change}</p><div class="sgfoot">${btn(`l${i}`)}</div></div>`;
+  }).join("");
+  const resid = D.resid.map((r, i) => `<div class="sgcard${SC.use.has(`r${i}`) ? " picked" : ""}"><div class="sghead"><span class="sgno">${i + 1}</span>` +
+      `<b>${r.line ? esc(prettyLine(r.line)) : `${fmtNum(r.center, 5)} Å`}</b>${r.in_model ? '<small class="muted">in model</small>' : ""}<span class="grow"></span><span class="badge k-${r.kind}">${esc(r.kind)}</span></div>` +
+      `<div class="sgplot">${r.snip ? snipSvg(r.snip, { band: [r.lo, r.hi], tint: RES_TINT[r.kind] }) : '<span class="muted small">no data here</span>'}</div>` +
+      `<div class="sgmeta"><span><b>${r.sigma.toFixed(1)}σ</b> significance</span><span>${fmtNum(r.center, 5)} Å</span><span>FWHM ${Math.round(r.fwhm)} km/s</span></div>` +
+      `<p class="sgtext">${esc(r.suggestion)}</p>${r.code && r.code.startsWith("model.") ? `<div class="sgfoot">${btn(`r${i}`)}</div>` : r.code ? `<code class="sgcode">${esc(r.code)}</code>` : ""}</div>`).join("");
+  const nStrong = D.lines.filter((r) => (r.dbic ?? 0) < -10).length;
+  $("scbody").innerHTML =
+    `<h3 class="sc-h">Lines to add or separate <small class="muted">fa.suggest_lines(r)</small></h3>` +
+    (D.lines.length ? `<p class="muted small">${D.lines.length} change${D.lines.length > 1 ? "s" : ""} the BIC prefers${nStrong ? `; the ${nStrong} with ΔBIC below −10 are in the code below` : ""}.</p><div class="sggrid">${lines}</div>` : '<p class="muted small">No line is missing and none needs a velocity of its own.</p>') +
+    `<h3 class="sc-h">Does the model miss anything? <small class="muted">fa.analyze_residuals(r)</small></h3>` +
+    (D.resid.length ? `<p class="muted small">${D.resid.length} feature${D.resid.length > 1 ? "s" : ""} above 4σ in the residuals.</p><div class="sggrid">${resid}</div>` : `<p class="muted small">${D.resid_error ? esc(D.resid_error) : "No significant residual features: the model describes the data down to the noise."}</p>`) +
+    `<h3 class="sc-h">Refit this spectrum with the changes</h3><p class="muted small">Each spectrum of a sample has its own model, so the changes are not applied here: run this code (in the session's notebook or a script) and keep the change when the BIC drops by more than 10.</p>` +
+    `<pre class="code" id="sccode">${esc(SC.code || "")}</pre><button class="btn small" type="button" id="sccopy">Copy</button>`;
+  SC.codeSig = null; scCode();
+  $("scbody").querySelectorAll("[data-scuse]").forEach((b) => (b.onclick = () => {
+    const id = b.dataset.scuse; SC.use.has(id) ? SC.use.delete(id) : SC.use.add(id); renderSampleChecks();
+  }));
+  $("sccopy").onclick = async () => { try { await navigator.clipboard.writeText($("sccode").textContent); toast("Code copied"); } catch (e) { toast("Select the code and copy it"); } };
+}
 function renderChecks() {
   const st = checkStatus(), cell = S.cells[S.cells.length - 1];
-  let n = 0;
+  let n = 0, no = 0;
   CHECKS.forEach(([id, tag]) => {
     const card = $(id), s = st[id];
+    if (!card.classList.contains("hidden")) { const sn = card.querySelector(".stepno"); if (sn) sn.textContent = ++no; }   // 1, 2, … over the cards shown
     const running = !!(S.busy && cell && [].concat(tag).some((t) => cell.code.startsWith(t)) && !card.classList.contains("hidden"));
     if (running && !ckRunning[id]) ckOpen[id] = true;     // a run opens its card and leaves it open
     ckRunning[id] = running;
@@ -2892,6 +3407,8 @@ function renderChecks() {
     chip.textContent = running ? "running" : s.text;
     if (s.state === "attention" && !card.classList.contains("hidden")) n++;
   });
+  if (fitDone() && fitDone().kind === "sample")       // a sample: the checks of the shown spectrum, once looked at
+    n = SC.D && !SC.D.error && SC.k === sk ? SC.D.lines.filter((r) => (r.dbic ?? 0) < -10).length + SC.D.resid.length : 0;
   $("checkcount").textContent = n || "";
   $("checkcount").classList.toggle("hidden", !n);
   $("checkcount").title = n ? `${plural(n, "check needs", "checks need")} attention` : "";
@@ -3288,7 +3805,19 @@ function initCompare() {
 function initResid() {
   $("residrun").onclick = () => post("/api/wf/residuals", { scope: $("rscope").value, nsigma: +$("rnsig").value });
   $("residrefit").onclick = () => go("fit");
-  $("lsall").onclick = () => { const L = S.wf.linescan; if (L) addLines(L.rows.filter((r) => !r.added).map((r) => r.line)); };
+  $("lsall").onclick = () => {
+    const L = S.wf.linescan;
+    if (!L) return;
+    const left = L.rows.filter((r) => !r.added);
+    addLines((L.n_epochs ? left.filter((r) => lsPick.set.has(r.line)) : left).map((r) => r.line));
+  };
+  $("lspick").onclick = () => {
+    const L = S.wf.linescan;
+    if (!L) return;
+    const left = L.rows.filter((r) => !r.added).map((r) => r.line);
+    if (left.every((ln) => lsPick.set.has(ln))) lsPick.set.clear(); else left.forEach((ln) => lsPick.set.add(ln));
+    renderLines();
+  };
   $("lsrefit").onclick = () => go("fit");   // only when the lines were added without a refit (from code)
   initRobust();
   initFeii();
@@ -3351,9 +3880,75 @@ function statusBadge(s) {
 const CLASS_COLOR = { type1: "#2563c9", type1_host: "#3a9bd5", seyfert2: "#d4472a", liner: "#a87500", composite: "#7b3fd0",
   starforming: "#0f8f7e", retired: "#b8458f", passive: "#6b7280", unknown: "#9aa1ad" };
 const hidC = { star: new Set(), ha: new Set(), lines: new Set() };
+const DIAG_NAME = { nii: "[N II] BPT", sii: "[S II] BPT", oi: "[O I] BPT", whan: "WHAN" };
+const REG_TONE = { "star-forming": "sf", SF: "sf", composite: "comp", AGN: "agn", Seyfert: "agn", sAGN: "agn", LINER: "liner", wAGN: "liner", retired: "ret", passive: "ret" };
+// several epochs (or spectra): the class over all of them in words, a timeline coloured by class, how each diagram
+// places them, and the broad-line S/N against the detection limit of fa.classify_fit
+function renderClassSummary(d) {
+  const L = d.labels, n = L.length, el = $("csum");
+  const name = (c) => CLASS_NAME[c] || c, fin = d.stage === "final";
+  const count = {};
+  L.forEach((x) => (count[x.label] = (count[x.label] || 0) + 1));
+  const order = Object.keys(count).sort((a, b) => count[b] - count[a]);
+  const top = order[0], ks = (c) => L.filter((x) => x.label === c).map((x) => "#" + x.k).join(", ");
+  const t1 = L.filter((x) => x.label.startsWith("type1")), unc = L.filter((x) => x.uncertain).length;
+  const head = order.length === 1 ? `${esc(name(top))} in ${n === 2 ? "both" : "all " + n} epochs` : `${esc(name(top))} in ${count[top]} of ${n} epochs`;
+  let sub = order.length === 1 ? "The class does not change between the epochs." :
+    "The class changes: " + order.slice(1).map((c) => `<b>${esc(name(c))}</b> in ${ks(c)}`).join("; ") + ".";
+  if (unc) sub += ` ${unc === n ? "Every class is" : plural(unc, "class is", "classes are")} uncertain.`;
+  let call = "";
+  if (t1.length && t1.length < n)
+    call = `<div class="callout warn small"><div><b>Broad lines in some epochs only</b> (${t1.map((x) => "#" + x.k).join(", ")} of ${n}). A changing-look candidate, ` +
+      `or a broad line near the detection limit: see its S/N below, against the limit of ${CS_SNR} that <code>fa.classify_fit</code> asks.</div></div>`;
+  else if (order.length > 1 && order.every((c) => c.startsWith("type1")))
+    call = `<p class="note small">Only the host share changes between “Type 1” and “with a strong host”: the host fraction at 5100 Å sits near the limit.</p>`;
+  // timeline: by MJD when known, else in order
+  const W = Math.max(300, Math.round(el.clientWidth - 36)), H = 54, m = { l: 14, r: 14 };   // drawn at the card's width
+  const t = L.map((x, i) => (x.mjd ?? i)), t0 = Math.min(...t), t1v = Math.max(...t), span = t1v - t0 || 1;
+  const X = (v) => m.l + (v - t0) / span * (W - m.l - m.r);
+  const line = `<line x1="${m.l}" x2="${W - m.r}" y1="22" y2="22" class="cs-axis"/>`;
+  const dots = L.map((x, i) => `<g class="cs-ep${x.k === d.k ? " sel" : ""}" data-k="${x.k}"><title>#${x.k} ${esc(x.date || "")} ${esc(x.name)}: ${esc(name(x.label))}${x.uncertain ? " (uncertain)" : ""}</title>` +
+    `<circle cx="${X(t[i]).toFixed(1)}" cy="22" r="${x.k === d.k ? 8 : 6.5}" fill="${CLASS_COLOR[x.label] || "#9aa1ad"}"${x.uncertain ? ' stroke-dasharray="2 2"' : ""}/></g>`).join("");
+  const lab = (v, s, a) => `<text x="${X(v).toFixed(1)}" y="${H - 6}" text-anchor="${a}">${esc(s || "")}</text>`;
+  const i0 = t.indexOf(t0), i1 = t.indexOf(t1v);
+  const tl = `<svg class="cs-tl" viewBox="0 0 ${W} ${H}">${line}${dots}${lab(t0, L[i0].date, "start")}${n > 1 ? lab(t1v, L[i1].date, "end") : ""}</svg>`;
+  const legendC = order.map((c) => `<span class="cs-key"><i style="background:${CLASS_COLOR[c] || "#9aa1ad"}"></i>${esc(name(c))} <b>${count[c]}</b></span>`).join("");
+  // each diagram: where the epochs fall
+  const chips = Object.entries(DIAG_NAME).map(([key, nm]) => {
+    const tally = {};
+    L.forEach((x) => { const r = x.regions && x.regions[key]; if (r) tally[r] = (tally[r] || 0) + 1; });
+    const rs = Object.keys(tally).sort((a, b) => tally[b] - tally[a]), got = rs.reduce((a, r) => a + tally[r], 0);
+    const txt = rs.length ? rs.map((r) => `${esc(r)} <span class="muted">${tally[r]}</span>`).join(" · ") + (got < n ? ` <span class="muted">· ${n - got} not measured</span>` : "") : "not measured";
+    return `<button type="button" class="cvchip ${rs.length ? "t-" + (REG_TONE[rs[0]] || "x") : "none"}${rs.length > 1 ? " mixed" : ""}" data-d="${key}"><small>${nm}</small><b>${txt}</b></button>`;
+  }).join("");
+  // broad-line S/N over time
+  const sn = L.map((x, i) => ({ x, v: x.m && x.m.broad_snr, t: t[i] })).filter((p) => p.v !== null && p.v !== undefined);
+  let ser = "";
+  if (sn.length) {
+    const SH = 92, mt = 8, mb = 18, ml = 34, top = Math.max(CS_SNR * 2, ...sn.map((p) => p.v)) * 1.1;
+    const Xs = (v) => ml + (v - t0) / span * (W - ml - m.r), Y = (v) => mt + (1 - Math.max(0, v) / top) * (SH - mt - mb);
+    const ticks = niceTicks(0, top, 3).map((v) => `<text x="${ml - 5}" y="${Y(v) + 3}" text-anchor="end">${v}</text><line x1="${ml}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" class="cs-grid"/>`).join("");
+    ser = `<div class="cs-serhead"><b>Broad ${esc(prettyLine(sn[0].x.broad_line || "Ha"))} S/N</b><span class="muted small">the dashed line: S/N ${CS_SNR}, the limit for a broad line</span></div>` +
+      `<svg class="cs-ser" viewBox="0 0 ${W} ${SH}">${ticks}<line x1="${ml}" x2="${W - m.r}" y1="${Y(CS_SNR)}" y2="${Y(CS_SNR)}" class="cs-lim"/>` +
+      sn.map((p) => `<circle cx="${Xs(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="${p.x.k === d.k ? 5.5 : 4}" fill="${CLASS_COLOR[p.x.label] || "#9aa1ad"}" class="cs-ep${p.x.k === d.k ? " sel" : ""}" data-k="${p.x.k}"><title>#${p.x.k} ${esc(p.x.date || "")}: S/N ${p.v.toFixed(1)}${p.x.m.broad_fwhm ? `, FWHM ${Math.round(p.x.m.broad_fwhm)} km/s` : ""}</title></circle>`).join("") + `</svg>`;
+  }
+  el.innerHTML = `<div class="cs-top"><div><small>${n} epochs${L[i0].date ? ` · ${esc(L[i0].date)} – ${esc(L[i1].date)}` : ""} · ${fin ? "final classes, from the fit" : "preliminary classes"}</small>` +
+    `<h2>${head}</h2><p class="cs-sub">${sub}</p></div><div class="cs-keys">${legendC}</div></div>${call}` +
+    `<div class="cs-tlwrap">${tl}</div><div class="cv-chips cs-chips">${chips}</div>${ser}`;
+  el.querySelectorAll(".cs-ep").forEach((g) => (g.onclick = () => { ck = +g.dataset.k; loadClassify(true); }));
+  el.querySelectorAll(".cvchip").forEach((b) => (b.onclick = () => {
+    const c = $("cd-" + b.dataset.d).closest(".plotcard");
+    c.scrollIntoView({ behavior: "smooth", block: "center" });
+    c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash");
+  }));
+}
+const CS_SNR = 5;       // the broad-line S/N fa.classify_fit asks (broad_snr)
 async function loadClassify(force) {
   let d = null;
-  if (S.wf.classified || S.wf.final_class) { try { d = await api(`/api/wf/classify?k=${ck}`); } catch (e) { return; } }
+  if (S.wf.classified || S.wf.final_class) {
+    if (!classData) { $("cmulti").classList.add("hidden"); $("csum").classList.add("hidden"); $("cverdict").innerHTML = '<div class="cv-hero cv-wait"><div class="cv-main"><i></i><i></i><i></i></div><div class="cv-chips"><i></i><i></i><i></i><i></i></div></div>'; }
+    try { d = await api(`/api/wf/classify?k=${ck}`); } catch (e) { return; }
+  }
   const none = !d || !d.labels, busy = S.busy && pendingSuggest;
   $("cempty").classList.toggle("hidden", !none);
   $("cbody").classList.toggle("hidden", none);
@@ -3367,6 +3962,8 @@ async function loadClassify(force) {
   classData = d;
   const many = d.labels.length > 1, fin = d.stage === "final", hasPre = fin && d.labels.some((x) => x.preliminary);
   $("cmulti").classList.toggle("hidden", !many);
+  $("csum").classList.toggle("hidden", !many);
+  if (many) renderClassSummary(d);
   if (many) {
     $("ctbl").innerHTML = `<thead><tr><th>#</th><th>Date</th><th>Spectrum</th><th>${fin ? "Class (fit)" : "Class"}</th>${hasPre ? "<th>Preliminary</th>" : ""}</tr></thead><tbody>` +
       d.labels.map((x) => `<tr data-k="${x.k}" class="${x.k === d.k ? "sel" : ""}"><td class="mono">#${x.k}</td><td class="mono">${esc(x.date || "—")}</td><td class="mono">${esc(x.name)}</td>` +
@@ -3379,11 +3976,21 @@ async function loadClassify(force) {
       onClick: (k) => { ck = k; loadClassify(true); } }));
   }
   const pre = d.preliminary;
-  $("cverdict").innerHTML = `<div><b>${esc(d.name)}${fin ? ", final class from the fit" : ""}: <span class="badge ${d.uncertain ? "warn" : "ok"}">${esc(CLASS_NAME[d.label] || d.label)}${d.uncertain ? " (uncertain)" : ""}</span></b>` +
-    (d.reason ? `<div class="small" style="margin-top:4px">${esc(d.reason)}</div>` : "") +
-    (fin ? `<div class="small muted" style="margin-top:4px">From the fitted values: broad lines summed over their components, narrow (+ outflow) line ratios and EW(Hα) of the fit (<code>fa.classify_fit(r)</code>). ` +
-      (pre ? `The preliminary classification (<code>fa.classify</code>, before the fit) said <b>${esc(CLASS_NAME[pre.label] || pre.label)}</b>${pre.label === d.label ? ": the fit agrees." : "."}` : "No preliminary classification was made (Model step › Classify spectrum).") + "</div>"
-      : `<div class="small muted" style="margin-top:4px">Preliminary: <code>fa.classify</code> fits the spectrum on its own, before the model is chosen. The final class comes from the fit (step 4).</div>`) + "</div>";
+  // the verdict first: the class in words, the evidence it rests on, and where the point falls in each diagram
+  const regs = d.regions || {};
+  const evidence = (d.reason || "").split(/;\s*/).filter(Boolean);
+  $("cverdict").innerHTML = `<div class="cv-hero"><div class="cv-main"><small>${esc(d.name)} · ${fin ? "final class, from the fit" : "preliminary class"}</small>` +
+    `<h2>${esc(CLASS_NAME[d.label] || d.label)}${d.uncertain ? ' <span class="badge warn">uncertain</span>' : ""}</h2>` +
+    (evidence.length ? `<ul class="cv-ev">${evidence.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : "") + `</div>` +
+    `<div class="cv-chips">${Object.entries(DIAG_NAME).map(([k, n]) => `<button type="button" class="cvchip ${regs[k] ? "t-" + (REG_TONE[regs[k]] || "x") : "none"}" data-d="${k}"><small>${n}</small><b>${regs[k] ? esc(regs[k]) : "not measured"}</b></button>`).join("")}</div></div>` +
+    `<p class="cv-foot small muted">` + (fin ? `From the fitted values: broad lines summed over their components, narrow (+ outflow) line ratios and EW(Hα) of the fit (<code>fa.classify_fit(r)</code>). ` +
+      (pre ? `The preliminary classification (<code>fa.classify</code>, before the fit) said <b>${esc(CLASS_NAME[pre.label] || pre.label)}</b>${pre.label === d.label ? ": the fit agrees." : "."}` : "No preliminary classification was made (Model step › Classify spectrum).")
+      : `Preliminary: <code>fa.classify</code> fits the spectrum on its own, before the model is chosen. The final class comes from the fit (step 4).`) + `</p>`;
+  $("cverdict").querySelectorAll(".cvchip").forEach((b) => (b.onclick = () => {
+    const el = $("cd-" + b.dataset.d).closest(".plotcard");
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  }));
   const steps = !!(d.starlight || d.halpha || d.lines_fit);
   $("cprelim").classList.toggle("hidden", !steps);
   $("cprelimhead").classList.toggle("hidden", !fin);
@@ -3616,6 +4223,15 @@ function renderCatalogCard() {
   const go_ = $("catgo");
   if (go_) go_.onclick = () => post("/api/wf/catalogs", {});
 }
+// open spectrum k of the sample fit in Results (from the tiles of the Fit step)
+function openSampleFit(k) {
+  if (S.sample) {
+    Object.assign(SG, { id: S.sample.id, show: "all", cls: null, q: "", sort: null, dir: 1 });
+    if ($("ssearch")) $("ssearch").value = "";
+  }
+  sk = k; rv = "fit";
+  go("results");
+}
 function selectSample(k) {
   sk = k;
   renderSampleResults();
@@ -3646,6 +4262,7 @@ function initResults() {
   // a range zoomed in the interactive plot can be taken over by the publication figure
   $("rplot").addEventListener("plotview", (e) => {
     const v = e.detail;
+    renderZoomChips($("rplot"), $("rzoom"));
     fitRange = v ? [Math.round(v[0]), Math.round(v[1])] : null;
     $("userange").classList.toggle("hidden", !v);
     if (v) $("userange").dataset.range = `${Math.round(v[0])},${Math.round(v[1])}`;
@@ -3834,7 +4451,8 @@ function drawPlotEl(el) {
       d += (pen ? "L" : "M") + X(x[i]).toFixed(1) + " " + Y(v).toFixed(1);
       pen = true;
     }
-    s += `<path d="${d}" fill="none" stroke="${L.color}" stroke-width="${L.width || 1.2}" ${L.dash ? `stroke-dasharray="${L.dash}"` : ""} opacity="${L.opacity ?? 1}" stroke-linejoin="round"/>`;
+    const foc = plotFocus.get(el), dim = foc !== undefined && L.name !== foc && L.name !== "data";
+    s += `<path d="${d}" fill="none" stroke="${L.color}" stroke-width="${(L.width || 1.2) + (foc === L.name ? 1.2 : 0)}" ${L.dash ? `stroke-dasharray="${L.dash}"` : ""} opacity="${dim ? (L.name === "model" ? 0.35 : 0.15) : L.opacity ?? 1}" stroke-linejoin="round"/>`;
   }
   s += "</g>";
   for (const b of cfg.bands || []) if (b.label && b.hi >= x0 && b.lo <= x1) s += `<text x="${(X(b.lo) + X(b.hi)) / 2}" y="${m.t - 2}" text-anchor="middle" class="plab" style="fill:#52514e;font-size:10px">${esc(b.label)}</text>`;
@@ -3850,6 +4468,7 @@ function drawPlotEl(el) {
     if (cfg.marksTitle) s += `<text x="${m.l + pw - 4}" y="${m.t + ph - 6}" text-anchor="end" class="plab" style="fill:#d4472a;font-size:11px">${esc(cfg.marksTitle)}</text>`;
   }
   // line labels: strongest first, above the model, without overlaps
+  let labS = "";
   if (cfg.labels) {
     const model = cfg.layers.find((L) => L.name === "model");
     const placed = [];
@@ -3867,9 +4486,11 @@ function drawPlotEl(el) {
       if (hits(py) || py < m.t - 6) continue;
       placed.push({ x: px, y: py, w });
       const lx = Math.min(Math.max(px, m.l + w / 2), m.l + pw - w / 2);     // keep the label inside the plot
-      s += `<text x="${lx}" y="${py}" text-anchor="middle" class="plab">${esc(lab.text)}</text>`;
+      labS += cfg.onLabel && lab.line ? `<text x="${lx}" y="${py}" text-anchor="middle" class="plab link" data-line="${esc(lab.line)}"><title>${esc(lab.text)}: open in Line profiles</title>${esc(lab.text)}</text>`
+        : `<text x="${lx}" y="${py}" text-anchor="middle" class="plab">${esc(lab.text)}</text>`;
     }
   }
+  if (!cfg.onLabel) s += labS;
   // frame with inward ticks on all four sides (journal style, no grid)
   const xa = m.t + ph + (rh ? rh + 10 : 0);
   const xtick = (top, bottom) => xt.map((v) => `<line x1="${X(v)}" x2="${X(v)}" y1="${top}" y2="${top + 5}"/><line x1="${X(v)}" x2="${X(v)}" y1="${bottom - 5}" y2="${bottom}"/>`).join("");
@@ -3889,8 +4510,9 @@ function drawPlotEl(el) {
   }
   s += `<line class="cross" x1="0" x2="0" y1="${m.t}" y2="${xa}" stroke="#1d2128" stroke-opacity=".25" visibility="hidden"/>`;
   s += `<rect class="selrect" x="0" y="${m.t}" width="0" height="${ph}" fill="${cfg.onSelect ? "rgba(212,71,42,.18)" : "rgba(31,111,120,.12)"}" visibility="hidden"/>`;
-  s += `<rect class="hit" x="${m.l}" y="${m.t}" width="${pw}" height="${xa - m.t}" fill="transparent"/></svg><div class="tip hidden"></div>`;
+  s += `<rect class="hit" x="${m.l}" y="${m.t}" width="${pw}" height="${xa - m.t}" fill="transparent"/>${cfg.onLabel ? labS : ""}</svg><div class="tip${cfg.rich ? " rich" : ""} hidden"></div>`;
   el.innerHTML = s;
+  if (cfg.onLabel) el.querySelectorAll(".plab.link").forEach((t) => (t.onclick = () => cfg.onLabel(t.dataset.line)));
   const svg = el.querySelector("svg"), hit = svg.querySelector(".hit"), cross = svg.querySelector(".cross"), sel = svg.querySelector(".selrect"), tip = el.querySelector(".tip");
   const inv = (px) => x0 + ((px - m.l) / pw) * (x1 - x0);
   let drag = null;
@@ -3900,6 +4522,24 @@ function drawPlotEl(el) {
     cross.setAttribute("x1", px); cross.setAttribute("x2", px); cross.setAttribute("visibility", "visible");
     if (drag) { const a = Math.min(drag, px), b = Math.max(drag, px); sel.setAttribute("x", a); sel.setAttribute("width", b - a); sel.setAttribute("visibility", "visible"); }
     const wv = inv(px), i = Math.min(x.length - 1, lowerIndex(x, wv));
+    if (cfg.rich) {
+      // every curve under the pointer with its colour, the strongest component first, and the nearest labelled line
+      const near = (cfg.labels || []).filter((l) => Math.abs(l.x - x[i]) < 25).sort((a, b) => Math.abs(a.x - x[i]) - Math.abs(b.x - x[i]))[0];
+      const row = (L) => `<div><i style="background:${L.color}"></i><span>${esc(L.label || L.name)}</span><b>${fmtNum(L.y[i], 4)}</b></div>`;
+      const vis = cfg.layers.filter((L) => !L.hidden && L.y[i] !== null && L.y[i] !== undefined);
+      const mod = cfg.layers.find((L) => L.name === "model"), floor = 1e-3 * Math.abs(mod && mod.y[i] !== null ? mod.y[i] : 1);
+      const comps = vis.filter((L) => L.name !== "data" && L.name !== "model" && Math.abs(L.y[i]) > floor).sort((a, b) => b.y[i] - a.y[i]);
+      const top = vis.filter((L) => L.name === "data" || L.name === "model");
+      const r = cfg.resid && cfg.resid[i] !== null ? cfg.resid[i] : null;
+      tip.innerHTML = `<div class="tiphead"><b>${x[i].toFixed(1)} Å</b>${near ? `<span>${esc(near.text)}</span>` : ""}</div>` + top.map(row).join("") +
+        (r !== null ? `<div><i class="res"></i><span>residual</span><b class="${Math.abs(r) > 3 ? "hot" : ""}">${r.toFixed(2)}σ</b></div>` : "") +
+        (comps.length ? `<div class="tipsep"></div>` + comps.slice(0, 8).map(row).join("") : "");
+      tip.classList.remove("hidden");
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      tip.style.left = (px + 16 + tw > W ? px - 16 - tw : px + 16) + "px";
+      tip.style.top = Math.max(0, Math.min(H - th, py - th / 2)) + "px";
+      return;
+    }
     const parts = [`λ ${x[i].toFixed(1)}`];
     for (const L of cfg.layers) if (!L.hidden && (L.name === "data" || L.name === "model" || L.range) && L.y[i] !== null) parts.push(`${L.name || "flux"} ${fmtNum(L.y[i], 4)}`);
     if (cfg.resid && cfg.resid[i] !== null) parts.push(`res ${cfg.resid[i].toFixed(2)}σ`);
@@ -4163,8 +4803,8 @@ main();
 // the composition at any wavelength, residuals in sigma and "peeling": the data minus the top components.
 const AN = { F: null, key: null, view: null, peel: 0, off: new Set(), solo: null, hover: null, X: null, W: 0 };
 const AN_GROUPS = [["continuum", "Continuum"], ["host", "Host galaxy"], ["balmer", "Balmer continuum"], ["feii", "Fe II"],
-  ["broad", "Broad lines"], ["narrow", "Narrow lines"], ["outflow", "Outflow"], ["other", "Other"]];
-const AN_COLOR = { continuum: C.continuum, host: C.host, balmer: C.balmer, feii: C.feii, broad: C.broad[0], narrow: C.narrow, outflow: C.outflow, other: C.other[0] };
+  ["broad", "Broad lines"], ["narrow", "Narrow lines"], ["coronal", "Coronal lines"], ["outflow", "Outflow"], ["other", "Other"]];
+const AN_COLOR = { continuum: C.continuum, host: C.host, balmer: C.balmer, feii: C.feii, broad: C.broad[0], narrow: C.narrow, coronal: C.coronal, outflow: C.outflow, other: C.other[0] };
 const AN_WINDOWS = [["Mg II", 2600, 3020], ["Blue", 3700, 4500], ["Hβ + [O III]", 4600, 5150], ["Hα + [N II]", 6350, 6800], ["C IV", 1450, 1720]];
 const AN_M = { l: 56, r: 14, t: 34, b: 26 };
 const anEl = (tag, attrs, parent) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
@@ -4490,7 +5130,10 @@ async function drawDegen() {
   const k = kind === "sample" ? sk : rk, key = `${k}|${resultData && resultData.fit && resultData.fit.chi2}|${resultData && resultData.name}`;
   if (DG.key !== key) {
     DG.key = key; DG.F = null; DG.hover = DG.pinNode = DG.pinPair = null;
-    $("dg-wheel").innerHTML = ""; $("dg-side").innerHTML = '<p class="muted">Loading the correlations…</p>';
+    // while the correlations load: a faint wheel turning, not an empty panel
+    $("dg-wheel").innerHTML = '<g class="dg-wait"><circle r="250" fill="none" stroke="#e2e4e8" stroke-width="14"/><circle r="250" fill="none" stroke="#c9ced6" stroke-width="14" stroke-dasharray="260 1311" stroke-linecap="round"/>' +
+      '<text y="10" text-anchor="middle" fill="#7b8290" font-size="30">Loading the correlations…</text></g>';
+    $("dg-side").innerHTML = '<div class="dg-skel"><i></i><i></i><i></i><i></i><i></i></div>';
     let D = null;
     try { D = await api(`/api/wf/degeneracy?k=${k}`); } catch (e) { D = { error: String(e.message || e) }; }
     if (DG.key !== key) return;                 // another fit was opened meanwhile
@@ -4612,10 +5255,16 @@ function dgSide(pair) {
   side.innerHTML = `<div><h3>What trades with what</h3><div class="at">the strongest correlations between components</div></div>
     <div class="dg-stat"><div><b>${ent}</b><span>parameters with |ρ| ≥ 0.9 to another component</span></div><div><b>${S.length}</b><span>pairs shown</span></div><div><b>${lim}</b><span>at a limit</span></div></div>
     <table>${top.map((q) => `<tr class="pick" data-k="${F.pairs.indexOf(q)}"><td><span class="pn">${esc(dgLabel(q.a))}</span><br><span class="pn">↔ ${esc(dgLabel(q.b))}</span><div class="why">${dgWhy(q)}</div></td>
-      <td class="n" style="color:${dgCol(q.r)}">${q.r > 0 ? "+" : ""}${q.r.toFixed(2)}</td></tr>`).join("") || '<tr><td class="why">no correlation above 0.2 between components</td></tr>'}</table>
+      <td class="n" style="color:${dgCol(q.r)}">${dgGlyph(q.r)}${q.r > 0 ? "+" : ""}${q.r.toFixed(2)}</td></tr>`).join("") || '<tr><td class="why">no correlation above 0.2 between components</td></tr>'}</table>
     ${F.limits.length ? `<div class="note">At a limit or at zero, so without an error and not in the wheel: <span class="mono">${F.limits.map(esc).join(", ")}</span>.</div>` : ""}
     <div class="note">Hover a parameter for its partners, a ribbon or a row for the pair. A strong ribbon means the data constrain a combination of the two, not each one alone: report their sum, tie one, or expect the errors to be larger than they look.</div>`;
   pick();
+}
+// the 68% ellipse of a pair in units of the errors, small: its tilt and thinness are the correlation
+function dgGlyph(r) {
+  const k = 2.3, rx = Math.sqrt(k * (1 + r)), ry = Math.sqrt(k * Math.max(1 - r, 0.004)), sc = 9 / Math.sqrt(2 * k), col = dgCol(r);
+  return `<svg class="dg-glyph" viewBox="-12 -12 24 24" aria-hidden="true"><line x1="-11" x2="11" y1="0" y2="0" stroke="#e2e4e8"/><line y1="-11" y2="11" x1="0" x2="0" stroke="#e2e4e8"/>` +
+    `<ellipse rx="${(rx * sc).toFixed(2)}" ry="${(ry * sc).toFixed(2)}" transform="rotate(-45)" fill="${col}" fill-opacity=".25" stroke="${col}" stroke-width="1.2"/></svg>`;
 }
 function dgEllipse(q) {
   const svg = $("dg-ellipse"); if (!svg) return;

@@ -30,6 +30,25 @@ def _row_name(path):
     return os.path.splitext(os.path.basename(path))[0]
 
 
+def _thumb(r, n=160):
+    """The fitted range of a fit in ``n`` bins: wavelength, data and model (a small picture of the fit)."""
+    m = r.mask & np.isfinite(r.spectrum.flux)
+    x, y, f = r.spectrum.wave[m], r.spectrum.flux[m], r.model_flux()[m]
+    if x.size < 2:
+        return None
+    parts = np.array_split(np.arange(x.size), min(n, x.size))
+    pick = lambda a: [float(f"{np.mean(a[p]):.4g}") for p in parts]      # noqa: E731
+    return {"x": pick(x), "y": pick(y), "m": pick(f)}
+
+
+def _live_item(k, row):
+    """What the app shows of one finished spectrum (and the thumbnail leaves the row)."""
+    num = lambda v: float(v) if isinstance(v, (int, float, np.floating)) and np.isfinite(v) else None  # noqa: E731
+    return {"k": k, "name": str(row.get("name") or row.get("file") or k), "cls": row.get("cls"),
+            "preset": row.get("preset"), "rchi2": num(row.get("rchi2")), "n_at_limit": row.get("n_at_limit"),
+            "error": row.get("error"), "time": num(row.get("time")), "thumb": row.pop("_thumb", None)}
+
+
 def _process(job):
     """One spectrum: read, classify, fit, measure; returns a catalog row (dict)."""
     source, prepared, index, opts = job
@@ -109,6 +128,11 @@ def _process(job):
                 row["feii_note"] = f"not pruned: {type(exc).__name__}: {exc}"
         row.update(rchi2=r.rchi2, n_free=r.n_free, n_at_limit=len(r.at_limit),
                    at_limit=", ".join(r.at_limit))
+        if opts.get("thumb"):
+            try:
+                row["_thumb"] = _thumb(r)
+            except Exception:                        # noqa: BLE001  (only a picture)
+                pass
         for q in r.key_results().itertuples():
             row[q.quantity] = q.value
             row[q.quantity + " err"] = q.error
@@ -233,7 +257,7 @@ def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mas
     """
     from ._threads import SINGLE_THREADED, environment
     from .fitting import _n_workers
-    from .progress import report
+    from .progress import enabled, report
     files = list(files)
     prepared = list(prepared) if prepared is not None else []
     if len(prepared) > len(files):
@@ -245,21 +269,22 @@ def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mas
         os.makedirs(out, exist_ok=True)
     opts = dict(out=out, model=model, deredden=deredden, ebv=ebv, z=z, mask_absorption=mask_absorption,
                 mask_sky=mask_sky, refine=refine, diagnostics=diagnostics, prune_feii=prune_feii,
-                prepare=prepare, format=format)
+                prepare=prepare, format=format, thumb=enabled())
     jobs = [(f, prepared[k] if k < len(prepared) else None, k, opts) for k, f in enumerate(files)]
     n = len(jobs)
     workers = _n_workers(n_jobs, n)
     rows, t0, task = [None] * n, time.time(), f"fitting a sample of {n} spectra"
-    report(task, 0, n)
+    report(task, 0, n, item={})
     done = 0
     if workers > 1:
         try:
             with environment(SINGLE_THREADED), ProcessPoolExecutor(workers) as ex:
                 futures = {ex.submit(_process, job): k for k, job in enumerate(jobs)}
                 for fut in as_completed(futures):
-                    rows[futures[fut]] = fut.result()
+                    k = futures[fut]
+                    rows[k] = fut.result()
                     done += 1
-                    report(task, done, n, f"{workers} processes")
+                    report(task, done, n, f"{workers} processes", item=_live_item(k, rows[k]))
         except Exception as exc:                                   # e.g. no __main__ guard
             warnings.warn(f"parallel fitting failed ({type(exc).__name__}); running serially")
             rows = [None] * n
@@ -268,7 +293,9 @@ def fit_sample(files, out=None, model=None, deredden=True, ebv=None, z=None, mas
         if rows[k] is None:
             rows[k] = _process(job)
             done += 1
-            report(task, done, n, "1 process")
+            report(task, done, n, "1 process", item=_live_item(k, rows[k]))
+    for row in rows:
+        row.pop("_thumb", None)
     table = pd.DataFrame(rows)
     first = [c for c in ("name", "file", "z", "cls", "preset", "rchi2", "n_at_limit") if c in table]
     table = table[first + [c for c in table.columns if c not in first]]

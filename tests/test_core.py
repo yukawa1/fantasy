@@ -1248,6 +1248,15 @@ def test_app_prune_feii_step():
     assert s.error is None and zs["k"] == 0 and zs["secure"] and zs["kind"] == "quasar" and len(zs["candidates"]) >= 2
     assert abs(zs["z"] - zs["file_z"]) < 1e-3 and zs["candidates"][0]["dchi2"] == 0 and zs["candidates"][1]["dchi2"] > 0.2
     assert s.wf_redshift_figure()[:4] == b"\x89PNG"
+    # the chi2 curve for the interactive plot: thinned, every candidate on it within the range, cached
+    cur = s.wf_redshift_curve()
+    json.dumps(cur)
+    q = cur["curves"]["quasar"]
+    assert cur["id"] == zs["id"] and 50 < len(q["x"]) <= 700 and len(q["x"]) == len(q["y"])
+    assert all(b > a for a, b in zip(q["x"], q["x"][1:]))
+    lo, hi = min(q["x"]), max(q["x"])
+    assert lo <= np.log10(1 + zs["z"]) <= hi and min(q["y"]) <= zs["candidates"][0]["rchi2"] * 1.5
+    assert s.wf_redshift_curve() is cur
     # the instrumental resolution: from the file by default, or given as FWHM or R
     row = s.loaded_state()["rows"][0]
     assert 100 < row["resolution"] < 200 and row["resolution_varies"] and 60 < row["pixel_kms"] < 80
@@ -1815,6 +1824,15 @@ def test_app_workflow_tie_absorption_exports():
     d = s.classify_state(0)
     assert d["stage"] == "final" and d["label"] == "type1" and "in the fit" in d["reason"]
     assert d["preliminary"]["label"] == "type1" and d["starlight"] is not None
+    # where the point falls in each diagram, by the boundaries of fa.classify (None where a ratio is not measured)
+    assert set(d["regions"]) == {"nii", "sii", "oi", "whan"}
+    assert all((d["regions"][k] is None) == (d["points"][k] is None) for k in d["regions"])
+    R = Session._diagram_region
+    assert R("nii", {"x": -0.6, "y": -0.3}) == "star-forming" and R("nii", {"x": -0.1, "y": -0.1}) == "composite"
+    assert R("nii", {"x": 0.1, "y": 1.0}) == "AGN" and R("sii", {"x": 0.0, "y": 1.0}) == "Seyfert"
+    assert R("oi", {"x": -0.3, "y": 0.0}) == "LINER" and R("whan", {"x": 0.1, "y": np.log10(20)}) == "sAGN"
+    assert R("whan", {"x": 0.1, "y": np.log10(4)}) == "wAGN" and R("whan", {"x": -0.8, "y": 1.5}) == "SF"
+    assert R("whan", {"x": 0.0, "y": np.log10(1)}) == "retired" and R("whan", {"x": 0.0, "y": -1}) == "passive"
     assert s.classify_state(0, "preliminary")["stage"] == "preliminary"     # the Model step keeps the preliminary one
     import fantasy_agn as fa
     fc = fa.classify_fit(s.result)
@@ -1843,6 +1861,17 @@ def test_app_workflow_tie_absorption_exports():
     assert fx["strength"]["ratio_label"] == "R_FeII" and fx["kin"]["fwhm_status"] != "free"   # tied to the narrow lines
     assert fx["lines"] and all(len(q) == 10 and q[8] > q[7] for q in fx["lines"])
     assert fx["ref"]["line"] == "Hb" and np.isfinite(fx["ref"]["fwhm"]) and s.wf_feii_view(0) is fx
+    # Results › Line profiles: the line alone adds up, its FWHM is at half maximum, and the list carries profiles
+    ll = s.wf_line_list(0)
+    assert ll["main"] == "Hb" and all(d.get("spark") for d in ll["lines"] if "broad" in d["roles"])
+    lv = s.wf_line_view(0, "Hb")
+    json.dumps(lv, allow_nan=False)
+    assert lv["of"] == "broad" and {c["role"] for c in lv["comps"]} >= {"broad", "narrow"}
+    vf = np.array(lv["vf"])
+    bsum = sum(np.array(c["y"]) for c in lv["comps"] if c["role"] == "broad")
+    vl, vr, half = lv["hm"]
+    assert np.isclose(np.interp(vl, vf, bsum), half, rtol=0.02) and np.isclose(vr - vl, lv["meas"]["fwhm"], rtol=0.02)
+    assert s.wf_line_view(0, "Hb") is lv and s.wf_line_view(0, "[OIII]5007")["of"] == "all"
     groups = s.result.feii_groups()                                    # the public split of the Fe II by group
     assert np.allclose(sum(groups.values()), s.result.model_flux(components=True)["feii"], rtol=1e-6, atol=1e-12)
     # the Python code under every Results view runs and draws, following what the view shows
@@ -1850,7 +1879,8 @@ def test_app_workflow_tie_absorption_exports():
     plt.switch_backend("Agg")                                          # plt.show() must not wait for a window
     for view, opts in (("fit", {"xmin": "4600", "hide": "data"}), ("anatomy", {"peel": "1", "off": "Fe II"}),
                        ("feii", {"mode": "full", "pin": "b4F"}), ("feii", {"xmin": "4400", "xmax": "4800"}),
-                       ("degen", {"th": "0.5"}), ("ms", {}), ("class", {"kind": "diagrams"})):
+                       ("degen", {"th": "0.5"}), ("ms", {}), ("class", {"kind": "diagrams"}),
+                       ("lines", {"line": "Hb", "xmin": "-6000", "xmax": "6000"}), ("lines", {"mode": "cmp", "lines": "Hb,[OIII]5007"})):
         code = s.wf_view_code(view, 0, opts)
         here = os.getcwd()
         with tempfile.TemporaryDirectory() as tmp:                     # the snippets save their figures
@@ -2126,6 +2156,43 @@ def test_sdss_resolution_curve():
     w, f = s.resolution_curve
     assert f[np.argmin(abs(w - 3900))] > f[np.argmin(abs(w - 8000))] + 20      # blue end is worse
     assert abs(np.median(f) - s.resolution) < 15
+
+
+def test_coronal_lines_drawn_apart():
+    from fantasy_agn.plotting import _group_of, is_coronal
+    from fantasy_agn.app import viewcode
+    m = fa.presets.optical(coronal=True)
+    ns = {}
+    exec(viewcode.KIND_FUNC, ns)
+    kinds = {c.name: (_group_of(c)[0], ns["kind"](c)) for c in m.components if getattr(c, "role", None) == "narrow"}
+    assert kinds["narrow"] == ("narrow", "narrow")
+    assert kinds["coronal"] == kinds["coronal_high"] == ("coronal", "coronal")
+    assert is_coronal(fa.Lines("x", ["[FeX]6375"], role="narrow"))
+    assert not is_coronal(fa.Lines("x", ["[OIII]5007"], role="narrow"))
+
+
+def test_fit_live_snapshots():
+    """The live display of a fit (progress.set_live_hook): the data, the phases in order, the converged model last."""
+    from fantasy_agn.progress import set_live_hook
+    s = fa.read(os.path.join(EXAMPLES, "spec-1059-52618-0453.fits")).to_rest_frame()
+    model = fa.presets.hbeta(broad_components=1)
+    snaps = []
+    old = set_live_hook(snaps.append)
+    try:
+        r = fa.fit(s, model, verbose=False)
+    finally:
+        set_live_hook(old)
+    assert snaps[0]["event"] == "start" and len(snaps[0]["x"]) == len(snaps[0]["y"]) == len(snaps[0]["err"])
+    phases = [d["phase"] for d in snaps if d["event"] == "phase"]
+    order = [p for i, p in enumerate(phases) if i == 0 or p != phases[i - 1]]
+    assert order[0] == "guess" and order[-1] == "errors" and "fit" in order
+    ticks = [d for d in snaps if d["event"] == "tick"]
+    assert ticks and all(len(d["model"]) == len(snaps[0]["x"]) for d in ticks if d["model"] is not None)
+    last = ticks[-1]
+    assert np.isclose(last["chi2"], r.chi2, rtol=1e-6)               # the converged model is sent
+    fitted = r.model_flux()[r.mask][::max(1, r.mask.sum() // 900)]
+    assert np.allclose(last["model"], fitted, rtol=1e-6, atol=1e-9 * np.abs(fitted).max())
+    assert fa.fit(s, model, verbose=False).chi2 == pytest.approx(r.chi2, rel=1e-9)   # no hook: the same fit
 
 
 def test_fit_many_parallel_equals_serial():
@@ -2518,6 +2585,24 @@ def test_app_sample_replays_prepare_for_preview_and_remaining_files(tmp_path, mo
     assert tail.resolution == expected[3].resolution
 
 
+def test_app_sample_plan_routes_each_spectrum():
+    import json
+    from fantasy_agn.app.session import Session
+    s = Session()
+    mk = lambda lo, hi, n: fa.Spectrum(np.arange(lo, hi, 2.), np.ones(int((hi - lo) / 2)), np.ones(int((hi - lo) / 2)),
+                                       rest_frame=True, z=0.5, name=n)
+    s.ns["raw"] = [mk(4000., 7000., "opt"), mk(2500., 3500., "mg"), mk(1400., 1800., "civ")]
+    P = s.wf_sample_plan()
+    json.dumps(P)
+    assert [r["cls"] for r in P["routes"]] == ["type1", "type1_host", "seyfert2", "liner", "composite", "starforming",
+                                               "retired", "passive", "unknown", "uv_mgii", "uv_civ"]
+    assert all(r["code"].startswith("fa.presets.") and r["about"] for r in P["routes"])
+    assert [r["route"] for r in P["spectra"]] == ["optical", "uv_mgii", "uv_civ"]
+    assert P["spectra"][0]["red"] == 6998 and not P["fitted"] and P["one_model"] is None
+    s.wf["fit_opts"] = {"sample_model": "hbeta"}
+    assert s.wf_sample_plan()["one_model"]["preset"] == "hbeta"
+
+
 def test_app_sample_uses_prepared_remote_spectra(tmp_path, monkeypatch):
     from fantasy_agn.app.session import Session
     monkeypatch.setattr(fa.presets, "hbeta", lambda: fa.Model(fa.PowerLaw()))
@@ -2551,6 +2636,31 @@ def test_fit_sample(tmp_path):
     r = s.load(0)
     assert r.rchi2 == pytest.approx(t.rchi2.iloc[0])
     assert os.path.exists(s.gallery())
+
+
+def test_fit_sample_reports_each_spectrum_to_the_app(tmp_path):
+    import json
+    from fantasy_agn.app.session import Session
+    from fantasy_agn.progress import set_hook
+    s = Session()                                   # installs its progress hook
+    try:
+        s.busy = "running"
+        files = [fa.examples.path("type1"), os.path.join(tmp_path, "missing.fits")]
+        sm = fa.fit_sample(files, model="hbeta", deredden=False, n_jobs=1, verbose=False)
+        s.busy = None
+    finally:
+        set_hook(None)
+    assert "_thumb" not in sm.table and "thumb" not in sm.table
+    st = s.sample_live_state()
+    json.dumps(st)
+    assert st["total"] == 2 and st["n_done"] == 2 and not st["running"]
+    ok, bad = sorted(st["items"], key=lambda v: v["k"])
+    assert ok["preset"] == "hbeta()" and ok["rchi2"] == pytest.approx(sm.table.rchi2.iloc[0]) and ok["error"] is None
+    assert len(ok["thumb"]["x"]) == len(ok["thumb"]["m"]) <= 160 and bad["error"] and bad["thumb"] is None
+    assert s.sample_live_state(since=st["seq"])["items"] == []
+    assert not st["current"]                         # the tiles belong to a sample only once it is the session's
+    s.ns["sample"] = sm
+    assert s.sample_live_state()["current"]
 
 
 def test_iccf_recovers_lag():
@@ -2627,7 +2737,7 @@ def test_rms_isolates_target_transition_within_and_across_broad_components():
     ref = np.array(expected)[:, used]
     np.testing.assert_allclose(rms["velocity"], velocity[used], atol=1e-9)
     np.testing.assert_allclose(rms["mean"], ref.mean(axis=0), atol=1e-10)
-    np.testing.assert_allclose(rms["rms"], np.sqrt(np.maximum(ref.var(axis=0) - 0.01**2, 0)), atol=1e-10)
+    np.testing.assert_allclose(rms["rms"], np.sqrt(np.maximum(ref.var(axis=0, ddof=1) - 0.01**2, 0)), atol=1e-10)
 
 
 def test_rms_reference_coverage_and_masked_gaps():
@@ -2688,10 +2798,28 @@ def test_rms_spectrum_width():
         wave = np.arange(4650, 5150, 1.0)
         flux = m.evaluate(wave, {"medium": "vacuum"}) + rng.normal(0, 1.0, wave.size)
         spectra.append(fa.Spectrum(wave, flux, np.ones(wave.size), rest_frame=True, mjd=50000 + 7 * k))
+    m0 = _toy_truth().evaluate(wave, {"medium": "vacuum"})
     me = fa.fit_epochs(spectra, _toy_model(), reference=0, n_jobs=1, verbose=False)
     rms = me.rms_spectrum("Hb")
     # only the broad flux varies: the rms profile is the broad Gaussian, sigma = FWHM / 2.355
     assert rms["sigma_rms"] == pytest.approx(4200 / 2.3548, rel=0.12)
+    # the adopted widths are of the fitted profiles; the data agree; the Wang et al. window truncates a Gaussian
+    assert rms["widths"] == "model" and rms["fwhm_rms"] == pytest.approx(4200, rel=0.12)
+    assert rms["sigma_rms_data"] == pytest.approx(rms["sigma_rms"], rel=0.25)
+    assert rms["sigma_mean"] > 0 and rms["variability_snr"] > 10 and rms["masked_fraction"] == 0
+    assert not any("varies weakly" in f for f in rms["flags"])
+    mad = me.rms_spectrum("Hb", sigma_window="mad", n_boot=0)
+    assert 0.8 < mad["sigma_rms"] / rms["sigma_rms"] < 0.95
+    data = me.rms_spectrum("Hb", widths="data", n_boot=0)
+    assert data["sigma_rms"] == pytest.approx(rms["sigma_rms_data"], rel=1e-9) and "sigma_rms_model" in data
+    with pytest.raises(ValueError):
+        me.rms_spectrum("Hb", widths="pixels")
+    # a line that does not vary: the rms of the data is noise, and the warning says so
+    still = fa.fit_epochs([fa.Spectrum(sp.wave, m0 + rng.normal(0, 1.0, sp.wave.size), np.ones(sp.wave.size),
+                                       rest_frame=True, mjd=50000 + 7 * k) for k, sp in enumerate(spectra[:6])],
+                          _toy_model(), reference=0, n_jobs=1, verbose=False)
+    flat = still.rms_spectrum("Hb", n_boot=0)
+    assert flat["variability_snr"] < 10 and any("varies weakly" in f for f in flat["flags"])
     rv = me.reverberation("Hb", continuum=(np.arange(50000, 50084, 3.0), np.ones(28) + np.arange(28) * 0.01,
                                            np.full(28, 0.01)), n_mc=20)
     assert "lag (rest frame)" in rv.table().quantity.values
@@ -3533,6 +3661,47 @@ def test_app_workflow_steps(tmp_path):
     json.dumps(f)
     res = s.wf_result(1)
     assert res["epochs"][1]["reference"] and res["plot"]["labels"] and s.wf_result_more(part="all")["all"]["columns"]
+    # each label names its line, so that a click on it opens that line in Line profiles
+    assert all(lab["line"] in set(s._wf_fit(1)[2].lines.line) for lab in res["plot"]["labels"])
+    # Checks › lines to add, searched in every epoch: one row per line, the epochs it is found in, refit of all epochs
+    L = s.wf_linescan()
+    assert L is not None and L["n_epochs"] == 2 and L["trial"] is None
+    json.dumps(L, allow_nan=False)
+    assert all(set(r["epochs"]) <= {0, 1} and r["ep"] in r["epochs"] for r in L["rows"])
+    sn = s.wf_check_snips(1)
+    assert len(sn["lines"]) == len(L["rows"]) and all(x is None or x["ep"] in (0, 1) for x in sn["lines"])
+    if L["rows"]:
+        code = s.wf_addlines_code([L["rows"][0]["line"]], refit=True)
+        assert "on each epoch" in code and "fa.fit_epochs(" in code and "trial" not in code
+    import pandas as pd
+    row = lambda line, comp, dbic, flux: {"action": "add", "line": line, "component": comp, "dbic": dbic, "flux": flux}
+    m = s._merge_scans({0: pd.DataFrame([row("OI6046", "broad", -50.0, 1.0), row("CaV", "outflow", -12.0, 2.0)]),
+                        1: pd.DataFrame([row("OI6046", "broad2", -80.0, 3.0)]),
+                        2: pd.DataFrame([row("OI6046", "broad", -20.0, 4.0)]), 3: None})
+    # one row per line to add: the component of most epochs, the epoch where it helps most; most frequent first
+    assert list(m.line) == ["OI6046", "CaV"] and m.component[0] == "broad" and m.epoch[0] == 0
+    assert m.epochs[0] == [0, 2] and m.by_epoch[0] == {0: 1.0, 2: 4.0}
+    # Line profiles › Across epochs: one row per epoch, the mean and rms profiles over them, and its Python code
+    LE = s.wf_line_epochs("Hb")
+    json.dumps(LE, allow_nan=False)
+    assert LE["joint"] and len(LE["epochs"]) == 2 and s.wf_line_epochs("Hb") is LE
+    assert all(len(e["y"]) == len(LE["vf"]) and e["fwhm"] > 0 for e in LE["epochs"])
+    St = LE["stack"]
+    assert St["n"] == 2 and len(St["dv"]) == len(St["dmean"]) == len(St["drms"])
+    ys = np.array([e["y"] for e in LE["epochs"]], float)
+    mean = np.array([np.nan if y is None else y for y in St["mean"]["y"]], float)
+    rms = np.array([np.nan if y is None else y for y in St["rms"]["y"]], float)
+    assert np.allclose(mean, ys.mean(0), atol=1e-4 * ys.max()) and np.allclose(rms, ys.std(0, ddof=1), atol=1e-4 * ys.max())
+    assert St["mean"]["fwhm"] > 0 and St["mean"]["sigma"] > 0
+    assert all(d is None or d >= 0 for d in St["drms"])                  # the excess over the noise
+    import matplotlib.pyplot as plt
+    plt.switch_backend("Agg")
+    plt.close("all")
+    code = s.wf_view_code("lines", 1, {"mode": "ep", "line": "Hb", "norm": "1", "xmin": "-8000", "xmax": "8000"})
+    assert "plot_profiles(me.epochs" in code and "np.nanstd(prof" in code
+    exec(compile(code, "ep", "exec"), dict(s.ns))
+    assert len(plt.get_fignums()) == 2
+    plt.close("all")
     # the table of all epochs: readable headings, the date and MJD in full, the flux scale of each epoch
     allep = s.wf_result_more(part="all")["all"]
     assert allep["columns"][:4] == ["Epoch", "Spectrum", "Date", "MJD"] and "H\u03b2 flux" in allep["columns"]
@@ -3679,6 +3848,15 @@ def test_suggest_lines_finds_missing_line():
     s.wf["fit_kind"] = "single"
     L = s.wf_linescan()
     assert [x["line"] for x in L["rows"]] == ["[ArIV]4740"] and not L["rows"][0]["added"]
+    # the card of the suggestion: the leftover flux around it, and the line it would add (its flux, at 4740 A)
+    import json
+    sn = s.wf_check_snips()
+    json.dumps(sn)
+    (one,) = sn["lines"]
+    add = np.array(one["add"]["y"])
+    assert len(one["x"]) == len(one["d"]) == len(one["e"]) > 10 and abs(one["now"] - 4740) < 5
+    assert abs(np.trapezoid(add, one["add"]["x"]) - fa.suggest_lines(r).flux.iloc[0]) < 0.05 * fa.suggest_lines(r).flux.iloc[0]
+    assert s.wf_check_snips()["lines"] is sn["lines"] and sn["resid"] == []
     code = s.wf_addlines_code(["[ArIV]4740"])
     assert code.startswith("# add lines") and "model.tie('extra_narrow.shift', 'narrow.shift')" in code
     s.ns.update(spectra=[spec], spec=spec)
@@ -3773,6 +3951,8 @@ def test_app_residuals_step(tmp_path):
     _wait(s)
     st = s.wf_residuals()
     assert s.error is None and st["scope"] == "all" and all("suggestion" in row for row in st["rows"])
+    snips = s.wf_check_snips(0)["resid"]
+    assert len(snips) == len(st["rows"]) and all(x is None or (x["lo"] <= x["hi"] and len(x["x"]) >= 3) for x in snips)
 
 
 def test_app_shared_broad_shape(tmp_path):
@@ -4653,6 +4833,51 @@ def test_app_atlas_card_of_a_kept_sample_fit(tmp_path):
     assert c["w0"] < c["w1"] and len(c["flux"]) == 200 and c["scale"] > 0
 
 
+def test_app_line_profiles_and_checks_of_a_sample_spectrum(tmp_path):
+    import json
+    import pandas as pd
+    from fantasy_agn.app.session import Session
+    from fantasy_agn.sample import SampleResult
+    r = fa.fit(_blend_spectrum(450, seed=1), _blend_model(), verbose=False)
+    path = str(tmp_path / "a.fantasy")
+    fa.save(r, path)
+    t = pd.DataFrame({"name": ["a", "b"] + [f"c{i}" for i in range(7)], "cls": ["type1", None] + ["type1"] * 7,
+                      "preset": ["optical()", None] + ["optical()"] * 7, "saved": [path, None] + [path] * 7,
+                      "error": [None, "ValueError: no data"] + [None] * 7})
+    s = Session()
+    sample = s.ns["sample"] = SampleResult(t)
+    s.wf["fit_kind"] = "sample"
+    assert s._wf_fit(0)[2] is s._wf_fit(0)[2]                 # loaded once, so the views share their caches
+    with pytest.raises(ValueError, match="not be fitted"):
+        s._wf_fit(1)
+    lines = s.wf_line_list(0)
+    view = s.wf_line_view(0, lines["main"])
+    assert lines["lines"] and view["line"] == lines["main"]
+    assert "sample.load(0)" in s.wf_lines_code(0, [lines["main"]], {})
+    assert "sample.load(0)" in s.wf_view_code("checks", 0, {})
+    c = s.wf_sample_checks(0)
+    json.dumps(c)
+    assert c["k"] == 0 and isinstance(c["lines"], list) and isinstance(c["resid"], list)
+    assert all(d["snip"] is None or len(d["snip"]["x"]) == len(d["snip"]["d"]) for d in c["lines"] + c["resid"])
+    code = s.wf_sample_checks_code(0, range(len(c["lines"])), range(len(c["resid"])))
+    assert code.startswith("r = sample.load(0)") and "r0 = fa.fit(r.spectrum, model)" in code
+    ns = {"fa": fa, "sample": sample}
+    exec(code.replace("print(", "(lambda *a: None)("), ns)
+    assert ns["r0"].model is not r.model and np.isfinite(ns["r0"].rchi2)
+    for _ in range(2):                               # more spectra than are kept: every view is of its own spectrum
+        for k in [0] + list(range(2, 9)):
+            assert s.wf_sample_checks(k)["k"] == k and s.wf_line_view(k, lines["main"])["k"] == k
+    assert len(s._sample_fits) <= 6
+
+
+def test_line_epochs_data_break_at_masked_stretches():
+    from fantasy_agn.app.steps import StepsMixin
+    x = np.r_[np.arange(0., 10.), np.arange(20., 30.)]
+    got = StepsMixin._near(np.arange(-5., 35.), x, x * 2, 1.5)
+    assert np.isnan(got[[0, 3, 20, 39]]).all() and got[5] == 0 and got[34] == 58          # outside, the hole
+    assert np.isfinite(got[5:15]).all() and np.isfinite(got[25:35]).all()
+
+
 def _rest_spectrum(lo, hi, **kw):
     wave = np.arange(float(lo), float(hi), 2.0)
     return fa.Spectrum(wave, np.ones_like(wave), 0.1 * np.ones_like(wave), z=1.0, rest_frame=True, **kw)
@@ -4829,7 +5054,13 @@ def test_app_catalog_classification_follows_target_and_current_fit(monkeypatch):
     s.wf.update(mode="multi", fit_kind="fits")
     cat = fa.lookup_catalogs([a, b])
     s.ns.update(raw=[a, b], spectra=[a, b], fits=[ra, rb], catalogs=cat)
-    assert s.classify_state(0)["label"] == "type1"
+    cs = s.classify_state(0)
+    assert cs["label"] == "type1"
+    # each spectrum carries what the summary across epochs needs: its regions, the numbers, the date
+    __import__("json").dumps(cs, allow_nan=False)
+    assert [x["label"] for x in cs["labels"]] == ["type1", "passive"]
+    assert all(set(x["regions"]) == {"nii", "sii", "oi", "whan"} and set(x["m"]) >= {"broad_snr", "host_fraction_5100"}
+               and "mjd" in x for x in cs["labels"])
     assert s.wf_catalog_row(1)["cls"] == "passive"
     cat.sort_values("ra", ascending=False, inplace=True)
     assert s.wf_catalog()["loaded_rows"] == [1, 0]

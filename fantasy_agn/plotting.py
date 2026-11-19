@@ -91,6 +91,7 @@ COLORS = {
     "balmer_cont": "#86b6ef",
     "balmer_lines": "#86b6ef",
     "narrow": "#1baf7a",
+    "coronal": "#b8459c",
     "broad": "#2a78d6",
     "outflow": "#eda100",
     "bowen": "#4a3aa7",
@@ -238,13 +239,23 @@ def _group_of(comp):
     role = getattr(comp, "role", None)
     if role == "broad" and is_bowen(comp):
         return "bowen", "Bowen + He$\\,$II"
+    if role == "narrow" and is_coronal(comp):
+        return "coronal", "Coronal lines"
     labels = {"narrow": "Narrow lines", "broad": "Broad lines", "outflow": "Outflow"}
     return (role, labels[role]) if role in labels else ("other", comp.name)
 
 
-_ORDER = ["continuum", "host", "balmer_cont", "balmer_lines", "feii", "narrow", "broad",
+_ORDER = ["continuum", "host", "balmer_cont", "balmer_lines", "feii", "narrow", "coronal", "broad",
           "bowen", "outflow", "other"]
 _BOWEN = re.compile(r"(NIII|OIII3|HeII)\d+$")
+_CORONAL = re.compile(r"\[Fe(VII|X|XI|XIV)\]\d+$")
+
+
+def is_coronal(comp):
+    """A component of coronal lines: named 'coronal...' (as the presets make them), or of [Fe VII], [Fe X],
+    [Fe XI] and [Fe XIV] lines only."""
+    names = list(getattr(comp, "line_names", []) or [])
+    return comp.name.startswith("coronal") or (bool(names) and all(_CORONAL.match(n) for n in names))
 
 
 def is_bowen(comp):
@@ -309,7 +320,7 @@ def _curves(result, group):
             key = kind
         else:
             key = comp.name
-            if kind in ("narrow", "broad", "bowen", "outflow", "other"):
+            if kind in ("narrow", "coronal", "broad", "bowen", "outflow", "other"):
                 label = comp.name
         if key in out:
             out[key][2] = out[key][2] + parts[comp.name]
@@ -729,19 +740,20 @@ _MAIN_NARROW = ("[OIII]5007", "Ha", "Hb", "[NII]6583", "[SII]6716", "[OI]6300", 
                 "[NeIII]3869", "HeII4686", "Hg")
 
 
-def fitted_lines(result):
+def fitted_lines(result, table=None):
     """
     The lines of a fit that can be shown alone, most interesting first: lines
     with several components (broad + narrow, two broad, ...) before single
     ones, main diagnostic lines first, then by flux. Returns a list of dicts
-    {line, wavelength, components, roles, flux}.
+    {line, wavelength, components, roles, flux}. ``table``: ``result.lines``, when
+    already at hand (it takes a moment to compute).
     """
     from .lines import line_wavelength
     from .components import Lines
     s = result.spectrum
     lo, hi = (result.model.wave_range or (s.wave.min(), s.wave.max()))
     found = {}
-    table = result.lines
+    table = result.lines if table is None else table
     for comp in result.model.components:
         if not isinstance(comp, Lines):
             continue
@@ -773,9 +785,9 @@ def _rest_wave(result, line):
         raise
 
 
-def main_line(result):
+def main_line(result, table=None):
     """The line a single-line plot shows by default (the main broad line, else [OIII]...)."""
-    lines = fitted_lines(result)
+    lines = fitted_lines(result, table)
     broad = [d for d in lines if "broad" in d["roles"]]
     for name in (_MAIN_LINES if broad else _MAIN_NARROW):
         for d in broad or lines:

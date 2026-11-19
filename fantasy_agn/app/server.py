@@ -71,7 +71,7 @@ EXAMPLE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "exam
 
 def _versioned(html):
     """Add the modification time to the stylesheet and script links, so a changed file is never served from the cache."""
-    for name in ("wf.css", "wf.js", "mb.js", "hero.js", "feii.js"):
+    for name in ("wf.css", "wf.js", "mb.js", "hero.js", "feii.js", "fitlive.js", "lineview.js", "sampletiles.js"):
         v = int(os.path.getmtime(os.path.join(STATIC, name)))
         html = html.replace(f'"/static/{name}"', f'"/static/{name}?v={v}"')
     return html
@@ -335,6 +335,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(s.mb_lines())
             if name == "guess":
                 return self._send(s.wf_guess(one("k", "")) or {})
+            if name == "samplelive":
+                return self._send(s.sample_live_state(one("since", "0")))
+            if name == "fitlive":
+                return self._send(s.live_state(one("seq", "0")))
             if name == "feii":
                 return self._send(s.wf_feii_view(one("k")) or {})
             if name == "degeneracy":
@@ -377,6 +381,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(s.wf_main_sequence() or {})
             if name == "line_list":
                 return self._send(s.wf_line_list(one("k")) or {})
+            if name == "sample_checks_code":
+                ids = lambda key: [int(v) for v in one(key, "").split(",") if v.strip().lstrip("-").isdigit()]  # noqa: E731
+                return self._send({"code": s.wf_sample_checks_code(one("k", "0"), ids("lines"), ids("resid"))})
+            if name == "sample_checks":
+                return self._send(s.wf_sample_checks(one("k", "0")))
+            if name == "check_snips":
+                return self._send(s.wf_check_snips(one("k", "0")))
+            if name == "redshift_curve":
+                return self._send(s.wf_redshift_curve() or {})
+            if name == "sample_plan":
+                return self._send(s.wf_sample_plan())
+            if name == "line_epochs":
+                return self._send(s.wf_line_epochs(one("line", ""), one("window", "")) or {})
+            if name == "line_view":
+                return self._send(s.wf_line_view(one("k", "0"), one("line", ""), one("window", "")) or {})
             if name == "correlations_data":
                 return self._send(s.wf_correlations_data() or {})
             if name.split(".")[0] in ("correlations", "relation", "correlations_code", "relation_code"):

@@ -13,9 +13,12 @@ reverberation black-hole mass.
 Methods:
 
 * rms spectrum: the broad line alone in every epoch (the intercalibrated data
-  minus all other fitted emission, including broad blends),
-  noise-corrected rms (Park et al. 2012, ApJS 203, 6); widths from the
-  bootstrap over epochs.
+  minus all other fitted emission, including broad blends; Barth et al. 2015,
+  ApJS 217, 26), of the data (noise-corrected excess rms) and of the fitted
+  profiles (as the PrepSpec model rms of SDSS-RM); widths in +- 2.5 MAD of the
+  mean profile (Wang et al. 2019, ApJ 882, 4), FWHM walked out from the peak
+  (Peterson et al. 2004), errors from the bootstrap over epochs, and flags when
+  the variability is too weak for an rms width.
 * ICCF: Gaskell & Peterson (1987), White & Peterson (1994), both light curves
   interpolated; lag = centroid of r >= 0.8 r_max; errors from flux
   randomisation and random subset selection (Peterson et al. 1998, 2004),
@@ -805,20 +808,145 @@ def _rms_resample(grid, wave, flux, err, good):
     return f, e
 
 
-def rms_spectrum(epochs, line, window=None, n_boot=200, seed=0):
+def _broad_model(result, line):
+    """The fitted broad ``line`` alone (all its broad components, with transmission), on the epoch's grid."""
+    from .plotting import _line_parts, _transmission
+    s = result.spectrum
+    broad = [c.name for c in result._line_components() if c.role == "broad" and line in c.line_names]
+    parts = _line_parts(result, line, s.wave)
+    return sum(parts[name] for name in broad) * _transmission(result, s.wave)
+
+
+def _profile_widths(v, prof, center, half):
+    """FWHM and line dispersion of a profile in the window ``center`` +- ``half`` (km/s). The FWHM walks out
+    from the peak to half maximum on each side, interpolating between pixels (Peterson et al. 2004); nan
+    when a side does not fall to half maximum inside the window. Negative values count as zero."""
+    sel = np.isfinite(prof) & (np.abs(v - center) <= half)
+    x, p = v[sel], np.clip(prof[sel], 0, None)
+    if x.size < 3 or p.sum() <= 0:
+        return np.nan, np.nan
+    c = np.sum(p * x) / p.sum()
+    sigma = float(np.sqrt(np.sum(p * (x - c) ** 2) / p.sum()))
+    vl, vr = _half_max_walk(x, p)
+    return float(vr - vl), sigma
+
+
+def _half_max_walk(x, p):
+    """The velocities where profile ``p`` (on ascending ``x``) falls to half its peak, walking out from the peak
+    on each side and interpolating between pixels (Peterson et al. 2004); nan, nan when a side does not fall."""
+    k = int(np.argmax(p))
+    h = p[k] / 2
+    i = k
+    while i < x.size - 1 and p[i] > h:
+        i += 1
+    j = k
+    while j > 0 and p[j] > h:
+        j -= 1
+    if p[i] > h or p[j] > h:
+        return np.nan, np.nan
+    vr = np.interp(h, [p[i], p[i - 1]], [x[i], x[i - 1]])
+    vl = np.interp(h, [p[j], p[j + 1]], [x[j], x[j + 1]])
+    return float(vl), float(vr)
+
+
+def _mad_halfwidth(v, mean):
+    """2.5 x the mean absolute deviation about the median velocity of a profile (Wang et al. 2019)."""
+    p = np.clip(np.nan_to_num(mean), 0, None)
+    if p.sum() <= 0:
+        return np.nan
+    med = np.interp(0.5, np.cumsum(p) / p.sum(), v)
+    return float(2.5 * np.sum(np.abs(v - med) * p) / p.sum())
+
+
+def _smooth_rms(v, rms, half):
+    """Two Gaussians plus a linear floor fitted to a noisy mean or rms profile of the data; returns the Gaussians
+    alone, the smooth profile whose widths are measured. Measured pixel by pixel, a noisy profile gives an FWHM
+    set by a noise spike, and the noise left in the wings (the rms of pure noise is not zero on average) inflates
+    the line dispersion; the floor takes that up, as the linear fit under the rms line of Barth et al. (2015).
+    nan if the fit fails."""
+    from scipy.optimize import least_squares
+    ok = np.isfinite(rms)
+    if ok.sum() < 10 or not np.nanmax(rms) > 0 or not np.isfinite(half):
+        return np.full(v.size, np.nan)
+    y, x = rms[ok], v[ok]
+    pk = x[np.argmax(np.where(np.abs(x) <= half, y, -np.inf))]
+    span = max(np.ptp(x), 1.0)
+    wmin = max(300.0, half / 6)                    # no Gaussian narrower than this: it would fit a noise spike
+    gauss = lambda q, x: q[0] * np.exp(-0.5 * ((x - q[1]) / q[2]) ** 2) + q[3] * np.exp(-0.5 * ((x - q[4]) / q[5]) ** 2)
+    full = lambda q, x: gauss(q, x) + q[6] + q[7] * x / span
+    top = y.max()
+    q0 = [top, pk, max(half / 4, 2 * wmin), top / 3, pk, max(half / 2, 3 * wmin), 0.0, 0.0]
+    lo = [0, x.min(), wmin, 0, x.min(), wmin, -top, -top]
+    wmax = max(1.2 * half, 2 * wmin)               # nor wider: a wide Gaussian would take up the noise floor
+    hi = [10 * top, x.max(), wmax, 10 * top, x.max(), wmax, top, top]
+    q0 = np.clip(q0, np.array(lo) + 1e-9, np.array(hi) - 1e-9)
+    try:
+        q = least_squares(lambda q: full(q, x) - y, q0, bounds=(lo, hi)).x
+    except (ValueError, np.linalg.LinAlgError):
+        return np.full(v.size, np.nan)
+    return gauss(q, v)
+
+
+def _variability_snr(epochs, line):
+    """sqrt(chi2 - (N - 1)) of the broad line flux about its weighted mean (Shen et al. 2019 'SNR2'):
+    the intrinsic variability in units of the errors. SDSS-RM measures rms widths only above 10."""
+    f, e = [], []
+    for r in epochs:
+        names = [c.name for c in r._line_components() if c.role == "broad" and line in c.line_names]
+        try:
+            m = r.measure(line, names)
+        except (ValueError, KeyError):
+            continue
+        if np.isfinite(m["flux"]) and np.isfinite(m["flux_err"]) and m["flux_err"] > 0:
+            f.append(m["flux"])
+            e.append(m["flux_err"])
+    if len(f) < 2:
+        return np.nan
+    f, e = np.array(f), np.array(e)
+    w = 1 / e ** 2
+    chi2 = np.sum(w * (f - np.sum(w * f) / w.sum()) ** 2)
+    return float(np.sqrt(max(chi2 - (len(f) - 1), 0.0)))
+
+
+def rms_spectrum(epochs, line, window=None, n_boot=200, seed=0, widths="model", sigma_window="line"):
     """
-    Mean and noise-corrected rms spectrum of the broad ``line`` over the epochs
-    (list of FitResult), with FWHM and line dispersion of the rms profile and
-    bootstrap errors. Other fitted transitions are subtracted on each epoch's
-    native pixel grid, including their instrumental and transmission effects.
-    Fitted wavelength offsets are removed before stacking. The first covered epoch
-    with a measurable width sets the default window and wavelength grid. With an
-    explicit window, the first covered epoch sets the grid. Missing pixels remain
-    missing, and the rms needs two epochs at a pixel. The wavelengths are in the
-    reference epoch's medium and the widths include instrumental broadening.
-    Returns a dict.
+    Mean and rms spectrum of the broad ``line`` over the epochs (list of FitResult), with the FWHM and line
+    dispersion of both and bootstrap errors (resampling the epochs).
+
+    The rms is of the line alone (Barth et al. 2015; Shen et al. 2016, PrepSpec): in every epoch all other
+    fitted emission and the continuum are subtracted on the epoch's native pixels, including their
+    instrumental and transmission effects, and fitted wavelength offsets are removed before stacking. It is
+    built twice:
+
+    * ``mean``, ``rms``: of the data (the line plus the fit residuals). The rms is the excess over the noise,
+      sqrt(sum (f - mean)^2 / (N - 1) - mean(err^2)), zero where the noise accounts for all the scatter, nan
+      where fewer than two epochs have data.
+    * ``mean_model``, ``rms_model``: of the fitted broad profiles, noise-free and complete across masked pixels,
+      as the PrepSpec model rms of SDSS-RM (Wang et al. 2019). In a joint fit whose broad shapes are shared,
+      the model rms changes only through the amplitudes of the broad components.
+
+    Widths are measured on smooth profiles: the fitted ones, or for the rms of the data two Gaussians fitted to
+    it (a noisy rms measured pixel by pixel gives widths set by the noise). The FWHM walks out from the peak
+    (Peterson et al. 2004). ``sigma_window='line'`` (default) takes the line dispersion over the whole line, as
+    Peterson et al. (2004) and Barth et al. (2015) and the virial factor f = 4.47 of Woo et al. (2015);
+    ``'mad'`` within +- 2.5 times the mean absolute deviation of the mean profile, about the line centre for the
+    mean and the rms peak for the rms (Wang et al. 2019, SDSS-RM), which gives about 12% less for a Gaussian.
+    ``window_half`` is that half-width either way. With ``widths='model'`` (default) the adopted ``fwhm_rms``,
+    ``sigma_rms``, ``fwhm_mean`` and ``sigma_mean`` are those of the fitted profiles; with ``widths='data'``
+    those of the data (both measured on the smooth fits; ``rms_smooth`` is that of the rms). The other set is kept as ``*_data`` or
+    ``*_model``. ``variability_snr`` is sqrt(chi2 - (N - 1)) of the broad line flux, ``masked_fraction`` the
+    part of the rms window without data, and ``flags`` say in words when the rms width is not reliable
+    (variability S/N < 10, a window with gaps, width/error < 3, data and model disagreeing).
+
+    The first covered epoch with a measurable width sets the default grid (+- 2 FWHM, 3000-15000 km/s); with
+    an explicit ``window`` (km/s) the first covered epoch sets the grid. Wavelengths are in the reference
+    epoch's medium and the widths include instrumental broadening. Returns a dict.
     """
     from .components import _in_medium
+    if widths not in ("model", "data"):
+        raise ValueError("widths must be 'model' or 'data'")
+    if sigma_window not in ("line", "mad"):
+        raise ValueError("sigma_window must be 'line' or 'mad'")
     if window is not None and (not np.isfinite(window) or window <= 0):
         raise ValueError("window must be a finite positive half-width in km/s")
     ref = None
@@ -850,7 +978,7 @@ def rms_spectrum(epochs, line, window=None, n_boot=200, seed=0):
     if ref is None:
         raise ValueError(f"no covered epoch supplies a usable window for broad {line}; "
                          "specify a window in km/s containing fitted pixels")
-    F, E = [], []
+    F, E, M, used = [], [], [], []
     for r in covered:
         # The joint fit stores calibrated data/errors, its effective resolution,
         # and the offset in the fitted shifts. Subtract on that grid, then align
@@ -861,50 +989,86 @@ def rms_spectrum(epochs, line, window=None, n_boot=200, seed=0):
         good = r.mask & s.good & np.isfinite(f)
         f, e = _rms_resample(grid, w, f, e, good)
         if np.isfinite(f).any():
+            m, _ = _rms_resample(grid, w, _broad_model(r, line) * factor, s.err * factor, np.isfinite(w))
             F.append(f)
             E.append(e)
-    F, E = np.array(F), np.array(E)
+            M.append(m)
+            used.append(r)
+    F, E, M = np.array(F), np.array(E), np.array(M)
     if len(F) < 2 or not np.any(np.isfinite(F).sum(axis=0) >= 2):
         raise ValueError(f"rms_spectrum needs overlapping fitted pixels in at least two epochs for broad {line}")
     v = (grid / lam0 - 1) * C_KMS
 
-    def stats(rows):
-        f, e = F[rows], E[rows]
-        n = np.isfinite(f).sum(axis=0)
-        mean = np.nansum(f, axis=0) / np.where(n > 0, n, np.nan)
-        var = (np.nansum((f - mean) ** 2, axis=0) - np.nansum(e ** 2, axis=0)) / np.where(n >= 2, n, np.nan)
-        rms = np.sqrt(np.clip(var, 0, None))
-        return mean, rms
+    def stack(X, E=None):
+        n = np.isfinite(X).sum(axis=0)
+        mean = np.nansum(X, axis=0) / np.where(n > 0, n, np.nan)
+        var = np.nansum((X - mean) ** 2, axis=0) / np.where(n >= 2, n - 1, np.nan)
+        if E is not None:                          # the excess over the noise: subtract the mean error^2
+            ne = np.isfinite(E).sum(axis=0)
+            var = var - np.nansum(E ** 2, axis=0) / np.where(ne > 0, ne, np.nan)
+        return mean, np.sqrt(np.clip(var, 0, None))
 
-    def widths(prof):
-        p = np.clip(np.nan_to_num(prof), 0, None)
-        if p.sum() <= 0:
-            return np.nan, np.nan
-        c = np.sum(p * v) / p.sum()
-        sigma = float(np.sqrt(np.sum(p * (v - c) ** 2) / p.sum()))
-        half = p.max() / 2
-        above = np.nonzero(p >= half)[0]
-        fwhm = float(v[above[-1]] - v[above[0]]) if above.size else np.nan
-        return fwhm, sigma
+    def measure(rows, half=None):
+        mean, rms = stack(F[rows], E[rows])
+        mm, mr = stack(M[rows])
+        half = _mad_halfwidth(v, mm) if half is None else half
+        peak = lambda p: v[np.nanargmax(np.where(np.abs(v) <= half, np.nan_to_num(p, nan=-np.inf), -np.inf))]
+        w = half if sigma_window == "mad" else np.inf
+        out = {}
+        out["model"] = (*_profile_widths(v, mr, peak(mr), w), *_profile_widths(v, mm, 0.0, w))
+        smooth, smean = _smooth_rms(v, rms, half), _smooth_rms(v, mean, half)
+        nan2 = (np.nan, np.nan)
+        out["data"] = (*(_profile_widths(v, smooth, peak(smooth), w) if np.isfinite(smooth).any() else nan2),
+                       *(_profile_widths(v, smean, 0.0, w) if np.isfinite(smean).any() else nan2))
+        return out, (mean, rms, mm, mr, smooth, half)
 
     rows = np.arange(len(F))
-    mean, rms = stats(rows)
-    fwhm, sigma = widths(rms)
-    mfwhm, msigma = widths(mean)
+    best, (mean, rms, mean_model, rms_model, smooth, half) = measure(rows)
     rng = np.random.default_rng(seed)
-    def bootstrap_errors(index, count):
-        samples = np.array([widths(stats(rng.integers(0, len(rows), len(rows)))[index])
-                            for _ in range(count)]).reshape(-1, 2)
-        return [float(np.std(col[np.isfinite(col)])) if np.isfinite(col).any() else np.nan
-                for col in samples.T]
-
-    efwhm, esigma = bootstrap_errors(1, n_boot)
-    emfwhm, emsigma = bootstrap_errors(0, min(n_boot, 100))
-    return {"wave": grid, "velocity": v, "mean": mean, "rms": rms,
-            "fwhm_rms": fwhm, "fwhm_rms_err": efwhm,
-            "sigma_rms": sigma, "sigma_rms_err": esigma,
-            "fwhm_mean": mfwhm, "fwhm_mean_err": emfwhm,
-            "sigma_mean": msigma, "sigma_mean_err": emsigma, "line": line}
+    boots = {"model": [], "data": []}
+    for _ in range(n_boot):
+        pick = rng.integers(0, len(rows), len(rows))
+        if np.unique(pick).size < 2:
+            continue
+        b, _ = measure(pick, half)
+        for k in boots:
+            boots[k].append(b[k])
+    names = ("fwhm_rms", "sigma_rms", "fwhm_mean", "sigma_mean")
+    vals = {}
+    for kind in ("model", "data"):
+        B = np.array(boots[kind], float).reshape(-1, 4)
+        for i, name in enumerate(names):
+            col = B[:, i][np.isfinite(B[:, i])] if B.size else np.array([])
+            vals[(kind, name)] = (best[kind][i], float(np.std(col)) if col.size > 1 else np.nan)
+    other = "data" if widths == "model" else "model"
+    out = {"wave": grid, "velocity": v, "mean": mean, "rms": rms, "mean_model": mean_model,
+           "rms_model": rms_model, "rms_smooth": smooth, "line": line, "widths": widths, "sigma_window": sigma_window, "window_half": half,
+           "n_epochs": len(F)}
+    for name in names:
+        out[name], out[name + "_err"] = vals[(widths, name)]
+        out[f"{name}_{other}"], out[f"{name}_{other}_err"] = vals[(other, name)]
+    pk = v[np.nanargmax(np.where(np.abs(v) <= half, np.nan_to_num(rms_model, nan=-np.inf), -np.inf))] \
+        if np.isfinite(half) else 0.0
+    win = np.abs(v - pk) <= half if np.isfinite(half) else np.ones(v.size, bool)
+    out["masked_fraction"] = float(np.mean(np.isfinite(F).sum(axis=0)[win] < 2)) if win.any() else np.nan
+    out["variability_snr"] = _variability_snr(used, line)
+    flags = []
+    snr = out["variability_snr"]
+    if np.isfinite(snr) and snr < 10:
+        flags.append(f"the broad {line} flux varies weakly (variability S/N {snr:.1f} < 10, the SDSS-RM limit): "
+                     "the rms profile of the data is mostly noise")
+    if out["masked_fraction"] > 0.1:
+        flags.append(f"{100 * out['masked_fraction']:.0f}% of the rms window has no data in two or more epochs "
+                     "(masked pixels or gaps): the data rms misses part of the line")
+    s_, e_ = out["sigma_rms"], out["sigma_rms_err"]
+    if np.isfinite(s_) and np.isfinite(e_) and e_ > 0 and s_ / e_ < 3:
+        flags.append(f"sigma_line(rms) is measured to less than 3 sigma ({s_:.0f} +- {e_:.0f} km/s)")
+    so, eo = out[f"sigma_rms_{other}"], out[f"sigma_rms_{other}_err"]
+    if np.isfinite(s_) and np.isfinite(so) and abs(s_ - so) > 2 * np.hypot(np.nan_to_num(e_), np.nan_to_num(eo)) > 0:
+        flags.append(f"sigma_line(rms) of the {other} ({so:.0f} km/s) differs from that of the {widths} "
+                     f"({s_:.0f} km/s) by more than 2 sigma")
+    out["flags"] = flags
+    return out
 
 
 # ---------------------------------------------------------------- result
@@ -959,6 +1123,7 @@ class Reverberation:
             if v.get("frac_rej", 0) > 0.3:
                 self.warnings.append(f"{v.get('method', k)}: {100 * v['frac_rej']:.0f}% of the lag distribution "
                                      "is outside the primary peak (aliases)")
+        self.warnings += list(rms.get("flags", []))
         if self.warnings:
             import warnings
             for w in self.warnings:
@@ -1001,11 +1166,24 @@ class Reverberation:
                 *other,
                 *([("ICCF r_max", self.methods["iccf"]["r_max"], "", "")] if "iccf" in self.methods else
                   [("r_max", self.lag["r_max"], "", "")] if np.isfinite(self.lag.get("r_max", np.nan)) else []),
-                (f"sigma_line (rms {self.line})", self.rms["sigma_rms"], f"{self.rms['sigma_rms_err']:.2g}", "km/s"),
-                (f"FWHM (rms {self.line})", self.rms["fwhm_rms"], f"{self.rms['fwhm_rms_err']:.2g}", "km/s"),
-                (f"sigma_line (mean {self.line})", self.rms["sigma_mean"], f"{self.rms['sigma_mean_err']:.2g}", "km/s"),
+                *self._width_rows(),
                 ("log M_BH (f = %.2f)" % self.f_virial, lm, f"{le:.2g}", "dex")]
         return pd.DataFrame(rows, columns=["quantity", "value", "error", "unit"])
+
+    def _width_rows(self):
+        R, ln = self.rms, self.line
+        kind = R.get("widths", "model")
+        other = "data" if kind == "model" else "model"
+        row = lambda label, key: (label, R[key], f"{R[key + '_err']:.2g}", "km/s")
+        how = "" if "widths" not in R else ", fitted profiles" if kind == "model" else ", data"   # older results: no label
+        rows = [row(f"sigma_line (rms {ln}{how})", "sigma_rms"),
+                row(f"FWHM (rms {ln})", "fwhm_rms")]
+        if f"sigma_rms_{other}" in R:
+            rows.append(row(f"sigma_line (rms {ln}, {other}: check)", f"sigma_rms_{other}"))
+        rows += [row(f"sigma_line (mean {ln})", "sigma_mean")] + ([row(f"FWHM (mean {ln})", "fwhm_mean")] if "widths" in R else [])
+        if np.isfinite(R.get("variability_snr", np.nan)):
+            rows.append((f"variability S/N (broad {ln})", R["variability_snr"], "rms widths need > 10", ""))
+        return rows
 
     def __repr__(self):
         with pd.option_context("display.float_format", "{:.4g}".format, "display.width", 120):
@@ -1066,10 +1244,15 @@ class Reverberation:
             ax_cc.set_xlabel("lag (days, observed)")
             ax_cc.set_title(f"lag = {self.lag['tau_cen']:.1f} $_{{-{self.lag['tau_err_lo']:.1f}}}"
                             f"^{{+{self.lag['tau_err_hi']:.1f}}}$ d ({self.lag.get('method', '')})", fontsize=9)
-            v = self.rms["velocity"]
-            ax_rms.plot(v, self.rms["mean"], color="0.3", lw=0.9, label="mean")
-            ax_rms.plot(v, self.rms["rms"] * np.nanmax(self.rms["mean"]) / max(np.nanmax(self.rms["rms"]), 1e-30),
-                        color=COLORS["broad"], lw=1.0, label="rms (scaled)")
+            R = self.rms
+            v = R["velocity"]
+            ax_rms.plot(v, R["mean"], color="0.65", lw=0.6, label="mean (data)")
+            ax_rms.plot(v, R["rms"], color=COLORS["broad"], lw=0.6, alpha=0.45, label="rms (data)")
+            if "mean_model" in R:
+                ax_rms.plot(v, R["mean_model"], color="0.15", lw=1.1, ls="--", label="mean (fit)")
+                ax_rms.plot(v, R["rms_model"], color=COLORS["broad"], lw=1.6, label="rms (fit)")
+            if np.isfinite(R.get("window_half", np.nan)):
+                ax_rms.axvspan(-R["window_half"], R["window_half"], color="0.5", alpha=0.07, lw=0)
             ax_rms.axhline(0, color="0.6", lw=0.5)
             ax_rms.set_xlabel("velocity (km$\\,$s$^{-1}$)")
             ax_rms.set_ylabel("broad " + pretty_line(self.line))

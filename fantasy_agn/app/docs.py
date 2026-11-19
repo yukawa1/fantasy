@@ -34,7 +34,13 @@ def _api_objects():
              "HighOrderBalmer", "StellarPopulation", "HostGalaxy", "Extinction")]),
         ("Fitting", [("fa.fit", fa.fit), ("fa.guess", fa.guess), ("fa.compare", fa.compare),
                      ("fa.fit_many", fa.fit_many), ("fa.fit_sample", fa.fit_sample), ("fa.fit_absorbed", fa.fit_absorbed),
-                     ("fa.refine", fa.refine), ("fa.prune_feii", fa.prune_feii), ("fa.fit_epochs", fa.fit_epochs)]),
+                     ("fa.refine", fa.refine), ("fa.prune_feii", fa.prune_feii), ("fa.fit_epochs", fa.fit_epochs),
+                     ("fantasy_agn.progress.set_hook", _progress().set_hook),
+                     ("fantasy_agn.progress.report", _progress().report),
+                     ("fantasy_agn.progress.enabled", _progress().enabled),
+                     ("fantasy_agn.progress.set_live_hook", _progress().set_live_hook),
+                     ("fantasy_agn.progress.live", _progress().live),
+                     ("fantasy_agn.progress.live_enabled", _progress().live_enabled)]),
         ("Results", [(f"FitResult.{n}", getattr(FitResult, n)) for n in
                      ("key_results", "lines", "line_limit", "upper_limit", "measure", "bh_mass", "bh_masses", "feii", "feii_groups", "balmer_decrement", "undersampled",
                       "host_properties", "luminosity", "continuum", "plot", "savefig", "save",
@@ -53,6 +59,11 @@ def _api_objects():
         ("New versions", [("fantasy_agn.update.check", _update().check), ("fantasy_agn.update.install", _update().install)]),
     ])
     return groups
+
+
+def _progress():
+    from .. import progress
+    return progress
 
 
 def _update():

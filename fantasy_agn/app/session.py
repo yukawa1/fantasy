@@ -157,26 +157,100 @@ class Session(BuilderMixin, StepsMixin):
     """One analysis: a list of code cells run in a shared namespace."""
 
     def __init__(self):
-        from ..progress import set_hook
+        from ..progress import set_hook, set_live_hook
         self.lock = threading.RLock()
         self._render_lock = threading.Lock()     # matplotlib drawing (requests run in threads)
         self.progress = None
         self._saving = threading.Lock()          # one auto-save at a time
+        self.live = None                         # snapshots of the running fit (fitting._Live), for the Fit step
         self.reset()
         set_hook(self._on_progress)
+        set_live_hook(self._on_live)
+
+    def _on_live(self, d):
+        """A snapshot of a running fit: the data at the start, then the model, chi2 and phase as it converges.
+        Kept for GET /api/wf/fitlive (too large for the polled state). A stop from the app takes effect here."""
+        with self.lock:
+            mine = threading.current_thread() is self._thread       # not a fit of a background job (model gallery)
+            stop = self.stopping and mine
+            if self.busy and mine:
+                L, ev = self.live, d["event"]
+                if ev == "start" or L is None:
+                    seq = self._live_seq = getattr(self, "_live_seq", 0) + 1     # new data for the browser
+                    L = self.live = {"seq": seq, "x": d.get("x"), "y": d.get("y"), "err": d.get("err"), "dof": d.get("dof", 1),
+                                     "npar": d.get("npar"), "phases": list(d.get("phases") or ()), "phase": "guess", "detail": "",
+                                     "marks": [], "hist": [], "model": None, "n": 0, "t": 0.0, "chi2": None, "best": None}
+                if ev == "phase":
+                    L["phase"], L["detail"] = d["phase"], d.get("detail") or ""
+                    if not L["marks"] or L["marks"][-1][0] != d["phase"]:     # a new phase, not a new step of one
+                        L["marks"].append([d["phase"], round(float(d.get("t", 0)), 3)])
+                elif ev == "tick":
+                    dof = L["dof"] or 1
+                    L["n"], L["t"] = d["n"], round(float(d["t"]), 3)
+                    L["chi2"], L["best"] = d["chi2"] / dof, d["best"] / dof
+                    if d.get("model") is not None:
+                        L["model"] = d["model"]
+                    L["hist"].append([L["t"], L["chi2"]])
+                    if len(L["hist"]) > 600:                 # keep it short: every other point of the older half
+                        L["hist"] = L["hist"][:300:2] + L["hist"][300:]
+        if stop:
+            raise Stopped()
+
+    def live_state(self, seq=0):
+        """The running (or last) fit for the Fit step; the data only when the browser does not have them yet."""
+        with self.lock:
+            L = self.live
+            if L is None:
+                return {"seq": 0}
+            num = lambda a: None if a is None else [float(f"{v:.5g}") if np.isfinite(v) else None for v in np.asarray(a, float)]  # noqa: E731
+            out = {k: L[k] for k in ("seq", "dof", "npar", "phases", "phase", "detail", "marks", "n", "t", "chi2", "best")}
+            out["hist"] = [list(h) for h in L["hist"]]
+            out["model"] = num(L["model"])
+            out["running"] = bool(self.busy)
+            if int(seq or 0) != L["seq"]:
+                out.update(x=num(L["x"]), y=num(L["y"]), err=num(L["err"]))
+            return out
 
     def _on_progress(self, p):
-        """Progress reports of fit_many / fit_epochs while a cell runs (and where a stop takes effect)."""
+        """Progress reports of fit_many / fit_epochs while a cell runs (and where a stop takes effect).
+        The spectra a sample fit finishes (``item``) go to ``sample_live``, for GET /api/wf/samplelive."""
         with self.lock:
             if self.busy:
+                item = p.pop("item", None)
                 self.progress = p
+                if item is not None:
+                    S = self.sample_live
+                    if not item or S is None or S["task"] != p["task"]:      # a new sample fit
+                        S = self.sample_live = {"task": p["task"], "total": p["total"], "seq": 0, "items": {},
+                                                "start": p["start"], "before": self.ns.get("sample")}
+                    if item:
+                        S["seq"] += 1
+                        S["items"][item["k"]] = dict(item, seq=S["seq"], done=p["done"])
+                    S["time"] = p["time"]
             stop = self.stopping and threading.current_thread() is self._thread
         if stop:
             raise Stopped()
 
+    def sample_live_state(self, since=0):
+        """The spectra of the running (or last) sample fit finished after ``since`` (their seq)."""
+        with self.lock:
+            S = self.sample_live
+            if S is None:
+                return {"total": 0}
+            since = int(since or 0)
+            items = [v for v in S["items"].values() if v["seq"] > since]
+            # the tiles belong to the sample in the namespace only when this run made it (not one stopped or failed)
+            sm = self.sample
+            current = (not self.busy and sm is not None and sm is not S["before"] and len(sm.table) == S["total"]
+                       and len(S["items"]) == S["total"])
+            return {"run": S["start"], "task": S["task"], "total": S["total"], "seq": S["seq"], "n_done": len(S["items"]),
+                    "elapsed": S.get("time", S["start"]) - S["start"], "running": bool(self.busy), "current": current,
+                    "items": sorted(items, key=lambda v: v["seq"])}
+
     def reset(self):
         import fantasy_agn
         with self.lock:
+            self.sample_live = None              # the spectra a sample fit has finished, as it runs
             self.ns = {"fa": fantasy_agn, "np": np, "__name__": "__fantasy__"}
             self.cells = [Cell("import fantasy_agn as fa")]
             self.cells[0].n, self.cells[0].start, self.cells[0].end = 1, time.time(), time.time()
@@ -527,8 +601,8 @@ class Session(BuilderMixin, StepsMixin):
                 out.append(n)
         return out
 
-    FIG_KINDS = ("continuum", "host", "balmer_cont", "balmer_lines", "feii", "narrow", "broad", "outflow",
-                 "bowen", "other")
+    FIG_KINDS = ("continuum", "host", "balmer_cont", "balmer_lines", "feii", "narrow", "coronal", "broad",
+                 "outflow", "bowen", "other")
 
     def _figure_kwargs(self, opts):
         """Keyword arguments of r.plot for the appearance options of the Results step (see custom_figure),
@@ -694,6 +768,7 @@ class Session(BuilderMixin, StepsMixin):
                 cell.code, cell.out, cell.n, cell.end = code, [], None, None
             cell.start = time.time()
             self.busy, self.error, self.progress, self.stopping = "running", None, None, False
+            self.live = None
             self._in_body = True
             self._thread = threading.Thread(target=self._run, args=(cell,), daemon=True)
             self._thread.start()
