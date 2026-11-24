@@ -125,7 +125,7 @@ def ccf_lag(t1, f1, e1, t2, f2, e2, lag_range=None, dt=None, n_mc=1000, frac=0.8
     if lag_range is None:
         lag_range = (-0.5 * span, 0.5 * span)
     if dt is None:
-        dt = max(0.25, 0.25 * float(np.median(np.diff(np.sort(np.concatenate([t1, t2]))))))
+        dt = max(0.25, 0.25 * float(np.median(np.diff(np.unique(np.concatenate([t1, t2]))))))   # shared epochs once
     lags = np.arange(lag_range[0], lag_range[1] + dt / 2, dt)
     r = iccf(t1, f1, t2, f2, lags)
     tau_cen, tau_peak, rmax = _centroid(lags, r, frac)
@@ -286,6 +286,8 @@ def _zdcf_centroid(z, lag_range, frac=0.8):
         return np.nan, np.nan, np.nan
     i = int(np.nanargmax(z.dcf.to_numpy()))
     tau, r = z.tau.to_numpy(), z.dcf.to_numpy()
+    if not r[i] > 0:                     # no positive correlation in the range: no lag (negative weights otherwise)
+        return np.nan, float(tau[i]), float(r[i])
     lo = i
     while lo > 0 and r[lo - 1] >= frac * r[i]:
         lo -= 1
@@ -650,7 +652,7 @@ def component_reverberation(me, line="Hb", continuum=None, components=None, feii
         try:
             cf = cho_factor(C, lower=True, check_finite=False)
         except np.linalg.LinAlgError:
-            return -np.inf, None, None, None
+            return -np.inf, None, (None, None)
         CiX = cho_solve(cf, X, check_finite=False)
         F = X.T @ CiX
         beta = np.linalg.solve(F, CiX.T @ y)
@@ -695,6 +697,9 @@ def component_reverberation(me, line="Hb", continuum=None, components=None, feii
                    bounds=[(-10, 10)] * m + [(np.log(1e-3), np.log(3.0))] * m)
     a, j = res.x[:m], np.exp(res.x[m:])
     ll0, beta, (cf, resid) = gls(mu, S, a, j)
+    if cf is None:
+        raise ValueError("component_reverberation: the covariance of the light curves is not positive definite "
+                         "at the best lags (too few epochs for the number of components?)")
     # response significance: likelihood ratio against a_c = 0 (the noise refitted)
     rows = []
     rng = np.random.default_rng(seed)

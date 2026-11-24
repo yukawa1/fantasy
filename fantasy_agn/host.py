@@ -31,7 +31,7 @@ import pandas as pd
 from scipy import fft
 
 from ._threads import n_threads
-from .components import Component, C_KMS, FWHM_PER_SIGMA, _limits, instrumental_fwhm
+from .components import Component, C_KMS, FWHM_PER_SIGMA, _grid_key, _limits, instrumental_fwhm
 from .extinction import fitzpatrick99
 from .templates import TEMPLATE_SETS, load, canonical
 from .wavelengths import air_to_vac
@@ -157,7 +157,7 @@ class StellarPopulation(Component):
 
     def _setup(self, x, ctx):
         curve = ctx.get("resolution_curve")
-        key = (x.size, float(x[0]), float(x[-1]), ctx.get("medium"), ctx.get("resolution"),
+        key = (_grid_key(x), ctx.get("medium"), ctx.get("resolution"),
                None if curve is None else float(np.median(curve[1])))
         # The prepared grid is returned (and used) as one immutable object:
         # several threads may evaluate the component on different wavelengths

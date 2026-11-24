@@ -419,7 +419,13 @@ def robustness(result, parameters=None, quantities=None, n_grid=12, starts=("war
             errs[qn] = float(out[1]) if isinstance(out, (tuple, list)) else np.nan
         except Exception:
             errs[qn] = np.nan
-    qprof = _run_quantity_profiles(best, quantities, errs, custom, n_jobs) if profile_quantities else {}
+    src = best
+    if best_fixed:                       # the better fit came from a scan: profile with that parameter free again
+        import copy
+        src = copy.copy(best)
+        src.model = best.model.copy()
+        src.model.params[best_fixed].fixed = False
+    qprof = _run_quantity_profiles(src, quantities, errs, custom, n_jobs) if profile_quantities else {}
     qrows = []
     for j, qn in enumerate(quantities):
         err = errs[qn]

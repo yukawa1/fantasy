@@ -119,8 +119,12 @@ def _chain(task):
         return -lp, -(L.T @ g)
 
     q = 0.3 * rng.standard_normal(n)
-    while not np.isfinite(potential(q)[0]):
+    for _ in range(60):
+        if np.isfinite(potential(q)[0]):
+            break
         q *= 0.5
+    else:
+        raise ValueError("HMC: the posterior is zero at the starting point (outside the limits?)")
     U, gU = potential(q)
     eps = 0.5 / n ** 0.25
     mu, h_bar, log_eps_bar, t0, gamma, kappa = np.log(10 * eps), 0.0, 0.0, 10, 0.05, 0.75
@@ -173,6 +177,9 @@ def _chain(task):
                 norms2 = np.einsum("ij,ij->i", L, L)
                 q = solve_triangular(A, q, lower=True)
                 U, gU = potential(q)
+                if gU is None:           # rounding put the same point just outside a limit
+                    q = reflect(q, np.zeros(n))[0]
+                    U, gU = potential(q)
                 window = []
                 mu, h_bar, log_eps_bar, shift = np.log(10 * eps), 0.0, 0.0, m
         else:

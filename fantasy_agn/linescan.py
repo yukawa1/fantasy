@@ -24,6 +24,7 @@ import re
 import numpy as np
 import pandas as pd
 
+from .components import instrumental_fwhm
 from .residuals import BOWEN, DOUBLETS, _library, _sky
 
 __all__ = ("suggest_lines",)
@@ -64,18 +65,21 @@ def _present(model, values, medium):
     return names, np.array(centres)
 
 
-def _gauss_columns(x, lams, fluxes, shift, fwhm):
-    """Derivatives of a sum of Gaussian lines (shared shift and FWHM) at x: one column per line flux
-    (per unit flux), then d/d shift and d/d FWHM (km/s)."""
+def _gauss_columns(x, lams, fluxes, shift, fwhm, inst=None):
+    """Derivatives of a sum of Gaussian lines (shared shift and intrinsic FWHM, seen with the instrumental
+    FWHM ``inst`` of each line in quadrature) at x: one column per line flux (per unit flux), then d/d shift
+    and d/d FWHM (km/s)."""
     cols, dv, dw = [], np.zeros_like(x), np.zeros_like(x)
-    for lam, f in zip(lams, fluxes):
+    inst = np.zeros(len(lams)) if inst is None else inst
+    for lam, f, ins in zip(lams, fluxes, inst):
         c0 = lam * (1 + shift / C_KMS)
-        sig = c0 * fwhm / C_KMS / 2.3548
+        eff = np.hypot(fwhm, ins)
+        sig = c0 * eff / C_KMS / 2.3548
         u = (x - c0) / sig
         g = np.where(np.abs(u) < 5, np.exp(-0.5 * u * u), 0.0) / (sig * np.sqrt(2 * np.pi))
         cols.append(g)
         dv += f * g * u / sig * c0 / C_KMS
-        dw += f * g * (u * u - 1) / fwhm
+        dw += f * g * (u * u - 1) / eff * (fwhm / eff)
     return cols, dv, dw
 
 
@@ -101,7 +105,9 @@ def _offsets(result, x, res, w, scale, roles=("narrow", "outflow")):
     from .lines import LINES
     from .wavelengths import vac_to_air
     m, s = result.model, result.spectrum
-    P = {p.name: p.value for p in m.params}
+    full = np.asarray(result.full, float)
+    P = dict(zip(m.params.names, full))
+    slices = dict(zip([c.name for c in m.components], m._slices()))
     air = getattr(s, "medium", "vacuum") == "air"
     wave = lambda n: float(vac_to_air(np.array([LINES[n]]))[0]) if air else LINES[n]
     comps = []
@@ -110,18 +116,21 @@ def _offsets(result, x, res, w, scale, roles=("narrow", "outflow")):
         if type(c).__name__ != "Lines" or getattr(c, "absorption", False) or not fw or fw <= 0:
             continue
         lines = [n for n in (c.line_names or []) if n in LINES]
-        comps.append((c, lines, [wave(n) for n in lines], [max(P.get(f"{c.name}.{n}.flux") or 0.0, 0.0) for n in lines],
-                      P.get(c.name + ".shift", 0.0) or 0.0, fw))
+        # every line's flux, also of lines tied by a ratio or bounded by max_ratios (no .flux parameter)
+        flux = dict(zip(c.line_names, c.line_fluxes(full[slices[c.name]])))
+        lams = [wave(n) for n in lines]
+        comps.append((c, lines, lams, [max(float(flux.get(n, 0.0)), 0.0) for n in lines],
+                      P.get(c.name + ".shift", 0.0) or 0.0, fw, instrumental_fwhm(np.array(lams, float), s.context)))
     if not comps:
         return []
     # every line component re-adjusts (fluxes, shift, width), to first order
     base = []
-    for c2, n2, l2, f2, sh2, fw2 in comps:
-        cols, dv, dw = _gauss_columns(x, l2, f2, sh2, fw2)
+    for c2, n2, l2, f2, sh2, fw2, in2 in comps:
+        cols, dv, dw = _gauss_columns(x, l2, f2, sh2, fw2, in2)
         base += [col for col, f in zip(cols, f2)] + [dv, dw]
     g0, _ = _gain(base, w, res)
     out = []
-    for c, names, lams, fluxes, shift, fwhm in comps:
+    for c, names, lams, fluxes, shift, fwhm, inst in comps:
         if (len(names) < 2 or not getattr(c, "_args", None) or (getattr(c, "role", None) or "narrow") not in roles):
             continue
         done = set()
@@ -135,7 +144,7 @@ def _offsets(result, x, res, w, scale, roles=("narrow", "outflow")):
             gi = [names.index(n) for n in group]
             if not any(fluxes[i] > 0 for i in gi):
                 continue
-            _, dv, dw = _gauss_columns(x, [lams[i] for i in gi], [fluxes[i] for i in gi], shift, fwhm)
+            _, dv, dw = _gauss_columns(x, [lams[i] for i in gi], [fluxes[i] for i in gi], shift, fwhm, inst[gi])
             g1, step = _gain(base + [dv, dw], w, res)
             gain = g1 - g0
             if not np.isfinite(gain) or gain <= 0:
@@ -235,7 +244,7 @@ def suggest_lines(result, threshold=10.0, max_lines=12, snr_min=3.0):
             if role == "broad" and (kind in FORBIDDEN or nm.startswith("[")):
                 continue
             c0 = lam * (1 + shift / C_KMS)
-            sig = c0 * fwhm / C_KMS / 2.3548
+            sig = c0 * float(np.hypot(fwhm, instrumental_fwhm(np.array([c0]), s.context)[0])) / C_KMS / 2.3548
             if not lo + 3 * sig < c0 < hi - 3 * sig:
                 continue
             # on top of a line the model has: a mismatch there is that line's shape, not a new line

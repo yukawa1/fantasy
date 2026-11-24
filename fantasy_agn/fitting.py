@@ -132,7 +132,9 @@ class Problem:
                 comp, s, w, lp, TLc, const = lines
                 p = full[s]
                 M = comp._weights(p) @ TLc                # line -> free amplitude columns
-                hit = comp.basis_entries(x, p, self.ctx) if np.count_nonzero(M, axis=1).max() <= 1 else None
+                # (no free amplitude left, M without columns: the component is all data side, done densely)
+                hit = (comp.basis_entries(x, p, self.ctx)
+                       if M.shape[1] and np.count_nonzero(M, axis=1).max() <= 1 else None)
                 if hit is None:                          # wide lines, or a line that feeds two amplitudes
                     todo.append(lines)
             Cd = d = None
@@ -715,8 +717,10 @@ def _projected_least_squares(prob, theta0, max_nfev=None, tol=1e-10):
             r = (f - prob.y) / prob.err
             _tick(r=r)
             J = J / prob.err[:, None]
-            span = np.where(np.isfinite(prob.ub - prob.lb), prob.ub - prob.lb, 0.0)
-            tiny = 1e-10 * np.maximum(np.abs(t), span)
+            # an amplitude at a bound is not projected out; "at" within rounding of the amplitudes' own size
+            # (not of the allowed range: a large finite limit would count small interior amplitudes as bound)
+            scale = np.max(np.abs(t[L])) if L.any() else 1.0
+            tiny = 1e-10 * np.abs(t) + 1e-14 * scale
             free = L & (t - prob.lb > tiny) & (prob.ub - t > tiny)
             Jn = J[:, N]
             if free.any():
@@ -976,12 +980,15 @@ def _fix_unconstrained(prob, model):
         lo, hi = model.params[name].min, model.params[name].max
         model.params.fix(name, min(max(0.0, lo), hi))
     # A component whose amplitudes are all fixed at 0 has no effect, so its
-    # widths and shifts are unconstrained too.
+    # widths and shifts are unconstrained too, unless a parameter of another
+    # component is tied to them (that one still sees the pixels).
     for comp in model.components:
         amps = [p for p in comp.params if p.linear]
         if amps and all(p.fixed and p.value == 0 for p in amps):
+            own = {p.name for p in comp.params}
+            followed = {q.tie[0] for q in model.params if q.tie is not None and q.name not in own}
             for p in comp.params:
-                if p.free:
+                if p.free and p.name not in followed:
                     p.fixed = True
                     weak.append(p.name)
     return weak

@@ -137,6 +137,11 @@ def _assess(result, ties, grads, tol, rng, n_draws):
     d = A @ result.full - o
     V = A @ C @ A.T
     Vi = np.linalg.pinv(V, hermitian=True)
+    # a violation the parameters cannot change (no variance along it) is a tie the model cannot
+    # satisfy, e.g. against an exact relation it already holds: the linear shift says nothing
+    stuck = d - V @ (Vi @ d)
+    if np.any(np.abs(stuck) > 1e-9 * (np.abs(d) + np.sqrt(np.abs(np.diag(V))) + 1e-300)):
+        return None
     M = -grads @ C @ A.T @ Vi                    # target shift = M @ violation
     rank = np.linalg.matrix_rank(V, hermitian=True)
     draws = rng.multivariate_normal(d, V, size=n_draws, method="svd", check_valid="ignore")
@@ -144,7 +149,7 @@ def _assess(result, ties, grads, tol, rng, n_draws):
     return {"violation": d, "violation_err": np.sqrt(np.diag(V)), "shift": M @ d,
             "shift_err": np.sqrt(np.clip(np.diag(M @ V @ M.T), 0, None)),
             "p_target": inside.mean(axis=0), "probability": float(inside.all(axis=1).mean()),
-            "test_p": float(chi2.sf(d @ Vi @ d, rank))}
+            "test_p": float(chi2.sf(d @ Vi @ d, rank)) if rank else 1.0}
 
 
 def _verdict(p, test_p, safe):

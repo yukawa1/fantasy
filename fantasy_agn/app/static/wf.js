@@ -1125,7 +1125,7 @@ function renderClassCard() {
     '<button class="btn" id="ccview">View classification</button>';
   if ($("ccuse")) $("ccuse").onclick = applyRecommendation;
   $("ccview").onclick = showClassDialog;
-  if (!classInfo || classInfo.name !== (prepared() && S.wf.loaded && S.wf.loaded.rows[0] && S.wf.loaded.rows[0].name) && !loadClassInfo.pending) {
+  if ((!classInfo || classInfo.name !== (prepared() && S.wf.loaded && S.wf.loaded.rows[0] && S.wf.loaded.rows[0].name)) && !loadClassInfo.pending) {
     loadClassInfo.pending = true; loadClassInfo().finally(() => (loadClassInfo.pending = false));
   }
 }
@@ -1536,7 +1536,8 @@ function renderFit() {
       const r = document.querySelector(`input[name="epochs"][value="${o.epochs}"]`); if (r) r.checked = true;
       if (o.n_jobs > 0) { $("njobs").value = o.n_jobs; $("snjobs").value = o.n_jobs; }
       $("sharedin").value = o.shared || ""; $("calsel").value = String(o.calibration_degree || 0);
-      $("hostepoch").checked = false;      // now in the sharing table of the Model step $("rescale").checked = !!o.rescale_errors;
+      $("hostepoch").checked = false;      // now in the sharing table of the Model step
+      $("rescale").checked = !!o.rescale_errors;
       if (o.shared_shape !== undefined) $("sharedshape").checked = !!o.shared_shape;
       setErr(o.errors || "covariance"); $("scaleerr").checked = o.scale_errors !== false;
       $("modelunc").checked = !!o.uncertainty; $("absorb").checked = !!o.absorbers;
@@ -4520,7 +4521,7 @@ function drawPlotEl(el) {
   hit.onmousemove = (e) => {
     const [px, py] = pos(e);
     cross.setAttribute("x1", px); cross.setAttribute("x2", px); cross.setAttribute("visibility", "visible");
-    if (drag) { const a = Math.min(drag, px), b = Math.max(drag, px); sel.setAttribute("x", a); sel.setAttribute("width", b - a); sel.setAttribute("visibility", "visible"); }
+    if (drag !== null) { const a = Math.min(drag, px), b = Math.max(drag, px); sel.setAttribute("x", a); sel.setAttribute("width", b - a); sel.setAttribute("visibility", "visible"); }
     const wv = inv(px), i = Math.min(x.length - 1, lowerIndex(x, wv));
     if (cfg.rich) {
       // every curve under the pointer with its colour, the strongest component first, and the nearest labelled line
@@ -4548,16 +4549,15 @@ function drawPlotEl(el) {
     tip.style.left = Math.min(px + 12, W - tip.offsetWidth - 4) + "px"; tip.style.top = Math.max(0, py - 30) + "px";
   };
   hit.onmouseleave = () => { cross.setAttribute("visibility", "hidden"); tip.classList.add("hidden"); };
-  hit.onmousedown = (e) => { drag = pos(e)[0]; e.preventDefault(); };
-  window.addEventListener("mouseup", function up(e) {
-    window.removeEventListener("mouseup", up);
+  hit.onmousedown = (e) => { drag = pos(e)[0]; e.preventDefault(); window.addEventListener("mouseup", up, { once: true }); };
+  function up(e) {
     if (drag === null) return;
     const px = Math.max(m.l, Math.min(m.l + pw, pos(e)[0])), a = Math.min(drag, px), b = Math.max(drag, px);
     drag = null; sel.setAttribute("visibility", "hidden");
     if (b - a < 4) return;
     if (cfg.onSelect) cfg.onSelect(Math.round(inv(a)), Math.round(inv(b)));
     else { st.view = [inv(a), inv(b)]; drawPlotEl(el); el.dispatchEvent(new CustomEvent("plotview", { detail: st.view })); }
-  });
+  };
   hit.ondblclick = () => { st.view = null; drawPlotEl(el); el.dispatchEvent(new CustomEvent("plotview", { detail: null })); };
 }
 const resizeObs = new ResizeObserver((entries) => entries.forEach((en) => plots.has(en.target) && drawPlotEl(en.target)));

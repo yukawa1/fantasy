@@ -349,13 +349,14 @@ def _label_lines(ax, result, view, model, xlim, max_labels=12, which="strongest"
     from .components import Lines
     s = result.spectrum
     parts = result.model_flux(components=True)
+    from .wavelengths import vac_to_air
     peaks = {}
     for comp in result.model.components:
         if not isinstance(comp, Lines) or getattr(comp, "absorption", False):
             continue
         prof = parts[comp.name]
         for ln, lam in zip(comp.line_names, comp._wave):
-            lam_obs = lam if s.medium == "vacuum" else lam / 1.00028
+            lam_obs = lam if s.medium == "vacuum" else float(vac_to_air(lam))
             if not (xlim[0] < lam_obs < xlim[1]):
                 continue
             near = np.abs(s.wave - lam_obs) < 3
@@ -363,7 +364,8 @@ def _label_lines(ax, result, view, model, xlim, max_labels=12, which="strongest"
                 peaks[ln] = (lam_obs, max(peaks.get(ln, (0, 0))[1], float(prof[near].max())))
     if lines is not None:
         from .lines import line_wavelength
-        peaks = {ln: peaks.get(ln, (_rest_wave(result, ln) / (1.00028 if s.medium != "vacuum" else 1), 1.0))
+        from .wavelengths import vac_to_air as _v2a
+        peaks = {ln: peaks.get(ln, (float(_rest_wave(result, ln) if s.medium == "vacuum" else _v2a(_rest_wave(result, ln))), 1.0))
                  for ln in lines}
         peaks = {ln: v for ln, v in peaks.items() if xlim[0] < v[0] < xlim[1]}
     if not peaks:

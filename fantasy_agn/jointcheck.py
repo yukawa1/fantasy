@@ -242,9 +242,12 @@ def _truth_spectra(me):
         s = e.spectrum
         sk = prob.factor(k, me.full, s.wave) if prob.scale_names else 1.0
         mu = e.model_flux(s.wave) * sk
-        err = s.err * sk
+        err = s.err * sk                                  # the errors as fitted (after rescale_errors)
         meta = s.meta
-        spec = s.copy(flux=mu, err=err)
+        # the simulated spectrum keeps the data's gaps and the errors of the file: a refit with
+        # rescale_errors=True rescales them again, as it did the data
+        flux = np.where(np.isfinite(s.flux), mu, np.nan)
+        spec = s.copy(flux=flux, err=err / meta.get("error_rescale", 1.0))
         if "resolution_file" in meta:
             spec = spec.copy(resolution=meta["resolution_file"], resolution_curve=meta.get("resolution_curve_file"))
         out.append((spec, mu, err))
@@ -331,7 +334,7 @@ def joint_simulation_check(me, n=20, seed=0, n_jobs=-1):
         for spec, mu, err in truth:
             noise = np.where(np.isfinite(err), err, 0.0) * me.error_scale
             flux = mu + rng.normal(0.0, 1.0, mu.size) * noise
-            flux[~np.isfinite(spec.flux)] = np.nan
+            flux[~np.isfinite(spec.flux)] = np.nan          # the gaps of the data
             sims.append(spec.copy(flux=flux))
         jobs.append((sims, model, options))
     task = "simulation check"

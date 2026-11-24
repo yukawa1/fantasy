@@ -212,6 +212,12 @@ class _JointProblem:
             Tk = Tcsr[cols]
             fc = np.unique(Tk.indices)
             self._epoch_map.append((fc, Tk[:, fc].toarray()))
+        # a free parameter that several epochs depend on is shared, whatever its name says (the calibration of a
+        # group of epochs is that of its lead, cal{j}@{lead}): the block solver couples it with every epoch
+        uses = np.zeros(len(self.free), int)
+        for fc, _ in self._epoch_map:
+            uses[fc] += 1
+        self.group[uses > 1] = -1
 
     def full(self, theta):
         return self.T @ theta + self.c
@@ -256,6 +262,19 @@ class _JointProblem:
         if broadened and self.broad_index[k]:
             fk[self.width_pos] = self._widths(fk[self.width_pos], full[self.broad_index[k][0]])
         return fk
+
+    def epoch_derivative(self, k, full):
+        """d epoch_full(k, full, broadened=False) / d full, dense (len(index[k]), len(full))."""
+        idx = np.asarray(self.index[k], int)
+        D = np.zeros((idx.size, len(full)))
+        D[np.arange(idx.size), idx] = 1.0
+        for (comp, pos), ai in zip(self.scaled, self.amp_index[k]):
+            pos = np.asarray(pos, int)
+            D[pos, idx[pos]] = full[ai]
+            D[pos, ai] = full[idx[pos]]
+        if self.offset_index[k]:
+            D[self.shift_pos, self.offset_index[k][0]] += self.shift_weight
+        return D
 
     def _widths(self, w, b2):
         return np.sqrt(np.maximum(w ** 2 + 1e4 * b2 * self.width_weight, 1.0))
@@ -305,8 +324,9 @@ class _JointProblem:
             pos = self.width_pos
             intrinsic = self.epoch_full(k, full, broadened=False)[pos]
             eff = fk[pos]
-            col = Jb[:, pos] @ (1e4 * self.width_weight / (2 * eff))
-            Jb[:, pos] = Jb[:, pos] * (intrinsic / eff)
+            live = intrinsic ** 2 + 1e4 * full[self.broad_index[k][0]] * self.width_weight > 1.0   # not at the 1 km/s floor
+            col = Jb[:, pos] @ np.where(live, 1e4 * self.width_weight / (2 * eff), 0.0)
+            Jb[:, pos] = Jb[:, pos] * np.where(live, intrinsic / eff, 0.0)
             Jb = np.hstack([Jb, col[:, None]])
         return x, y, err, f, Jb, self.factor(k, full)
 
@@ -465,11 +485,12 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
     elif isinstance(shared, str):
         shared = (shared,)
     wave_range = wave_range or model.wave_range
-    usable = []
-    for s in spectra:
+    usable, source = [], []               # source: the input index of each usable spectrum
+    for i, s in enumerate(spectra):
         try:
             _prepare(s, wave_range)
             usable.append(s)
+            source.append(i)
         except ValueError:
             warnings.warn(f"skipping {s.name}: no usable pixels in the fitted range")
     if len(usable) < 2:
@@ -505,7 +526,8 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
             raise ValueError(f"epoch_scaled: share {comp!r} between epochs (shared=... '{comp}.*')")
     groups = None
     if calibration_groups:
-        internal = {orig: k for k, orig in enumerate(order)}
+        # the groups name input indices; the fit numbers the usable spectra, reference first
+        internal = {source[orig]: k for k, orig in enumerate(order)}
         groups = [[internal[g] for g in grp if g in internal] for grp in calibration_groups]
     offset_limit = 150.0 if wavelength_offsets is True else float(wavelength_offsets or 0.0)
     if offset_limit < 0:
@@ -582,8 +604,7 @@ def fit_epochs(spectra, model, shared=None, intercalibrate=True, wave_range=None
         # covariance of each epoch's full parameters (and of the shared ones) from
         # the blocks only: the full matrix over all epochs is never formed
         epoch_cov = {}
-        for cols, cov in per_epoch:
-            k = int(prob.group[cols[0]])
+        for k, (cols, cov) in zip(blocks.which, per_epoch):
             idx = prob.index[k]
             rows = list(idx) + ([prob.scale_index[k]] if intercalibrate else []) + prob.cal_index[k]
             Tk = T[rows][:, cols].toarray()
@@ -716,21 +737,22 @@ class _Blocks:
         self.shared = idx[(group < 0) & keep]
         spos = {j: i for i, j in enumerate(self.shared)}
         self.C = np.zeros((self.shared.size, self.shared.size))
-        self.epochs, self.A, self.B = [], [], []
-        for fc, M in items:
+        # every epoch, also one with no parameters of its own (all shared, fixed or at a limit)
+        self.epochs, self.A, self.B, self.which = [], [], [], []
+        for k, (fc, M) in enumerate(items):
             kept = keep[fc]
             own = np.nonzero(kept & (group[fc] >= 0))[0]
             sh = np.nonzero(kept & (group[fc] < 0))[0]
             if sh.size:
                 si = np.array([spos[j] for j in fc[sh]])
                 self.C[np.ix_(si, si)] += M[np.ix_(sh, sh)]
-            if own.size:
-                self.epochs.append(fc[own])
-                self.A.append(M[np.ix_(own, own)])
-                B = np.zeros((own.size, self.shared.size))
-                if sh.size:
-                    B[:, si] = M[np.ix_(own, sh)]
-                self.B.append(B)
+            self.which.append(k)
+            self.epochs.append(fc[own])
+            self.A.append(M[np.ix_(own, own)])
+            B = np.zeros((own.size, self.shared.size))
+            if sh.size:
+                B[:, si] = M[np.ix_(own, sh)]
+            self.B.append(B)
         return self
 
     def solve(self, g, damp):
@@ -741,6 +763,8 @@ class _Blocks:
         rhs = g[s].copy()
         sol = []
         for e, A, B in zip(self.epochs, self.A, self.B):
+            if not e.size:
+                continue
             c = cho_factor(A + np.diag(damp[e]))
             AiB = cho_solve(c, B) if s.size else None
             Aig = cho_solve(c, g[e])
@@ -756,6 +780,8 @@ class _Blocks:
 
     @staticmethod
     def _pinv(M):
+        if not M.size:
+            return np.zeros_like(M)
         d = np.sqrt(np.clip(np.diag(M), 1e-300, None))
         w, V = np.linalg.eigh(M / np.outer(d, d))
         good = w > w.max() * 1e-12 if w.size else w
@@ -778,7 +804,7 @@ class _Blocks:
         shared parameters, so the coupling has the rank of the shared block.
         """
         Ainv, Sss = self._inverses()
-        return self.epochs, [Ai @ B for Ai, B in zip(Ainv, self.B)], Sss
+        return self.which, self.epochs, [Ai @ B for Ai, B in zip(Ainv, self.B)], Sss
 
     def covariance(self):
         """
@@ -814,19 +840,20 @@ def _levenberg_marquardt(prob, theta, max_iter=1000, ftol=1e-10, window=20, min_
     n = len(theta)
     r, g, d, items = prob.normal(theta)
     cost = float(r @ r)
-    lam, nfev, converged = 1e-3, 1, False
+    lam, nfev, converged, singular = 1e-3, 1, False, False
     costs = [cost]
     for _ in range(max_iter):
         d = np.where(d > 0, d, 1.0)
         active = ((theta <= lb) & (g > 0)) | ((theta >= ub) & (g < 0))
         blocks = _Blocks.from_epochs(n, prob.group, ~active, items)
+        ct = np.inf                                  # no trial yet
         while True:
             try:
                 step = -blocks.solve(g, lam * d)
             except np.linalg.LinAlgError:
                 lam *= 10
-                if lam > 1e14:
-                    step = np.zeros_like(theta)
+                if lam > 1e14:                       # no damping makes the normal matrix solvable
+                    singular = True
                     break
                 continue
             trial = np.clip(theta + step, lb, ub)
@@ -838,6 +865,8 @@ def _levenberg_marquardt(prob, theta, max_iter=1000, ftol=1e-10, window=20, min_
             lam *= 4
             if lam > 1e14:
                 break
+        if singular:
+            break
         if ct >= cost:  # no improving step: at a minimum
             converged = True
             break
@@ -851,7 +880,9 @@ def _levenberg_marquardt(prob, theta, max_iter=1000, ftol=1e-10, window=20, min_
             break
     res = _LMResult()
     res.x, res.fun, res.jac, res.nfev = theta, r, items, nfev
-    res.success, res.message = converged, "converged" if converged else "maximum iterations"
+    res.success = converged
+    res.message = ("converged" if converged else "the normal matrix is singular" if singular
+                   else "maximum iterations")
     return res
 
 
@@ -1131,7 +1162,10 @@ class MultiEpochResult:
             results["zdcf"] = zdcf_lag(t1, f1, e1, t2, f2, e2, lag_range=lag_range, n_mc=min(n_mc, 200), seed=seed)
         if "drw" in methods or primary == "drw":
             cc = [c for c in lc.columns if c.startswith("cont") and not c.endswith("_err")]
-            spec = (t2, lc[cc[0]].to_numpy(float), lc[cc[0] + "_err"].to_numpy(float)) if cc else None
+            spec = None
+            if cc:
+                fc = lc[cc[0]].to_numpy(float)
+                spec = (t2, flat(t2, fc) if detrend else fc, lc[cc[0] + "_err"].to_numpy(float))
             corr = lc[f"{line}_cont_corr"].to_numpy(float) if f"{line}_cont_corr" in lc else None
             results["drw"] = gp_lag((t2, f2, e2), continuum=None if continuum is None else (t1, f1, e1),
                                     spec_continuum=spec, corr=corr, lag_range=lag_range,
@@ -1158,12 +1192,11 @@ class MultiEpochResult:
         items = prob.normal(theta)[3]
         limit = _at_limit(theta, prob.lb, prob.ub)
         blocks = _Blocks.from_epochs(len(theta), prob.group, ~limit, items)
-        own, X, Sss = blocks.cross_terms()
+        which, own, X, Sss = blocks.cross_terms()
         Sss = Sss * self.error_scale ** 2
         T = prob.T.tocsr()
         values, U, D = [None] * n, [None] * n, [None] * n
-        for e, cols in enumerate(own):
-            k = int(prob.group[cols[0]])
+        for e, (k, cols) in enumerate(zip(which, own)):
             r = self.epochs[order[k]]
             idx = prob.index[k]
             full_k = np.asarray(r.full, float)
@@ -1178,7 +1211,7 @@ class MultiEpochResult:
                 b[i] = max(b[i] - 0.1 * sig[i], lo[i])
                 if a[i] > b[i]:
                     grad[:, i] = (np.asarray(func(r, a), float) - np.asarray(func(r, b), float)) / (a[i] - b[i])
-            G = grad @ T[idx].toarray()
+            G = (T.T @ (prob.epoch_derivative(k, prob.full(theta)).T @ grad.T)).T   # through a*w and offsets
             values[order[k]] = v
             U[order[k]] = G[:, cols] @ X[e] - G[:, blocks.shared]
             D[order[k]] = grad @ np.nan_to_num(r.cov) @ grad.T if r.cov is not None else np.zeros((v.size, v.size))

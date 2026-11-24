@@ -1,5 +1,56 @@
 # Changelog
 
+## 2.3.1
+
+### Fixed
+
+- Joint fits with `calibration_groups`: the epochs of a group now share one calibration in the solver too. Before, the
+  shared calibration was counted as belonging to the lead epoch only, which coupled the epochs wrongly and inflated the
+  errors of the other epochs in the group.
+- Joint fits stop and say "the normal matrix is singular" when it cannot be factored, instead of going on with a
+  meaningless step.
+- `Parameter.set(fixed=True)` (and `fix()`) on a tied parameter now fixes it; the tie used to stay in force.
+- Air wavelengths below 2000 A are the vacuum wavelengths (the IAU convention). The refraction formula has a pole near
+  1320 A, which made UV lines land at wrong wavelengths when a spectrum was in air. Line labels in plots use the same
+  conversion.
+- `ccf_lag`: the default step counts an epoch shared by both light curves once, so it is no longer zero when they share
+  dates. `zdcf_lag` returns NaN for the centroid when the peak correlation is not positive, and the light-curve model
+  in `rm` raises a clear error when its covariance matrix is singular instead of failing on unpacking.
+- `line_ratios` against a line whose flux is bounded by `max_ratios` (and the reverse) is refused with a clear message,
+  and so are two `max_ratios` bounds on the same reference (the second used to overwrite the first silently).
+- Fits in which every line flux is fixed no longer fail in the initial guess.
+- The bounded linear solve of the initial guess uses a tolerance relative to the data, so a large flux limit no longer
+  changes the fit.
+- `FitResult.propagate` keeps its finite differences inside the bounds even when a value sits outside them.
+- `calibration_groups` name input indices also when a spectrum without usable pixels is skipped (the groups shifted).
+- `MultiEpochResult.quantity_covariance` (used by `component_reverberation`): the covariance between epochs follows
+  `epoch_scaled` components (amplitude times shape) and `wavelength_offsets`; it used to leave them out. A joint fit in
+  which an epoch has no parameters of its own (everything shared, fixed or at a limit) no longer fails there.
+- `epoch_broadening`: a width held at its 1 km/s floor no longer passes a derivative to the fit.
+- `reverberation(detrend=True)`: the DRW method uses the detrended spectroscopic continuum too.
+- `Model + Model` keeps the ties removed with `untie()` removed (adding re-applied the default ties).
+- A line component outside the fitted range keeps its shift and width free when a component in range is tied to them.
+- Cached template grids are keyed on every wavelength, not only the size and ends.
+- `suggest_lines` widens its matched filter and linearised refit by the instrumental resolution, and counts lines
+  tied by a ratio or bounded by `max_ratios` with their fitted fluxes.
+- `simulation_check` of a joint fit keeps the data's gaps in the simulated spectra and does not rescale their errors
+  twice with `rescale_errors=True`.
+- `predictive.calibrate` uses the same `wave_range` for the baseline and the checks.
+- `robustness`: when a scan finds a better fit, the result profiles are run with the scanned parameter free again.
+- `model_confidence`: a tie the model cannot satisfy at all (no variance along it) is "cannot assess", not "safe".
+- `compare` adds `n_pixels` to its table and warns when the models were fitted to different pixels (BIC not comparable).
+- `shift_continuum` ignores an epoch without an MJD instead of blanking the whole column.
+- Residual features in air spectra are matched with stellar features and line shifts in air wavelengths.
+- Seyfert/LINER on a tie between the [SII] and [OI] diagrams is decided by [SII], the same in every run.
+- HMC: a starting point outside the limits raises a clear error instead of looping, and rounding after re-whitening no
+  longer stops the sampler.
+- App: the Fit step restores **Rescale the errors of each epoch** from the last run (the line was commented out).
+- App: drag-to-zoom on a plot works after a plain click; it used to need a redraw first.
+- App: the classification card no longer asks for the classification again on every poll while one is loading.
+- App: every preset call the app writes is checked against the public presets, their options and plain values (the
+  model gallery passed them through unchecked), and download file names from spectrum names are made safe for the
+  header (quotes, line breaks and non-ASCII names).
+
 ## 2.3.0
 
 ### Added

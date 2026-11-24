@@ -41,6 +41,8 @@ class Parameter:
             self.value = float(value)
         if fixed is not None:
             self.fixed = bool(fixed)
+            if self.fixed:
+                self.tie = None              # a fixed value replaces a tie (else the tie wins and fixing does nothing)
         if self.free and not (self.min <= self.value <= self.max):
             raise ValueError(
                 f"{self.name}: value {self.value} outside limits [{self.min}, {self.max}]")

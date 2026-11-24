@@ -96,6 +96,13 @@ def _dpi(value, download):
     return 600 if str(value) == "600" else 300
 
 
+def _disposition(name):
+    """Content-Disposition for a download: an ASCII name for old clients and the full name in UTF-8."""
+    name = "".join(c for c in str(name) if c.isprintable()).replace("/", "_").replace("\\", "_") or "download"
+    ascii_ = "".join(c if c.isascii() and c not in '"%;' else "_" for c in name)
+    return f'attachment; filename="{ascii_}"; filename*=UTF-8\'\'{urllib.parse.quote(name, safe="")}'
+
+
 def _finite(obj):
     """JSON has no inf/nan: replace them with None (null)."""
     if isinstance(obj, float):
@@ -132,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         if filename:
-            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Disposition", _disposition(filename))
         self.end_headers()
         self.wfile.write(body)
 
@@ -224,7 +231,7 @@ class Handler(BaseHTTPRequestHandler):
                 page = build(s)
             except ValueError as exc:
                 return self._error(str(exc), 404)
-            name = (s.spec.name if s.spec is not None else "fit").replace('"', "") + "_report.html"
+            name = (s.spec.name if s.spec is not None else "fit") + "_report.html"
             return self._send(page, "text/html; charset=utf-8", filename=name)
         if url.path == "/api/session.py":
             return self._send(s.script(), "text/x-python", filename="fantasy_session.py")

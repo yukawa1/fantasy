@@ -115,14 +115,17 @@ class FitResult:
         if depends is not None:
             idx = np.intersect1d(idx, np.asarray(depends, int))
         grad = np.zeros(value.shape + (self.full.size,))
-        lo = np.array([p.min for p in self.model.params], float)
-        hi = np.array([p.max for p in self.model.params], float)
+        # the limits widened to the value: a tied parameter follows its target and can end outside its own
+        lo = np.minimum([p.min for p in self.model.params], self.full)
+        hi = np.maximum([p.max for p in self.model.params], self.full)
         for i in idx:
             # steps stay within the parameter limits (a width must not become negative)
             h = 0.1 * sig[i]
             a, b = self.full.copy(), self.full.copy()
             a[i] = min(a[i] + h, hi[i])
             b[i] = max(b[i] - h, lo[i])
+            if not a[i] > b[i]:                      # a step lost to rounding or squeezed by both limits
+                a[i], b[i] = self.full[i] + h, self.full[i] - h
             if a[i] > b[i]:
                 grad[..., i] = (np.asarray(func(a)) - np.asarray(func(b))) / (a[i] - b[i])
         g = grad[..., idx]

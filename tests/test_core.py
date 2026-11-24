@@ -1,7 +1,9 @@
 import os
 import tempfile
+import types
 
 import numpy as np
+import pandas as pd
 from astropy.io import fits
 import pytest
 
@@ -5600,3 +5602,199 @@ def test_https_falls_back_to_system_certificates(monkeypatch, tmp_path):
     monkeypatch.undo()
     ctx = _net.fallback_context()
     assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
+
+
+# ------------------------------------------------------------------ regressions from the review of 2.3.0
+def test_fixing_a_tied_parameter_fixes_it():
+    m = _toy_model()
+    m.params.tie("narrow.shift", "broad.shift")
+    m.params.fix("narrow.shift", 25.0)
+    p = m.params["narrow.shift"]
+    assert p.fixed and p.tie is None and not p.free
+    T, c, free = m.params.affine()
+    names = [q.name for q in free]
+    assert "narrow.shift" not in names
+    assert c[m.params.index("narrow.shift")] == 25.0
+
+
+def test_air_wavelengths_are_vacuum_below_2000_angstrom():
+    from fantasy_agn.wavelengths import air_to_vac, vac_to_air
+    uv = np.array([1215.67, 1320.326, 1335.0, 1549.06, 1999.0])
+    assert np.array_equal(vac_to_air(uv), uv) and np.array_equal(air_to_vac(uv), uv)
+    assert vac_to_air(5008.24) == pytest.approx(5006.84, abs=0.01)
+    assert air_to_vac(vac_to_air(2800.0)) == pytest.approx(2800.0, abs=1e-6)
+
+
+def test_ccf_step_counts_shared_epochs_once():
+    from fantasy_agn.rm import ccf_lag
+    t = np.arange(0.0, 200.0, 4.0)
+    x = np.sin(t / 20)
+    res = ccf_lag(t, x, np.full(t.size, 0.01), t, np.sin((t - 8) / 20), np.full(t.size, 0.01),
+                  lag_range=(-40, 40), n_mc=20)
+    assert np.diff(res["lags"])[0] == pytest.approx(1.0)          # a quarter of the 4-day cadence, not 0.25
+    assert abs(res["tau_cen"] - 8) < 2
+
+
+def test_line_ratio_against_a_bounded_line_is_refused():
+    with pytest.raises(ValueError, match="bounded in max_ratios"):
+        fa.Lines("n", ["[OIII]4959", "[OIII]5007", "Hb"], max_ratios={"[OIII]5007": ("Hb", 10.0)},
+                 line_ratios={"[OIII]4959": ("[OIII]5007", 1 / 2.98)})
+
+
+def test_fit_with_every_line_flux_fixed():
+    spec = _toy_spectrum(np.random.default_rng(4))
+    m = _toy_truth()
+    for name in ("narrow.Hb.flux", "narrow.[OIII]5007.flux", "broad.Hb.flux"):
+        m.params.fix(name)
+    r = fa.fit(spec, m, verbose=False)
+    assert np.isfinite(r.rchi2) and r.rchi2 < 1.5
+
+
+def test_large_flux_limit_does_not_change_the_fit():
+    spec = _toy_spectrum(np.random.default_rng(6))
+    base = fa.fit(spec, _toy_model(), verbose=False, errors=None)
+    m = _toy_model()
+    for p in m.params:
+        if p.linear and np.isinf(p.max):
+            p.max = 1e12
+    big = fa.fit(spec, m, verbose=False, errors=None)
+    assert big.chi2 == pytest.approx(base.chi2, rel=1e-4)
+
+
+def test_calibration_groups_share_the_calibration_of_their_lead():
+    rng = np.random.default_rng(8)
+    wave = np.arange(4650, 5150, 1.0)
+    spectra = []
+    for k in range(6):
+        m = _toy_truth()
+        m.params["broad.Hb.flux"].value = 6000 * (1 + 0.3 * np.sin(k))
+        tilt = 0.0 if k < 3 else 0.05                     # epochs 3-5: one instrument, one calibration
+        f = m.evaluate(wave, {"medium": "vacuum"}) * (1 + tilt * (2 * (wave - 4700) / 400 - 1))
+        spectra.append(fa.Spectrum(wave, f + rng.normal(0, 1.0, wave.size), np.ones(wave.size),
+                                   rest_frame=True, mjd=50000 + k))
+    # a first spectrum without data in the fitted range is skipped: the groups still name input indices
+    spectra.insert(0, fa.Spectrum(wave, np.full(wave.size, np.nan), np.ones(wave.size), rest_frame=True, mjd=49999))
+    with pytest.warns(UserWarning, match="skipping"):
+        me = fa.fit_epochs(spectra, _toy_model(), reference=1, calibration_degree=1,
+                           calibration_groups=[[1, 2, 3], [4, 5, 6]], n_jobs=1, verbose=False)
+    got = np.array([e.calibration[0] for e in me.epochs])
+    assert np.allclose(got[3:], got[3]) and got[3] == pytest.approx(0.05, abs=0.015)
+    assert np.allclose(got[:3], 0.0, atol=0.015)
+    assert me.success
+
+
+def test_app_preset_code_writes_only_presets_and_their_options():
+    from fantasy_agn.app.builder import _preset_code, ladder
+    from fantasy_agn.app.session import MODELS
+    for model, (name, kw) in MODELS.items():
+        for _, _, _, kwk in ladder(name, dict(kw)):
+            assert _preset_code(name, kwk).startswith(f"model = fa.presets.{name}(")
+    for name, kw in [("os", {}), ("__import__", {}), ("optical", {"x=1)#": 1}),
+                     ("optical", {"outflow": object()})]:
+        with pytest.raises(ValueError):
+            _preset_code(name, kw)
+
+
+def test_app_download_names_are_safe_header_values():
+    from fantasy_agn.app.server import _disposition
+    h = _disposition('Mrk 817 "x"\r\nSet-Cookie: y/Ο.fantasy')
+    assert "\r" not in h and "\n" not in h and h.isascii()
+    assert h.startswith('attachment; filename="Mrk 817 _x_Set-Cookie: y__.fantasy"')
+    assert h.endswith("%CE%9F.fantasy")
+
+
+def _scaled_joint_fit(**options):
+    rng = np.random.default_rng(3)
+    wave = np.arange(4650, 5150, 1.0)
+    spectra = []
+    for k in range(4):
+        m = _toy_truth()
+        m.params["broad.Hb.flux"].value = 6000 * (1 + 0.3 * np.sin(k))
+        spectra.append(fa.Spectrum(wave, m.evaluate(wave, {"medium": "vacuum"}) + rng.normal(0, 3.0, wave.size),
+                                   np.full(wave.size, 3.0), rest_frame=True, mjd=50000 + k))
+    return fa.fit_epochs(spectra, _toy_model(), n_jobs=1, verbose=False, **options)
+
+
+def test_quantity_covariance_between_epochs_follows_scaled_components_and_offsets():
+    from fantasy_agn.fitting import _at_limit
+    me = _scaled_joint_fit(shared=["broad.*"], epoch_scaled=("broad",), intercalibrate=False, wavelength_offsets=100.0)
+    prob = me._prob
+
+    def func(r, full):
+        return np.array([full[r.model.params.index("broad.Hb.flux")], full[r.model.params.index("broad.shift")]])
+    v, C = me.quantity_covariance(func)
+    # reference: the dense inverse normal matrix and gradients through epoch_full
+    theta = np.array([me.full[prob.joint.names.index(p.name)] for p in prob.free])
+    N = np.zeros((theta.size,) * 2)
+    for fc, M in prob.normal(theta)[3]:
+        N[np.ix_(fc, fc)] += M
+    keep = ~_at_limit(theta, prob.lb, prob.ub)
+    Ninv = np.zeros_like(N)
+    Ninv[np.ix_(keep, keep)] = np.linalg.pinv(N[np.ix_(keep, keep)]) * me.error_scale ** 2
+
+    def every(th):
+        full = prob.full(th)
+        return np.concatenate([func(me.epochs[me._order[k]], prob.epoch_full(k, full, broadened=False))
+                               for k in range(prob.n)])
+    G = np.zeros((v.size, theta.size))
+    for i in np.nonzero(keep)[0]:
+        h = 1e-4 * max(abs(theta[i]), 1)
+        a, b = theta.copy(), theta.copy()
+        a[i] += h
+        b[i] -= h
+        G[:, i] = (every(a) - every(b)) / (2 * h)
+    pos = np.concatenate([np.arange(2 * me._order.index(e), 2 * me._order.index(e) + 2) for e in range(prob.n)])
+    ref = (G @ Ninv @ G.T)[np.ix_(pos, pos)]
+    assert np.allclose(C, ref, rtol=1e-4, atol=1e-6 * np.abs(ref).max())
+
+
+def test_quantity_covariance_with_epochs_that_have_no_parameters_of_their_own():
+    me = _scaled_joint_fit(shared=["continuum.*", "narrow.*", "broad.*"], intercalibrate=False)
+    v, C = me.quantity_covariance(lambda r, full: full[[r.model.params.index("broad.Hb.flux")]])
+    assert v.shape == (4, 1) and np.all(np.isfinite(C)) and np.all(np.diag(C) > 0)
+    assert all(e.cov is not None for e in me.epochs)
+
+
+def test_adding_a_model_keeps_its_removed_ties_removed():
+    m = fa.Model(fa.Lines("narrow", ["[OIII]4959", "[OIII]5007"], ratios={"[OIII]4959": ("[OIII]5007", 0.33)}))
+    m.untie("narrow.[OIII]4959.flux")
+    assert (fa.Model(fa.PowerLaw()) + m).params["narrow.[OIII]4959.flux"].tie is None
+    m2 = fa.Model(fa.Lines("narrow", ["[OIII]4959", "[OIII]5007"], ratios={"[OIII]4959": ("[OIII]5007", 0.33)}))
+    assert (fa.Model(fa.PowerLaw()) + m2).params["narrow.[OIII]4959.flux"].tie is not None
+
+
+def test_shift_continuum_ignores_an_epoch_without_a_date():
+    from fantasy_agn.correlations import shift_continuum
+    t = pd.DataFrame({"mjd": [0.0, 10.0, np.nan, 20.0, 30.0], "cont5100": [1.0, 2.0, 9.0, 3.0, 4.0]})
+    out = shift_continuum(t, 10.0)
+    assert np.allclose(out.cont5100.to_numpy(), [np.nan, 1.0, np.nan, 2.0, 3.0], equal_nan=True)
+
+
+def test_grid_cache_keys_see_inside_the_grid():
+    from fantasy_agn.components import _grid_key
+    a = np.linspace(4000, 5000, 101)
+    b = a.copy()
+    b[50] += 0.3
+    assert _grid_key(a) != _grid_key(b) and _grid_key(a) == _grid_key(a.copy())
+
+
+def test_compare_warns_when_the_models_saw_different_pixels():
+    from fantasy_agn.compare import Comparison
+    r1, r2 = types.SimpleNamespace(), types.SimpleNamespace()
+    for r, n in ((r1, 100), (r2, 90)):
+        r.chi2, r.n_free, r.rchi2, r.bic, r.at_limit = 100.0, 5, 1.0, 120.0, []
+        r.mask = np.r_[np.ones(n, bool), np.zeros(100 - n, bool)]
+    with pytest.warns(UserWarning, match="different pixels"):
+        Comparison({"a": r1, "b": r2}, {})
+
+
+def test_a_line_component_followed_by_a_tie_is_not_frozen_out_of_range():
+    rng = np.random.default_rng(2)
+    wave = np.arange(4700, 5050, 1.0)
+    truth = fa.Model(fa.PowerLaw(), fa.Lines("b", ["Hb"], fwhm=3000.0, shift=300.0))
+    truth.params["b.Hb.flux"].value = 3000.0
+    flux = truth.evaluate(wave, {"medium": "vacuum"}) + rng.normal(0, 1.0, wave.size)
+    model = fa.Model(fa.PowerLaw(), fa.Lines("a", ["Ha"], fwhm=3000.0), fa.Lines("b", ["Hb"], fwhm=3000.0))
+    model.tie("b.shift", "a.shift")                    # Ha is outside the range; Hb follows its shift
+    r = fa.fit(fa.Spectrum(wave, flux, np.ones(wave.size), rest_frame=True), model, verbose=False)
+    assert r.full[r.model.params.index("b.shift")] == pytest.approx(300.0, abs=60.0)

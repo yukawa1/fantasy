@@ -279,9 +279,12 @@ def shift_continuum(table, lag):
     if lag == 0.0:
         return t
     mjd = t["mjd"].to_numpy(float)
-    order = np.argsort(mjd)
+    dated = np.isfinite(mjd)                     # an epoch without a date neither gives nor gets a value
+    if dated.sum() < 2:
+        return t
+    order = np.argsort(mjd)[:dated.sum()]        # NaN dates sort last
     when = mjd - lag
-    inside = (when >= mjd[order][0]) & (when <= mjd[order][-1])
+    inside = dated & (when >= mjd[order][0]) & (when <= mjd[order][-1])
     for c in [c for c in t.columns if c.startswith(("cont", "logL"))]:
         v = t[c].to_numpy(float)[order]
         ok = np.isfinite(v)

@@ -32,6 +32,13 @@ FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
 SQRT_2PI = np.sqrt(2.0 * np.pi)
 
 
+def _grid_key(x):
+    """Cache key of a wavelength grid: size, ends and a hash of every value (grids with the same ends and
+    size can differ inside, e.g. masked differently)."""
+    x = np.ascontiguousarray(x, dtype=float)
+    return (x.size, float(x[0]), float(x[-1]), hash(x.tobytes())) if x.size else (0,)
+
+
 def instrumental_fwhm(wave, ctx):
     """
     Instrumental FWHM (km/s) at the given wavelengths: from the spectrum's
@@ -362,11 +369,15 @@ class Lines(_GaussianSet):
                 raise ValueError(f"line_ratios: bad entry {a!r}: reference {b!r}")
             if a in self.max_ratios or any(a == ref for ref, _ in self.max_ratios.values()):
                 raise ValueError(f"line_ratios: {a!r} is also in max_ratios")
+            if b in self.max_ratios:          # its parameter is the excess over the bound, not its flux
+                raise ValueError(f"line_ratios: the reference {b!r} is bounded in max_ratios")
         refs = {b: a for a, (b, _) in self.max_ratios.items()}
+        if len(refs) < len(self.max_ratios):
+            raise ValueError("max_ratios: two lines cannot be bounded by the same reference")
         for a, (b, r) in self.max_ratios.items():
             if a not in self.line_names or b not in self.line_names or r <= 0 or a == b:
                 raise ValueError(f"max_ratios: bad entry {a!r}: ({b!r}, {r!r})")
-            if a in refs or len([x for x in refs if x == b]) > 1:
+            if a in refs:
                 raise ValueError("max_ratios: a line cannot be both bounded and a reference")
         for ln in self.line_names:
             if ln in self.line_ratios:
@@ -619,7 +630,7 @@ class BalmerContinuum(Component):
             s = (self._planck(x, T) / self._planck(edge, T)
                  * -np.expm1(-tau * (x / edge) ** 3) / -np.expm1(-tau))
             return np.where(x <= edge, s, 0.0)
-        key = (float(T), float(tau), float(fwhm), x.size, float(x[0]), float(x[-1]))
+        key = (float(T), float(tau), float(fwhm), _grid_key(x))
         hit = self._cache.get(key)          # (threads share the cache: no re-lookups)
         if hit is None:
             sigma = fwhm / C_KMS / FWHM_PER_SIGMA            # in ln(lambda)
@@ -702,7 +713,7 @@ class HostGalaxy(Component):
         return self._eig_wave[0], self._eig_wave[-1]
 
     def _basis(self, x, ctx):
-        key = (x.size, x[0], x[-1], ctx.get("medium"))
+        key = (_grid_key(x), ctx.get("medium"))
         hit = self._cache.get(key)
         if hit is None:
             wave = _in_medium(self._eig_wave, ctx)

@@ -76,7 +76,7 @@ class Comparison:
         rows = []
         for name, r in results.items():
             row = {"model": name, "chi2": r.chi2, "n_free": r.n_free, "reduced_chi2": r.rchi2,
-                   "BIC": r.bic, "at_limit": ", ".join(r.at_limit)}
+                   "BIC": r.bic, "at_limit": ", ".join(r.at_limit), "n_pixels": int(np.count_nonzero(r.mask))}
             for qn, f in quantities.items():
                 try:
                     row[qn], row[qn + " err"] = (float(v) for v in f(r))
@@ -84,6 +84,10 @@ class Comparison:
                     row[qn], row[qn + " err"] = np.nan, np.nan
             rows.append(row)
         t = pd.DataFrame(rows).sort_values("BIC").reset_index(drop=True)
+        if t.n_pixels.nunique() > 1:
+            import warnings
+            warnings.warn("the models were fitted to different pixels (n_pixels differs): chi2 and BIC are not "
+                          "comparable; fit them over the same wave_range and mask")
         t.insert(5, "dBIC", t.BIC - t.BIC.min())
         best_rchi2 = t.reduced_chi2.min()
         t.insert(6, "acceptable", t.reduced_chi2 <= (1 + tolerance) * best_rchi2)

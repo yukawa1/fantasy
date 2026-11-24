@@ -15,7 +15,7 @@ Quick start::
 The application ``fantasy-app`` (or ``fa.app()``) opens a point-and-click
 interface in the browser.
 """
-__version__ = "2.3.0"
+__version__ = "2.3.1"
 
 
 def _first_start_notice():

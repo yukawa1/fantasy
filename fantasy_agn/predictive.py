@@ -361,17 +361,18 @@ def calibrate(spectrum, null, models, blocks, target, n_sim=50, alpha=0.01, seed
     """
     fit_options = {"verbose": False, "errors": "covariance", **fit_options}
     blocks = _blocks(blocks)
-    base = fit_one(spectrum, models[null], **{**fit_options, "errors": None})
+    wave_range = fit_options.pop("wave_range", None)      # the same range for the baseline and the checks
+    base = fit_one(spectrum, models[null], **{**fit_options, "errors": None, "wave_range": wave_range})
     sims = _simulate(spectrum, base, n_sim, seed)
     jobs, keys = [], []                          # every fit of every simulation in one pool
     for s in sims:
-        j, keys = _check_jobs(s, models, blocks, None, fit_options)
+        j, keys = _check_jobs(s, models, blocks, wave_range, fit_options)
         jobs += j
     fits = _run(jobs, n_jobs, f"calibration: {n_sim} simulations")
     n = len(keys)
     scores = []
     for k, s in enumerate(sims):
-        table = _check_table(s, models, blocks, None, keys, fits[k * n:(k + 1) * n], True)
+        table = _check_table(s, models, blocks, wave_range, keys, fits[k * n:(k + 1) * n], True)
         scores.append(PredictiveCheck(table, reference or null).specificity(target)[0])
     scores = np.array(scores, float)
     ok = scores[np.isfinite(scores)]

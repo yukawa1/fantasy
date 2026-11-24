@@ -147,7 +147,7 @@ def diagnostics(result, outflow=True, kind=None):
             for name, d in (("log [SII]6716,6731/Ha", "sii"), ("log [OI]6300/Ha", "oi")):
                 if name in vals:
                     votes.append("Seyfert" if y > kewley06(vals[name], d) else "LINER")
-            bpt = max(set(votes), key=votes.count) if votes else ("Seyfert" if y > 0.5 else "LINER")
+            bpt = max(votes, key=votes.count) if votes else ("Seyfert" if y > 0.5 else "LINER")
     if kind is None:
         kind = "starforming" if bpt in ("star-forming", None) else "agn"
 

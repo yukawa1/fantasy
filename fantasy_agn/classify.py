@@ -504,7 +504,7 @@ def _narrow_class(meas, det, min_snr):
                     votes.append("seyfert2" if y > kewley06(meas[k], d) else "liner")
             if not votes:
                 votes = ["seyfert2" if y > 0.5 else "liner"]
-            label = max(set(votes), key=votes.count)
+            label = max(votes, key=votes.count)          # a tie: the [SII] diagram (deterministic)
             if len(set(votes)) > 1:
                 uncertain = True
             reason = ("above the Kewley et al. (2001) line; Seyfert/LINER from the "

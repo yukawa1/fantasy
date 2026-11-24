@@ -363,7 +363,23 @@ def ladder(name, kw):
 
 
 def _preset_code(name, kw):
+    """`model = fa.presets.name(...)`, for a public preset, its own options and plain values only."""
+    fn = getattr(presets, name, None) if isinstance(name, str) and name.isidentifier() else None
+    if fn is None or name.startswith("_") or not callable(fn):
+        raise ValueError(f"unknown preset {name!r}")
+    params = inspect.signature(fn).parameters
+    for k, v in kw.items():
+        if k not in params:
+            raise ValueError(f"{name} has no option {k!r}")
+        if not _literal(v):
+            raise ValueError(f"{name}: option {k!r} must be a number, string, boolean or list of them")
     return f"model = fa.presets.{name}({', '.join(f'{k}={v!r}' for k, v in kw.items())})"
+
+
+def _literal(v):
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return True
+    return isinstance(v, (list, tuple)) and all(_literal(x) for x in v)
 
 
 def _fit_job(job):

@@ -34,11 +34,13 @@ class Model:
     # ------------------------------------------------------------ building
     def add(self, component):
         if isinstance(component, Model):
+            # its ties as they are (adding a component applies its default ties again, also ones
+            # that were removed with untie)
+            ties = {p.name: p.tie for p in component.params}
             for c in component.components:
                 self.add(c)
-            for p in component.params:
-                if p.tie is not None:
-                    self.params[p.name].tie = p.tie
+            for name, tie in ties.items():
+                self.params[name].tie = tie
             return self
         if not isinstance(component, Component):
             raise TypeError(f"cannot add {type(component).__name__} to a Model")

@@ -186,6 +186,8 @@ def _split(f, ln, result):
 def _suggest(f, result, lib, model_lines):
     """Identify one feature and suggest a model change (text, action for the app, code)."""
     names, waves = lib
+    air = result.spectrum.medium == "air"
+    at = dict(zip(LINES, vac_to_air(list(LINES.values())) if air else LINES.values()))   # in the spectrum's medium
     m = result.model
     kinds = {getattr(c, "kind", "") for c in m.components}
     has_feii = any(type(c).__name__ == "FeII" for c in m.components)
@@ -223,7 +225,8 @@ def _suggest(f, result, lib, model_lines):
                            "calibration (calibration_degree=1)")
         return f
     if f["kind"] == "absorption":
-        star = min(STELLAR.items(), key=lambda kv: abs(kv[1] - c0))
+        stellar = {k: float(vac_to_air(v)) if air else v for k, v in STELLAR.items()}
+        star = min(stellar.items(), key=lambda kv: abs(kv[1] - c0))
         if abs(star[1] - c0) / c0 * C_KMS < max(800.0, 0.6 * fwhm):
             f["line"] = star[0]
             if "host" in kinds:
@@ -293,14 +296,14 @@ def _suggest(f, result, lib, model_lines):
         f["action"] = {"type": "lines", "name": f"{role}_{safe}", "lines": group, "role": role}
         f["code"] = f"model.add(fa.Lines({role + '_' + safe!r}, {group!r}, role={role!r}))"
     elif forbidden and "outflow" not in roles:
-        shift = (c0 - LINES.get(ln, c0)) / c0 * C_KMS
+        shift = (c0 - at.get(ln, c0)) / c0 * C_KMS
         f["suggestion"] = (f"{ln} has an unfitted {'blue' if shift < 0 else 'red'} wing (FWHM {fwhm:.0f} km/s, "
                            f"{shift:+.0f} km/s): add an outflow component")
         f["action"] = {"type": "lines", "name": f"outflow_{safe}", "lines": group, "role": "outflow"}
         f["code"] = f"model.add(fa.Lines('outflow_{safe}', {group!r}, role='outflow'))"
     elif fwhm > 2000 and "broad" in roles:
         f["suggestion"] = (f"broad {ln} is under-fitted (wings or asymmetry, FWHM {fwhm:.0f} km/s, "
-                           f"shift {(c0 - LINES.get(ln, c0)) / c0 * C_KMS:+.0f} km/s): add another broad component")
+                           f"shift {(c0 - at.get(ln, c0)) / c0 * C_KMS:+.0f} km/s): add another broad component")
         f["action"] = {"type": "lines", "name": f"broad_{safe}_wing", "lines": [ln], "role": "broad"}
         f["code"] = f"model.add(fa.Lines('broad_{safe}_wing', [{ln!r}], role='broad'))"
     elif fwhm > 1200 and "broad" not in roles and not forbidden:
